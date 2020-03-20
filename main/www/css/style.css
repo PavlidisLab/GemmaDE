@@ -1,0 +1,12 @@
+#header {
+  background: #002145;
+  min-height: 100px;
+}
+
+a:hover {
+  cursor: pointer;
+}
+
+.help-block {
+  margin-top: -15px;
+}
