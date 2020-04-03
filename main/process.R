@@ -5,27 +5,26 @@ library(matrixStats)
 
 #' Search
 #' 
-#' Uses the M-VSM to sort experiments that show at least one of the genes
-#' as DE.
+#' Uses the M-VSM to sort experiments that show at least one of the genes as DE.
 #'
 #' @param genes A list of Entrez Gene IDs (ie. 1, 22, 480) as characters
 #' @param taxa A taxa scope. Can be one of [human, mouse, rat].
+#' @param scope The ontology scope, or null. If null, no weighting by experiment prior is done
 #' @param options Optional extra parameters to pass, such as:
 #' * pv: A p-value cutoff (default: 0.05)
-#' * fc: A logFC threshold (default: 0)
-#' * fc.lower / fc.upper: Upper and lower logFC thresholds (default: 0 / 0)
+#' * fc.lower / fc.upper: Upper and lower logFC thresholds (default: 0 / 10)
+#' * mfx: Whether or not to scale by gene multifunctionality
+#' @param session The Shiny session
 #'
 #' @return A named numeric with experiment IDs as names and scores as entries, or NULL if no GOI
 #' or EOI are found in the underlying data structure for @param taxa and @param options$pv / @param options$fc.
-search <- function(genes, taxa = 'human', options = list()) {
-  P_THRESHOLD <- ifelse(is.null(options$pv), 0.05, options$pv)
-  if(is.null(options$fc)) {
-    FC_L_THRESHOLD <- ifelse(is.null(options$fc.lower), 0, options$fc.lower)
-    FC_U_THRESHOLD <- options$fc.upper
-  } else {
-    FC_L_THRESHOLD <- ifelse(is.null(options$fc), 0, options$fc)
-    FC_U_THRESHOLD <- NULL
-  }
+search <- function(genes, taxa = 'human', scope = NULL, options = DEFAULT_OPTIONS, session = NULL) {
+  advanceProgress(session, 'Loading experiments')
+  
+  P_THRESHOLD <- options$pv
+  FC_L_THRESHOLD <- options$fc.lower
+  FC_U_THRESHOLD <- options$fc.upper
+  MFX <- options$mfx
   
   # Data Extraction ---------------------------------------------------------
 
@@ -37,96 +36,146 @@ search <- function(genes, taxa = 'human', options = list()) {
   # P-values for only the GOI
   pv <- DATA.HOLDER[[taxa]]@data$adj.pv[rowFilter, ]
   
+  if(n.genes == 1)
+    pv <- t(pv)
+  
   # Only retain experiments that have at least one of the GOI as DE (pv < threshold)
   colFilter <- colSums2(pv < P_THRESHOLD, na.rm = T) > 0
   pv <- pv[, colFilter] %>% as.data.table
   
-  # logFCs for only the GOI/EOI and maintain structure.
-  logFC <- DATA.HOLDER[[taxa]]@data$fc[rowFilter, colFilter] %>% as.data.table %>% abs
+  # Number of DEs for experiments that pass thresholds
+  n.DE <- DATA.HOLDER[[taxa]]@experiment.meta$n.DE[colFilter]
   
-  # Only retain experiments that have at least one of the GOI with abs(logFC) > threshold
-  if(FC_L_THRESHOLD != 0 || !is.null(FC_U_THRESHOLD)) {
+  # logFCs for only the GOI/EOI and maintain structure.
+  logFC <- DATA.HOLDER[[taxa]]@data$fc[rowFilter, colFilter]
+  logFC[is.na(logFC)] <- 0
+  logFC <- logFC %>% abs %>% as.data.table
+  
+  # Only retain experiments that have at least one of the GOI with threshold_u > abs(logFC) > threshold_l
+  if(FC_L_THRESHOLD != 0 || FC_U_THRESHOLD != 0) {
     exFilter <- logFC > FC_L_THRESHOLD
-    if(!is.null(FC_U_THRESHOLD))
-      exFilter <- exFilter & logFC < FC_U_THRESHOLD
     
-    colFilter <- colSums2(exFilter, na.rm = T) > 0
-    logFC <- logFC[, colFilter, with = F]
+    if(FC_U_THRESHOLD != FC_L_THRESHOLD)
+      exFilter <- exFilter & (logFC < FC_U_THRESHOLD)
+    
+    colFilter <- colSums2(exFilter) > 0
+    logFC <- logFC %>% .[, colFilter, with = F]
     pv <- pv[, colFilter, with = F]
+    n.DE <- n.DE[colFilter]
   }
   
   # Data Processing ---------------------------------------------------------
+  advanceProgress(session, 'Ranking')
   
-  tf <- logFC# * -log10(pv)
-  query <- rowMaxs(tf %>% as.matrix, na.rm = T)
+  tf <- logFC
+  tf <- t(t(tf) / n.DE) %>% as.data.table # Weight by number of DEs
   
-  idf <- log10(ncol(tf) / (1 + rowSums2(tf != 0, na.rm = T))) + 1
+  if(!is.null(scope)) {
+    # TODO
+  }
+  
+  query <- rowMaxs(tf %>% as.matrix)
+  
+  # Shrink by MFX /after/ extracting the query
+  
+  # TODO tf <- tf * -log10(pv)
+  if(MFX)
+    tf <- tf * (1 - DATA.HOLDER[[taxa]]@gene.meta$mfx.Rank[rowFilter])
+  
+  idf <- log10(ncol(tf) / (1 + rowSums2(tf != 0))) + 1
   tf[, query := query]
   tfidf <- tf * idf
   
   if(nrow(tfidf) > 1)
-    tfidf <- scale(tfidf, center = F, scale = sqrt(colSums2(as.matrix(tfidf^2), na.rm = T))) %>% as.data.table
+    tfidf <- scale(tfidf, center = F, scale = colSums2(as.matrix(tfidf))) %>% as.data.table
   
   query <- tfidf[, query]
   tfidf <- tfidf[, query := NULL]
   
   tfidf <- as.matrix(tfidf)
-  tfidf[is.nan(tfidf)] <- 0
   scores <- query %*% tfidf
   
   names(scores) <- colnames(tfidf)
   scores[order(-scores)]
 }
 
-#' Condition Count
+#' Enrich
 #' 
 #' Given rankings (@seealso search), generate a ranking-weighted count of all terms that can be
 #' derived from tags present in the experiment (both cf.ValLongUri and ee.TagLongUri).
 #'
 #' @param rankings A named numeric (@seealso search).
-#' @param taxa 
-#' @param scope 
+#' @param taxa The taxon
+#' @param scope The ontology scope.
+#' @param session The Shiny session.
 #'
 #' @return
-conditionCount <- function(rankings, taxa = 'human', scope = ONTOLOGIES[, unique(OntologyScope)]) {
+enrich <- function(rankings, taxa = 'human', scope = 'DO', session = NULL) {
+  advanceProgress(session, 'Building graph')
   rankings <- data.table(rsc.ID = names(rankings), rank = rankings)
   
+  scope <- scope[order(scope)]
   ontoScope <- ONTOLOGIES[OntologyScope %in% scope, .(ChildNode_Long, ParentNode_Long)]
   graph <- igraph::graph_from_data_frame(ontoScope)
   
-  tags <- DATA.HOLDER[[taxa]]@experiment.meta[rsc.ID %in% rankings[, rsc.ID] &
-                                                !is.na(ee.TagUri) | !is.na(cf.ValUri)] %>%
+  background <- DATA.HOLDER[[taxa]]@experiment.meta[!is.na(ee.TagUri) | !is.na(cf.ValUri)] %>%
     .[is.na(ee.TagLongUri) | ee.TagLongUri %in% ontoScope[, ChildNode_Long]] %>%
     .[is.na(cf.ValLongUri) | cf.ValLongUri %in% ontoScope[, ChildNode_Long]]
   
+  tags <- background[rsc.ID %in% rankings[, rsc.ID]]
+  
+  advanceProgress(session, 'Calculating scores')
+  fineProgress(session, nrow(tags))
+  
   do.call(rbind, lapply(1:nrow(tags), function(indx) {
-    do.call(rbind, lapply(Filter(Negate(is.na), c(parseListEntry(tags[indx, ee.TagLongUri]),
-                                                  parseListEntry(tags[indx, cf.ValLongUri]))), function(entry) {
-      data.table(rsc.ID = tags[indx, rsc.ID], tag = names(igraph::subcomponent(graph, entry, 'out')))
-    }))
-  }))[tag != 'NA'] -> mMap
+    advanceProgress(session, fine = T)
+    do.call(rbind, lapply(Filter(Negate(is.na),
+                                 c(parseListEntry(tags[indx, ee.TagLongUri]),
+                                   parseListEntry(tags[indx, cf.ValLongUri]))), function(entry) {
+                                     data.table(rsc.ID = tags[indx, rsc.ID], tag = names(igraph::subcomponent(graph, entry, 'out')))
+                                     }))
+  }))[tag != 'NA'] -> mMap.sample
+  
+  advanceProgress(session, 'Performing enrichment')
+  fineProgress(session, nrow(background))
+  
+  # Cache as we go
+  CACHE.ID <- paste0(scope, collapse = '.')
+  if(is.null(CACHE.BACKGROUND[[CACHE.ID]])) {
+    do.call(rbind, lapply(1:nrow(background), function(indx) {
+      advanceProgress(session, fine = T)
+      do.call(rbind, lapply(Filter(Negate(is.na),
+                                   c(parseListEntry(background[indx, ee.TagLongUri]),
+                                     parseListEntry(background[indx, cf.ValLongUri]))), function(entry) {
+                                       data.table(rsc.ID = background[indx, rsc.ID], tag = names(igraph::subcomponent(graph, entry, 'out')))
+                                       }))
+    }))[tag != 'NA'] -> mMap.background
+    
+    mMap.background <- unique(ONTOLOGIES.DEFS[OntologyScope %in% scope & Node_Long %in% mMap.background[, unique(tag)],
+                                              Definition, Node_Long]) %>%
+      merge(mMap.background, by.x = 'Node_Long', by.y = 'tag', allow.cartesian = T) %>% unique
+    
+    CACHE.BACKGROUND[[CACHE.ID]] <<- mMap.background
+  } else
+    mMap.background <- CACHE.BACKGROUND[[CACHE.ID]]
+  
+  advanceProgress(session, 'Mapping definitions')
   
   # Merge in definitions and ranks...
-  mMap <- unique(ONTOLOGIES.DEFS[OntologyScope %in% scope & Node_Long %in% mMap[, unique(tag)],
-                                 Definition, Node_Long]) %>%
-    merge(mMap, by.x = 'Node_Long', by.y = 'tag') %>% unique %>% merge(rankings, by = 'rsc.ID')
+  mMap.sample <- unique(ONTOLOGIES.DEFS[OntologyScope %in% scope & Node_Long %in% mMap.sample[, unique(tag)],
+                                        Definition, Node_Long]) %>%
+    merge(mMap.sample, by.x = 'Node_Long', by.y = 'tag', allow.cartesian = T) %>% unique %>% merge(rankings, by = 'rsc.ID')
   
-  mMap[, .(.N, `ranked N` = .N * sum(rank)), Definition] %>% .[!(Definition %in% BLACKLIST)] %>% setorder(-N)
-}
-
-#' Parse List Entry
-#' 
-#' Given an entry (that may or may not be NA) of semicolon delimited (; ) list (in which, any may be NA),
-#' return a vector of those values, coercing NA strings into true NAs.
-#'
-#' @param entry NA or a character of semicolon delimited (; ) values.
-#'
-#' @return A character vector of values in the input character
-parseListEntry <- function(entry) {
-  if(is.na(entry) || !grepl('; ', entry, fixed = T)) return(entry)
+  advanceProgress(session, 'Wrapping up')
   
-  cleaned <- strsplit(entry, '; ', fixed = T) %>% unlist
-  ifelse('NA' == cleaned, NA, cleaned)
+  mMap <- merge(mMap.sample[, .(.N, `ranked N` = .N * sum(rank)), Definition],
+                mMap.background[Definition %in% mMap.sample[, Definition], .N, Definition],
+                by = 'Definition') %>%
+    .[, .(Definition, `ranked N`, `scaled N` = `ranked N` / N.y, count = N.x, background = N.y)] %>%
+    merge(SUMMARY$terms[[scope]], by.x = 'Definition', by.y = 'tag') %>%
+    .[, `normalized N` := `scaled N` / score.mean]
+  
+  mMap[!(Definition %in% BLACKLIST)] %>% setorder(-`normalized N`)
 }
 
 # DATA.HOLDER$human@gene.meta[gene.Name %in% c('XIST', 'RPS4Y1', 'KDM5D'), entrez.ID] -> genes

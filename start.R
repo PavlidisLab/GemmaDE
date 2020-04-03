@@ -1,6 +1,9 @@
 library(shiny)
 
 source('main/load.R')
+source('main/process.R')
+source('main/server.R')
+source('main/ui.R')
 
 options('app.name' = "Jordan's Project")
 options('app.description' = 'Pending')

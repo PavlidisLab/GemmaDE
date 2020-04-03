@@ -1,5 +1,26 @@
-#header {
+* {
+  margin: 0;
+}
+
+html, body {
+  height: 100%;
+}
+
+.content {
+  min-height: 100%;
+  margin-bottom: -50px;
+}
+
+.content:after {
+  content: "";
+  display: block;
+}
+
+#header, footer {
   background: #002145;
+}
+
+#header {
   min-height: 100px;
 }
 
@@ -7,6 +28,92 @@ a:hover {
   cursor: pointer;
 }
 
+#options {
+  padding-bottom: 0;
+}
+
+#options > div > div {
+  display: flex;
+  flex: 1;
+}
+
+.well[well-name] {
+  padding-top: 14px;
+  flex: 1
+}
+
+.well[well-name]:before {
+  content: attr(well-name);
+  margin-bottom: 10px;
+  display: inline-block;
+  font-weight: 700;
+}
+
 .help-block {
   margin-top: -15px;
+}
+
+#results .info-text h2 {
+  font-variant-caps: small-caps;
+  margin-top: 0;
+  padding-left: 15px;
+  padding-right: 15px;
+}
+
+.result-line {
+  font-variant-caps: small-caps;
+  overflow: hidden;
+  display: block;
+  font-size: 1.75em;
+  text-decoration: none;
+  color: black;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.result-line:focus, .result-line:hover {
+  text-decoration: none;
+  color: darkgrey;
+}
+
+.result-line:before,
+.result-line:after {
+  background-color: #000;
+  content: "";
+  display: inline-block;
+  height: 1px;
+  position: relative;
+  vertical-align: middle;
+}
+
+.result-line:before {
+  right: 0.5em;
+  margin-left: -45%;
+  width: 50%;
+}
+
+.result-line:after {
+  left: 0.5em;
+  margin-right: -50%;
+  width: 100%;
+}
+
+.results-row .result-info {
+  padding-left: 30px;
+  padding-right: 30px;
+}
+
+footer, .content:after {
+  height: 50px;
+}
+
+footer {
+  color: white;
+  line-height: 50px;
+  margin-left: -15px;
+  margin-right: -15px;
+}
+
+footer > a:focus, footer > a:hover {
+  color: lightgrey;
 }

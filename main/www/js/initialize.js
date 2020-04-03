@@ -20,7 +20,7 @@ function loadExamples() {
     var sz = $('#genes').selectize()[0].selectize;
     
     sz.clear(true);
-    addGenes($(this).attr('genes'));
+    addGenes(JSON.parse($(this).attr('genes')));
   });
 }
 
