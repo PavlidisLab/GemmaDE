@@ -13,12 +13,9 @@ lapply(c('OBI', 'UBERON', 'DO', 'HP', 'MP', 'CL'), function(ontology) {
     experiments <- search(sample(DATA.HOLDER$human@gene.meta$entrez.ID, N.sample))
     
     if(!is.null(experiments)) {
-      tags <- enrich(experiments, scope = ontology)
-    
       mExp <- experiments$score
       names(mExp) <- rownames(experiments)
-  
-      list(experiments = mExp, tags = tags)
+      mExp
     }
-  }) %>% saveRDS(paste0('data/bootstrap/bootstrap.', ontology, '.rds'))
+  }) %>% saveRDS(paste0('data/bootstrap/experiment.', ontology, '.rds'))
 })

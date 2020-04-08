@@ -29,7 +29,7 @@ search <- function(genes, taxa = 'human', scope = NULL, options = DEFAULT_OPTION
   # Data Extraction ---------------------------------------------------------
 
   # Only retain GOI
-  rowFilter <- which(rownames(DATA.HOLDER[[taxa]]@data$fc) %in% genes)
+  rowFilter <- which(DATA.HOLDER[[taxa]]@gene.meta$entrez.ID %in% genes)
   n.genes <- length(rowFilter)
   if(n.genes == 0) return(NULL)
   
@@ -68,11 +68,7 @@ search <- function(genes, taxa = 'human', scope = NULL, options = DEFAULT_OPTION
   advanceProgress(session, 'Ranking')
   
   tf <- logFC
-  tf <- t(t(tf) / n.DE) %>% as.data.table # Weight by number of DEs
-  
-  if(!is.null(scope)) {
-    # TODO
-  }
+  tf <- t(t(tf) / log2(1 + n.DE)) %>% as.data.table # Weight by number of DEs
   
   query <- rowMaxs(tf %>% as.matrix)
   
@@ -80,7 +76,7 @@ search <- function(genes, taxa = 'human', scope = NULL, options = DEFAULT_OPTION
   
   # TODO tf <- tf * -log10(pv)
   if(MFX)
-    tf <- tf * (1 - DATA.HOLDER[[taxa]]@gene.meta$mfx.Rank[rowFilter])
+    tf <- tf * (1 - DATA.HOLDER[[taxa]]@gene.meta$mfx.Rank[rowFilter] / 4) # TODO
   
   idf <- log10(ncol(tf) / (1 + rowSums2(tf != 0))) + 1
   tf[, query := query]
@@ -95,8 +91,62 @@ search <- function(genes, taxa = 'human', scope = NULL, options = DEFAULT_OPTION
   tfidf <- as.matrix(tfidf)
   scores <- query %*% tfidf
   
-  names(scores) <- colnames(tfidf)
-  scores[order(-scores)]
+  mData <- rbind(tfidf, scores) %>% t %>% as.data.table
+  colnames(mData) <- c(DATA.HOLDER[[taxa]]@gene.meta$gene.Name[rowFilter], 'score')
+  rownames(mData) <- colnames(tfidf)
+  mData
+}
+
+getTags <- function(taxa = 'human', scope = 'DO', rsc.IDs = list(NULL), session = NULL) {
+  ontoScope <- ONTOLOGIES[OntologyScope %in% scope, .(ChildNode_Long, ParentNode_Long)]
+  graph <- igraph::graph_from_data_frame(ontoScope)
+  
+  tags <- DATA.HOLDER[[taxa]]@experiment.meta[!is.na(ee.TagLongUri) |
+                                                      !is.na(cf.ValLongUri) |
+                                                      !is.na(cf.BaseLongUri) |
+                                                      !is.na(cf.CatLongUri)]
+  
+  allTerms <- ontoScope[, ChildNode_Long]
+  lapply(1:length(rsc.IDs), function(indx) {
+    IDs <- rsc.IDs[[indx]]
+
+    advanceProgress(session, paste0('Calculating scores (', indx, '/', length(rsc.IDs), ')'))
+    
+    if(!is.null(IDs)) mTags <- tags[rsc.ID %in% IDs]
+    else {
+      CACHE.ID <- paste0(scope, collapse = '.')
+      if(!is.null(CACHE.BACKGROUND[[CACHE.ID]])) return(CACHE.BACKGROUND[[CACHE.ID]])
+      mTags <- tags
+    }
+    
+    fineProgress(session, nrow(mTags))
+    
+    do.call(rbind, lapply(1:nrow(mTags), function(indx) {
+      advanceProgress(session, fine = T)
+      
+      filteredTags <- Filter(function(tag) !is.na(tag) & tag %in% allTerms,
+                             c(parseListEntry(mTags[indx, ee.TagLongUri]),
+                               parseListEntry(mTags[indx, cf.BaseLongUri]),
+                               #parseListEntry(mTags[indx, cf.CatLongUri]),
+                               parseListEntry(mTags[indx, cf.ValLongUri]))) # TODO sf?
+      
+      do.call(rbind, lapply(filteredTags, function(entry) {
+        data.table(rsc.ID = mTags[indx, rsc.ID], tag = names(igraph::subcomponent(graph, entry, 'out')))
+      }))
+    })) -> mMap
+    
+    if(is.null(mMap)) return(NULL)
+    mMap <- mMap[tag != 'NA']
+    
+    mData <- unique(ONTOLOGIES.DEFS[OntologyScope %in% scope & Node_Long %in% mMap[, unique(tag)],
+                                    Definition, Node_Long]) %>%
+      merge(mMap, by.x = 'Node_Long', by.y = 'tag', allow.cartesian = T, sort = F) %>%
+      .[, .(Definition, rsc.ID)] %>% unique
+    
+    if(is.null(IDs)) CACHE.BACKGROUND[[CACHE.ID]] <<- mData
+    
+    mData
+  })
 }
 
 #' Enrich
@@ -111,71 +161,24 @@ search <- function(genes, taxa = 'human', scope = NULL, options = DEFAULT_OPTION
 #'
 #' @return
 enrich <- function(rankings, taxa = 'human', scope = 'DO', session = NULL) {
-  advanceProgress(session, 'Building graph')
-  rankings <- data.table(rsc.ID = names(rankings), rank = rankings)
-  
+  rankings <- data.table(rsc.ID = rownames(rankings), rank = rankings$score)
   scope <- scope[order(scope)]
-  ontoScope <- ONTOLOGIES[OntologyScope %in% scope, .(ChildNode_Long, ParentNode_Long)]
-  graph <- igraph::graph_from_data_frame(ontoScope)
   
-  background <- DATA.HOLDER[[taxa]]@experiment.meta[!is.na(ee.TagUri) | !is.na(cf.ValUri)] %>%
-    .[is.na(ee.TagLongUri) | ee.TagLongUri %in% ontoScope[, ChildNode_Long]] %>%
-    .[is.na(cf.ValLongUri) | cf.ValLongUri %in% ontoScope[, ChildNode_Long]]
+  mMaps <- getTags(taxa, scope, list(NULL, rankings[, rsc.ID]), session)
   
-  tags <- background[rsc.ID %in% rankings[, rsc.ID]]
-  
-  advanceProgress(session, 'Calculating scores')
-  fineProgress(session, nrow(tags))
-  
-  do.call(rbind, lapply(1:nrow(tags), function(indx) {
-    advanceProgress(session, fine = T)
-    do.call(rbind, lapply(Filter(Negate(is.na),
-                                 c(parseListEntry(tags[indx, ee.TagLongUri]),
-                                   parseListEntry(tags[indx, cf.ValLongUri]))), function(entry) {
-                                     data.table(rsc.ID = tags[indx, rsc.ID], tag = names(igraph::subcomponent(graph, entry, 'out')))
-                                     }))
-  }))[tag != 'NA'] -> mMap.sample
-  
-  advanceProgress(session, 'Performing enrichment')
-  fineProgress(session, nrow(background))
-  
-  # Cache as we go
-  CACHE.ID <- paste0(scope, collapse = '.')
-  if(is.null(CACHE.BACKGROUND[[CACHE.ID]])) {
-    do.call(rbind, lapply(1:nrow(background), function(indx) {
-      advanceProgress(session, fine = T)
-      do.call(rbind, lapply(Filter(Negate(is.na),
-                                   c(parseListEntry(background[indx, ee.TagLongUri]),
-                                     parseListEntry(background[indx, cf.ValLongUri]))), function(entry) {
-                                       data.table(rsc.ID = background[indx, rsc.ID], tag = names(igraph::subcomponent(graph, entry, 'out')))
-                                       }))
-    }))[tag != 'NA'] -> mMap.background
-    
-    mMap.background <- unique(ONTOLOGIES.DEFS[OntologyScope %in% scope & Node_Long %in% mMap.background[, unique(tag)],
-                                              Definition, Node_Long]) %>%
-      merge(mMap.background, by.x = 'Node_Long', by.y = 'tag', allow.cartesian = T) %>% unique
-    
-    CACHE.BACKGROUND[[CACHE.ID]] <<- mMap.background
-  } else
-    mMap.background <- CACHE.BACKGROUND[[CACHE.ID]]
-  
-  advanceProgress(session, 'Mapping definitions')
-  
-  # Merge in definitions and ranks...
-  mMap.sample <- unique(ONTOLOGIES.DEFS[OntologyScope %in% scope & Node_Long %in% mMap.sample[, unique(tag)],
-                                        Definition, Node_Long]) %>%
-    merge(mMap.sample, by.x = 'Node_Long', by.y = 'tag', allow.cartesian = T) %>% unique %>% merge(rankings, by = 'rsc.ID')
+  mMaps[[2]] <- mMaps[[2]] %>% merge(rankings, by = 'rsc.ID', sort = F)
   
   advanceProgress(session, 'Wrapping up')
   
-  mMap <- merge(mMap.sample[, .(.N, `ranked N` = .N * sum(rank)), Definition],
-                mMap.background[Definition %in% mMap.sample[, Definition], .N, Definition],
-                by = 'Definition') %>%
-    .[, .(Definition, `ranked N`, `scaled N` = `ranked N` / N.y, count = N.x, background = N.y)] %>%
-    merge(SUMMARY$terms[[scope]], by.x = 'Definition', by.y = 'tag') %>%
-    .[, `normalized N` := `scaled N` / score.mean]
+  mMap <- merge(mMaps[[2]][, .(N.x = .N, N.ranked = sum(rank)), Definition][, N.tags := sum(N.ranked)],
+                merge(mMaps[[1]][!(rsc.ID %in% rankings[, rsc.ID])],
+                      SUMMARY[[scope]][, .(prior = mean(score)), rsc.ID],
+                      by = 'rsc.ID', sort = F) %>%
+                  .[, .(N.y = .N, N.unranked = sum(prior)), Definition] %>% .[, N.bg := sum(N.unranked)],
+#                mMaps[[1]][!(rsc.ID %in% rankings[, rsc.ID]), .(N.y = .N, N.unranked = .N * 0.5), Definition][, N.bg := sum(N.unranked)],
+                by = 'Definition', sort = F) %>%
+    .[, pv := fisher.test(matrix(c(N.ranked, N.unranked, N.tags - N.ranked, N.bg - N.unranked), nrow = 2, ncol = 2),
+                          alternative = 'greater')$p.value, Definition]
   
-  mMap[!(Definition %in% BLACKLIST)] %>% setorder(-`normalized N`)
+  mMap[!(Definition %in% BLACKLIST)] %>% setorder(pv)
 }
-
-# DATA.HOLDER$human@gene.meta[gene.Name %in% c('XIST', 'RPS4Y1', 'KDM5D'), entrez.ID] -> genes

@@ -4,7 +4,7 @@ library(htmlwidgets)
 library(data.table)
 library(dplyr)
 
-MAX_PROGRESS_STEPS <- 7
+MAX_PROGRESS_STEPS <- 5
 
 fineProgress <- function(session, steps) {
   if(!is.null(session))
@@ -25,11 +25,12 @@ setProgress <- function(session, progress, detail, fine = F) {
   else if(progress == 0) {
     session$userData$progress.bar <- shiny::Progress$new(min = 0, max = MAX_PROGRESS_STEPS)
     session$userData$progress.bar$set(message = 'Searching...', detail = detail)
-  } else 
+  } else {
     session$userData$progress.bar$set(value = progress, detail = detail)
   
-  if(progress >= MAX_PROGRESS_STEPS)
-    session$userData$progress.bar$close()
+    if(progress >= MAX_PROGRESS_STEPS)
+      session$userData$progress.bar$close()
+  }
 }
 
 #' Server
@@ -79,6 +80,7 @@ server <- function(input, output, session) {
     updateSelectizeInput(session, 'taxa', selected = NULL)
     updateSelectizeInput(session, 'scope', selected = 'DO')
     updateCheckboxInput(session, 'mfx', value = DEFAULT_OPTIONS$mfx)
+    updateCheckboxInput(session, 'filter', value = DEFAULT_OPTIONS$filterSame)
     updateNumericInput(session, 'top-n', value = DEFAULT_OPTIONS$n.display)
     updateNumericInput(session, 'pv', value = DEFAULT_OPTIONS$pv)
     updateSliderInput(session, 'fc', value = c(DEFAULT_OPTIONS$fc.lower, DEFAULT_OPTIONS$fc.upper))
@@ -105,14 +107,19 @@ server <- function(input, output, session) {
   #' @param scope The ontology scope
   #' @param options The search options
   handleSearch <- function(genes, taxa, scope, options = DEFAULT_OPTIONS) {
-    experiments <- search(genes, taxa, options, session)
+    experiments <- search(genes, taxa, scope, options, session)
     
     if(is.null(experiments)) {
       setProgress(session, MAX_PROGRESS_STEPS, '')
       output$results <- renderUI({ generateResultsHeader('Invalid search.') })
     } else {
       conditions <- enrich(experiments, taxa, scope, session)
-      output$results <- generateResults(experiments, conditions, options)
+      
+      if(is.null(conditions)) {
+        setProgress(session, MAX_PROGRESS_STEPS, '')
+        output$results <- renderUI({ generateResultsHeader('No conditions found in scope.') })
+      } else
+        output$results <- generateResults(taxa, scope, experiments, conditions, options)
     }
   }
   
@@ -135,7 +142,8 @@ server <- function(input, output, session) {
                     pv = input$pv,
                     fc.lower = input$fc[1], fc.upper = input$fc[2],
                     score.lower = input$score[1], score.upper = input$score[2],
-                    mfx = input$mfx)
+                    mfx = input$mfx,
+                    filter = input$filter)
     
     # Update the query string
     if(update) {
@@ -151,7 +159,8 @@ server <- function(input, output, session) {
                              paste0('&fc=[', paste0(input$fc, collapse = ','), ']'), ''),
                       switch(isTRUE(all.equal(input$score, c(DEFAULT_OPTIONS$score.lower, DEFAULT_OPTIONS$score.upper))) + 1,
                              paste0('&score=[', paste0(input$score, collapse = ','), ']'), ''),
-                      switch((options$mfx == DEFAULT_OPTIONS$mfx) + 1, paste0('&mfx=', options$mfx), ''))
+                      switch((options$mfx == DEFAULT_OPTIONS$mfx) + 1, paste0('&mfx=', options$mfx), ''),
+                      switch((options$filter == DEFAULT_OPTIONS$filterSame) + 1, paste0('&filter=', options$filter), ''))
       updateQueryString(query, 'push')
     }
     

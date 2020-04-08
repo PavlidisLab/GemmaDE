@@ -7,28 +7,51 @@ generateResultsHeader <- function(title) {
   fluidRow(class = 'info-text', h2(title))
 }
 
-generateResults <- function(experiments, conditions, options = DEFAULT_OPTIONS) {
-  conditions <- conditions[`scaled N` > options$score.lower]
+generateResults <- function(taxa = 'human', scope = 'DO', experiments, conditions, options = DEFAULT_OPTIONS) {
+  conditions <- conditions[pv > options$score.lower]
   if(options$score.lower != options$score.upper)
-    conditions <- conditions[`scaled N` < options$score.upper]
+    conditions <- conditions[pv < options$score.upper]
+  
+  if(nrow(conditions) == 0) return(renderUI({ generateResultsHeader('No conditions found in scope.') }))
+  
+  filterResults <- function(conditions) {
+    do.call(rbind, lapply(1:(nrow(conditions) - 1), function(indx) {
+      if(conditions$N.ranked[indx] != conditions$N.ranked[indx + 1])
+        conditions[indx, ]
+    })) %>% as.data.table
+  }
+  
+  if(options$filter && nrow(conditions) > 1)
+    conditions <- filterResults(conditions)
+  
+  mCache <- CACHE.BACKGROUND[[scope]][rsc.ID %in% rownames(experiments) & Definition %in% conditions$Definition]
+  eNames <- rownames(experiments)
+  eDF <- experiments %>% as.data.frame
+  rownames(eDF) <- eNames
   
   renderUI({
     lapply(0:min(nrow(conditions), options$n.display), function(row) {
       if(row == 0)
-        return(generateResultsHeader(paste0('Found ', length(experiments), ' related experiment', ifelse(length(experiments) == 1, '', 's'), '.')))
+        return(generateResultsHeader(paste0('Found ', nrow(experiments), ' related experiment', ifelse(nrow(experiments) == 1, '', 's'),
+                                            ' for ', (ncol(experiments) - 1), ' genes.')))
       
       name.control <- gsub('( |-|\\+|,|\\.|:|;|\\/|\'|"|&|\\(|\\))', '', tolower(conditions$Definition[row]))
       div(class = 'results-row',
         fluidRow(
           HTML(paste0('<a data-toggle="collapse" aria-expanded="false" aria-controls="', name.control, '"',
                       '" class = "result-line" href="#', name.control, '">',
-                      paste0(conditions$Definition[row], '  (', round(conditions$`scaled N`[row], 2), ')'), '</a>'))
+                      paste0(conditions$Definition[row], '  (', round(conditions$pv[row], 2), ')'), '</a>'))
       ),
       
       fluidRow(id = name.control, class = 'collapse result-info',
-        p(paste('Enrichment Score (ES):', conditions$count[row] / conditions$background[row])),
-        p(paste('Rank-adjusted Enrichment Score (RES):', conditions$`ranked N`[row])),
-        p(paste('Scaled Rank-adjusted Enrichment Score (SRES):', conditions$`scaled N`[row]))
+        p(paste('Enrichment:', paste0(conditions$N.x[row], '/', conditions$N.y[row]))),
+        p(paste('Ranked Enrichment:', paste0(round(conditions$N.ranked[row], 2), '/', round(conditions$N.unranked[row], 2)))),
+        
+        # Give average gene scores for experiments with this tag
+        lapply(1:(ncol(experiments) - 1), function(indx) {
+          p(paste0(colnames(experiments)[indx], ': ',
+                   round(eDF[mCache[Definition == conditions$Definition[row], rsc.ID], indx] %>% mean(na.rm = T), 2)))
+        })
       )
     )})
   })
@@ -67,27 +90,26 @@ ui <- fluidPage(style = 'height: 100%;',
       column(2, uiOutput('genes.csv.ui')),
       
       # Taxa entry
-      column(2, selectInput('taxa', 'Taxa', TAXA)),
+      column(2, selectInput('taxa', 'Taxon', TAXA)),
       
       # Ontology entry (with more options, as it's on the right)
       column(3,
-             selectInput('scope', 'Ontologies', ONTOLOGIES[, unique(OntologyScope)], selected = 'DO', multiple = T),
+             selectizeInput('scope', 'Ontologies', ONTOLOGIES[, unique(OntologyScope)], selected = 'DO', multiple = T,
+                            options = list(selectOnTab = T)),
              helpText(style = 'float: right;', HTML('<a data-toggle="collapse" data-target="#options">More options...</a>')))
       ),
       
       # More options
       wellPanel(class = 'collapse', id = 'options',
                 fluidRow(style = 'display: flex; flex-direction: row;',
-                         column(4, wellPanel(`well-name` = 'Filtering',
+                         column(6, wellPanel(`well-name` = 'Filtering',
+                           checkboxInput('filter', 'Filter equal-scoring children', value = DEFAULT_OPTIONS$filterSame),
                            numericInput('top-n', 'Max to display', value = DEFAULT_OPTIONS$n.display, min = 0, max = 100),
-                           sliderInput('score', 'Score threshold', value = c(DEFAULT_OPTIONS$score.lower, DEFAULT_OPTIONS$score.upper), step = 1, min = 0, max = 500, ticks = F))),
-                         column(4, wellPanel(`well-name` = 'Scoring',
+                           sliderInput('score', 'P-value threshold', value = c(DEFAULT_OPTIONS$score.lower, DEFAULT_OPTIONS$score.upper), step = 0.01, min = 0, max = 1, ticks = F))),
+                         column(6, wellPanel(`well-name` = 'Scoring',
                            checkboxInput('mfx', 'Multifunctionality', value = DEFAULT_OPTIONS$mfx),
                            numericInput('pv', 'P-value threshold', value = DEFAULT_OPTIONS$pv, step = 0.01, min = 0, max = 1),
-                           sliderInput('fc', 'FC threshold', value = c(DEFAULT_OPTIONS$fc.lower, DEFAULT_OPTIONS$fc.upper), step = 0.1, min = 0, max = 10, ticks = F))),
-                         column(4, wellPanel(`well-name` = 'TODO',
-                           textInput('some_text', 'Something', placeholder = 'Temporary'),
-                           textInput('more_text', 'More Stuff', placeholder = 'Also Temporary')))
+                           sliderInput('fc', 'FC threshold', value = c(DEFAULT_OPTIONS$fc.lower, DEFAULT_OPTIONS$fc.upper), step = 0.1, min = 0, max = 10, ticks = F)))
                 )),
       
       # Buttons
