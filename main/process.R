@@ -177,8 +177,8 @@ enrich <- function(rankings, taxa = 'human', scope = 'DO', session = NULL) {
                   .[, .(N.y = .N, N.unranked = sum(prior)), Definition] %>% .[, N.bg := sum(N.unranked)],
 #                mMaps[[1]][!(rsc.ID %in% rankings[, rsc.ID]), .(N.y = .N, N.unranked = .N * 0.5), Definition][, N.bg := sum(N.unranked)],
                 by = 'Definition', sort = F) %>%
-    .[, pv := fisher.test(matrix(c(N.ranked, N.unranked, N.tags - N.ranked, N.bg - N.unranked), nrow = 2, ncol = 2),
-                          alternative = 'greater')$p.value, Definition]
+    .[, pv := suppressWarnings(fisher.test(matrix(c(N.ranked, N.unranked, N.tags - N.ranked, N.bg - N.unranked), nrow = 2),
+                                           alternative = 'greater'))$p.value, Definition]
   
   mMap[!(Definition %in% BLACKLIST)] %>% setorder(pv)
 }

@@ -5,7 +5,7 @@ source('main/process.R')
 source('main/server.R')
 source('main/ui.R')
 
-options('app.name' = "EnriCh")
+options('app.name' = 'EnriCh')
 options('app.description' = 'Pending')
 options('app.tags' = 'genomics,bioinformatics,genetics,transcriptomes,rnaseq,microarrays,biotechnology,medicine,biomedical,meta-analysis,statistics,search,open source,database,software')
 options('app.author' = 'Jordan Sicherman (jordan.sicherman@msl.ubc.ca)')

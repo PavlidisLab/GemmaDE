@@ -53,54 +53,26 @@ a:hover {
   margin-top: -15px;
 }
 
-#results .info-text h2 {
-  font-variant-caps: small-caps;
-  margin-top: 0;
-  padding-left: 15px;
-  padding-right: 15px;
+.noUi-connect {
+  background-color: #002145 !important;
 }
 
-.result-line {
-  font-variant-caps: small-caps;
-  overflow: hidden;
-  display: block;
-  font-size: 1.75em;
-  text-decoration: none;
-  color: black;
-  padding-top: 10px;
-  padding-bottom: 10px;
+.dt-buttons {
+  float: right !important;
 }
 
-.result-line:focus, .result-line:hover {
-  text-decoration: none;
-  color: darkgrey;
+.dataTables_filter {
+  margin-right: 10px;
 }
 
-.result-line:before,
-.result-line:after {
-  background-color: #000;
-  content: "";
-  display: inline-block;
-  height: 1px;
-  position: relative;
-  vertical-align: middle;
+.dataTables_filter > label {
+  margin-bottom: 0;
+  margin-top: 0.25em;
 }
 
-.result-line:before {
-  right: 0.5em;
-  margin-left: -45%;
-  width: 50%;
-}
-
-.result-line:after {
-  left: 0.5em;
-  margin-right: -50%;
-  width: 100%;
-}
-
-.results-row .result-info {
-  padding-left: 30px;
-  padding-right: 30px;
+input[type="search"] {
+  font-weight: normal;
+  line-height: 1.6em;
 }
 
 footer, .content:after {

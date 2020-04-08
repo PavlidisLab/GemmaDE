@@ -18,10 +18,8 @@ if(!isDataLoaded()) {
   
   CACHE.BACKGROUND <- list()
   
-  DEFAULT_OPTIONS <- list(n.display = 50,
-                          pv = 0.05,
+  DEFAULT_OPTIONS <- list(pv = 0.05,
                           fc.lower = 0, fc.upper = 10000,
-                          score.lower = 0, score.upper = 1,
                           mfx = T, filterSame = T)
 
   ONTOLOGIES <- fread('/space/grp/nlim/CronGemmaDump/Ontology/Ontology_Dump_MERGED.TSV')

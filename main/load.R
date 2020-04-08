@@ -19,10 +19,8 @@ if(!isDataLoaded()) {
   
   CACHE.BACKGROUND <- list()
   
-  DEFAULT_OPTIONS <- list(n.display = 50,
-                          pv = 0.05,
+  DEFAULT_OPTIONS <- list(pv = 0.05,
                           fc.lower = 0, fc.upper = 10,
-                          score.lower = 0, score.upper = 1,
                           mfx = T, filterSame = T)
   
   SUMMARY <- lapply(c('CL', 'DO', 'HP', 'MP', 'OBI', 'UBERON'), function(ontology) {

@@ -46,11 +46,9 @@ server <- function(input, output, session) {
     updateSelectizeInput(session, 'genes', options = list(persist = F, create = T, createOnBlur = T))
     session$sendCustomMessage('querySet', genes)
     updateSelectizeInput(session, 'taxa', selected = query$taxa)
-    updateCheckboxInput(session, 'top-n', value = ifelse(is.null(query$N), DEFAULT_OPTIONS$n.display, query$N))
     updateCheckboxInput(session, 'mfx', value = ifelse(is.null(query$mfx), DEFAULT_OPTIONS$mfx, query$mfx))
     updateNumericInput(session, 'pv', value = ifelse(is.null(query$pv), DEFAULT_OPTIONS$pv, query$pv))
     updateSliderInput(session, 'fc', value = ifelse(is.null(query$fc), c(DEFAULT_OPTIONS$fc.lower, DEFAULT_OPTIONS$fc.upper), query$fc %>% jsonify %>% as.numeric))
-    updateSliderInput(session, 'score', value = ifelse(is.null(query$score), c(DEFAULT_OPTIONS$score.lower, DEFAULT_OPTIONS$score.upper), query$score %>% jsonify %>% as.numeric))
     
     # Use DO as a default scope, if unspecified
     scope <- query$scope %>% jsonify
@@ -81,10 +79,8 @@ server <- function(input, output, session) {
     updateSelectizeInput(session, 'scope', selected = 'DO')
     updateCheckboxInput(session, 'mfx', value = DEFAULT_OPTIONS$mfx)
     updateCheckboxInput(session, 'filter', value = DEFAULT_OPTIONS$filterSame)
-    updateNumericInput(session, 'top-n', value = DEFAULT_OPTIONS$n.display)
     updateNumericInput(session, 'pv', value = DEFAULT_OPTIONS$pv)
     updateSliderInput(session, 'fc', value = c(DEFAULT_OPTIONS$fc.lower, DEFAULT_OPTIONS$fc.upper))
-    updateSliderInput(session, 'score', value = c(DEFAULT_OPTIONS$score.lower, DEFAULT_OPTIONS$score.upper))
     session$sendCustomMessage('fileUpload', F)
   })
   
@@ -111,15 +107,19 @@ server <- function(input, output, session) {
     
     if(is.null(experiments)) {
       setProgress(session, MAX_PROGRESS_STEPS, '')
-      output$results <- renderUI({ generateResultsHeader('Invalid search.') })
+      output$results_header <- renderUI({ generateResultsHeader('Invalid search.') })
+      output$results <- NULL
     } else {
       conditions <- enrich(experiments, taxa, scope, session)
       
       if(is.null(conditions)) {
         setProgress(session, MAX_PROGRESS_STEPS, '')
-        output$results <- renderUI({ generateResultsHeader('No conditions found in scope.') })
-      } else
+        output$results_header <- renderUI({ generateResultsHeader('No conditions found in scope.') })
+        output$results <- NULL
+      } else {
+        output$results_header <- renderUI({ generateResultsHeader(paste('Found', nrow(experiments), 'related experiments for', (ncol(experiments) - 1), 'genes.')) })
         output$results <- generateResults(taxa, scope, experiments, conditions, options)
+      }
     }
   }
   
@@ -153,12 +153,9 @@ server <- function(input, output, session) {
                       switch((length(scope) == 1 && scope == 'DO') + 1,
                              paste0('&scope=', switch(min(2, length(scope)), scope,
                                                       paste0('[', paste0(scope, collapse = ','), ']'), ''))),
-                      switch((options$n.display == DEFAULT_OPTIONS$n.display) + 1, paste0('&N=', options$n.display), ''),
                       switch((options$pv == DEFAULT_OPTIONS$pv) + 1, paste0('&pv=', options$pv), ''),
                       switch(isTRUE(all.equal(input$fc, c(DEFAULT_OPTIONS$fc.lower, DEFAULT_OPTIONS$fc.upper))) + 1,
                              paste0('&fc=[', paste0(input$fc, collapse = ','), ']'), ''),
-                      switch(isTRUE(all.equal(input$score, c(DEFAULT_OPTIONS$score.lower, DEFAULT_OPTIONS$score.upper))) + 1,
-                             paste0('&score=[', paste0(input$score, collapse = ','), ']'), ''),
                       switch((options$mfx == DEFAULT_OPTIONS$mfx) + 1, paste0('&mfx=', options$mfx), ''),
                       switch((options$filter == DEFAULT_OPTIONS$filterSame) + 1, paste0('&filter=', options$filter), ''))
       updateQueryString(query, 'push')

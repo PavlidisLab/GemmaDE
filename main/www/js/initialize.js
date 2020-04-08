@@ -48,3 +48,9 @@ function validate() {
   
   $('#search').prop('disabled', !accept);
 }
+
+function asScientificNotation(row, data) {
+  for(i = 1; i < data.length; i++) {
+    $('td:eq(' + i + ')', row).html(Math.round((data[i] + Number.EPSILON) * 1e3) / 1e3);
+  }
+}

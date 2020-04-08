@@ -4,16 +4,10 @@ library(data.table)
 library(DT)
 
 generateResultsHeader <- function(title) {
-  fluidRow(class = 'info-text', h2(title))
+  fluidRow(class = 'info-text', column(12, h2(title)))
 }
 
 generateResults <- function(taxa = 'human', scope = 'DO', experiments, conditions, options = DEFAULT_OPTIONS) {
-  conditions <- conditions[pv > options$score.lower]
-  if(options$score.lower != options$score.upper)
-    conditions <- conditions[pv < options$score.upper]
-  
-  if(nrow(conditions) == 0) return(renderUI({ generateResultsHeader('No conditions found in scope.') }))
-  
   filterResults <- function(conditions) {
     do.call(rbind, lapply(1:(nrow(conditions) - 1), function(indx) {
       if(conditions$N.ranked[indx] != conditions$N.ranked[indx + 1])
@@ -25,36 +19,38 @@ generateResults <- function(taxa = 'human', scope = 'DO', experiments, condition
     conditions <- filterResults(conditions)
   
   mCache <- CACHE.BACKGROUND[[scope]][rsc.ID %in% rownames(experiments) & Definition %in% conditions$Definition]
-  eNames <- rownames(experiments)
   eDF <- experiments %>% as.data.frame
-  rownames(eDF) <- eNames
+  rownames(eDF) <- rownames(experiments)
+  colnames(eDF) <- colnames(experiments)
   
-  renderUI({
-    lapply(0:min(nrow(conditions), options$n.display), function(row) {
-      if(row == 0)
-        return(generateResultsHeader(paste0('Found ', nrow(experiments), ' related experiment', ifelse(nrow(experiments) == 1, '', 's'),
-                                            ' for ', (ncol(experiments) - 1), ' genes.')))
-      
-      name.control <- gsub('( |-|\\+|,|\\.|:|;|\\/|\'|"|&|\\(|\\))', '', tolower(conditions$Definition[row]))
-      div(class = 'results-row',
-        fluidRow(
-          HTML(paste0('<a data-toggle="collapse" aria-expanded="false" aria-controls="', name.control, '"',
-                      '" class = "result-line" href="#', name.control, '">',
-                      paste0(conditions$Definition[row], '  (', round(conditions$pv[row], 2), ')'), '</a>'))
-      ),
-      
-      fluidRow(id = name.control, class = 'collapse result-info',
-        p(paste('Enrichment:', paste0(conditions$N.x[row], '/', conditions$N.y[row]))),
-        p(paste('Ranked Enrichment:', paste0(round(conditions$N.ranked[row], 2), '/', round(conditions$N.unranked[row], 2)))),
-        
-        # Give average gene scores for experiments with this tag
-        lapply(1:(ncol(experiments) - 1), function(indx) {
-          p(paste0(colnames(experiments)[indx], ': ',
-                   round(eDF[mCache[Definition == conditions$Definition[row], rsc.ID], indx] %>% mean(na.rm = T), 2)))
-        })
-      )
-    )})
-  })
+  geneScores <- data.table(def = unique(conditions$Definition))
+  
+  for(indx in 1:(ncol(experiments) - 1)) {
+    geneScores[, colnames(experiments)[indx] := mean(eDF[mCache[Definition == def, rsc.ID], indx], na.rm = T),
+               def]
+  }
+  
+  conditions <- merge(conditions, geneScores, by.x = 'Definition', by.y = 'def') %>%
+    setnames('pv', 'P-value')
+
+  outputColumns <- c('P-value', colnames(experiments)[1:(ncol(experiments) - 1)])
+  renderDataTable(datatable(conditions[, outputColumns, with = F] %>% as.data.frame,
+                            extensions = c('ColReorder', 'FixedHeader', 'Buttons'),
+                            rownames = conditions$Definition,
+                            filter = 'top',
+                            options = list(colReorder = T,
+                                           pageLength = 10,
+                                           order = list(
+                                             list(1, 'asc')),
+                                           language = list(lengthMenu = 'Show _MENU_ conditions per page'),
+                                           fixedHeader = T,
+                                           rowCallback = JS('asScientificNotation'),
+                                           dom = 'lBfrtip',
+                                           searchCols = list(NULL, list(search = '0 ... 0.05')),
+                                           buttons = list(
+                                             list(extend = 'csvHtml5',
+                                                  text = 'Download',
+                                                  title = 'data')))))
 }
 
 ui <- fluidPage(style = 'height: 100%;',
@@ -103,9 +99,7 @@ ui <- fluidPage(style = 'height: 100%;',
       wellPanel(class = 'collapse', id = 'options',
                 fluidRow(style = 'display: flex; flex-direction: row;',
                          column(6, wellPanel(`well-name` = 'Filtering',
-                           checkboxInput('filter', 'Filter equal-scoring children', value = DEFAULT_OPTIONS$filterSame),
-                           numericInput('top-n', 'Max to display', value = DEFAULT_OPTIONS$n.display, min = 0, max = 100),
-                           sliderInput('score', 'P-value threshold', value = c(DEFAULT_OPTIONS$score.lower, DEFAULT_OPTIONS$score.upper), step = 0.01, min = 0, max = 1, ticks = F))),
+                           checkboxInput('filter', 'Filter equal-scoring children', value = DEFAULT_OPTIONS$filterSame))),
                          column(6, wellPanel(`well-name` = 'Scoring',
                            checkboxInput('mfx', 'Multifunctionality', value = DEFAULT_OPTIONS$mfx),
                            numericInput('pv', 'P-value threshold', value = DEFAULT_OPTIONS$pv, step = 0.01, min = 0, max = 1),
@@ -124,7 +118,10 @@ ui <- fluidPage(style = 'height: 100%;',
       )
     )),
     
-    fluidRow(htmlOutput('results', class = 'container-fluid'))
+    fluidRow(
+      column(12, htmlOutput('results_header')),
+      column(12, dataTableOutput('results'))
+    )
   ),
   
   HTML('
