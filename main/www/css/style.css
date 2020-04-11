@@ -53,8 +53,37 @@ a:hover {
   margin-top: -15px;
 }
 
+.modal-lg {
+  width: 90vw !important;
+  margin-top: 5vh;
+}
+
+.modal-body > .row > .col-sm-10,
+.modal-body > .row > .col-sm-10 > .shiny-spinner-output-container,
+.modal-body > .row > .col-sm-10 > .shiny-spinner-output-container > #plot {
+  height: 100% !important;
+}
+
+.modal-body > .row > .col-sm-2 > .shiny-input-container, .inputs > .well > .shiny-input-container:not(:first-child) {
+  margin-top: 15px;
+}
+
+.popover {
+  overflow-y: auto;
+  max-height: 500px;
+  max-width: 893px;
+}
+
 .noUi-connect {
   background-color: #002145 !important;
+}
+
+.spark > canvas {
+  height: 100% !important;
+}
+
+input.form-control[disabled] {
+  display: none;
 }
 
 .dt-buttons {

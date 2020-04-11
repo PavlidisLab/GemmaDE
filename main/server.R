@@ -3,6 +3,7 @@ library(shinyjs)
 library(htmlwidgets)
 library(data.table)
 library(dplyr)
+library(shinycssloaders)
 
 MAX_PROGRESS_STEPS <- 5
 
@@ -93,6 +94,25 @@ server <- function(input, output, session) {
     searchGenes(genes)
   })
   
+  # Open plot
+  observeEvent(input$plotData, {
+    showModal(modalDialog(
+      easyClose = T,
+      size = 'l',
+      footer = NULL,
+      fluidRow(style = 'height: 85vh;',
+               column(10, plotlyOutput('plot') %>% withSpinner),
+               column(2, style = 'padding-top: 15px; padding-right: 30px;',
+                      fluidRow(style = 'display: flex; flex-direction: row; justify-content: space-evenly; margin-bottom: 15px;',
+                               downloadButton('plot_save_jpg', 'Save JPG'), downloadButton('plot_save_pdf', 'Save PDF')),
+                      checkboxInput('plot_page', 'Only current page', T),
+                      selectInput('plot_type', 'Type', list('Heatmap', 'Histogram', 'Bars', 'Lines')),
+                      selectInput('plot_data', 'Data', list('Gene Score', 'P-value')),
+                      selectInput('plot_by', 'By', list('Condition', 'Experiment')))
+      )
+    ), session)
+  })
+  
   #' Handle Search
   #' 
   #' Call the processing function to handle searching and update the display.
@@ -107,7 +127,9 @@ server <- function(input, output, session) {
     
     if(is.null(experiments)) {
       setProgress(session, MAX_PROGRESS_STEPS, '')
-      output$results_header <- renderUI({ generateResultsHeader('Invalid search.') })
+      output$results_header <- renderUI({
+        generateResultsHeader(HTML('<h2 data-toggle="tooltip" data-placement="top" title="Relax thresholds or modify gene set.">Invalid search.</h2>'))
+      })
       output$results <- NULL
     } else {
       conditions <- enrich(experiments, taxa, scope, session)
@@ -117,7 +139,49 @@ server <- function(input, output, session) {
         output$results_header <- renderUI({ generateResultsHeader('No conditions found in scope.') })
         output$results <- NULL
       } else {
-        output$results_header <- renderUI({ generateResultsHeader(paste('Found', nrow(experiments), 'related experiments for', (ncol(experiments) - 1), 'genes.')) })
+        # Filter equal scoring children
+        filterResults <- function(conditions) {
+          do.call(rbind, lapply(1:(nrow(conditions) - 1), function(indx) {
+            if(conditions$N.ranked[indx] != conditions$N.ranked[indx + 1])
+              conditions[indx, ]
+          })) %>% as.data.table
+        }
+        if(options$filter && nrow(conditions) > 1)
+          conditions <- filterResults(conditions)
+        
+        # Compute experiments in scope
+        mCache <- do.call(rbind, lapply(scope, function(id) CACHE.BACKGROUND[[taxa]][[id]])) %>%
+          .[rsc.ID %in% rownames(experiments) & Definition %in% conditions$Definition]
+        eDF <- experiments %>% as.data.frame
+        rownames(eDF) <- rownames(experiments)
+        colnames(eDF) <- colnames(experiments)
+        
+        # Generate the results header
+        output$results_header <- renderUI({
+          generateResultsHeader(HTML(paste0('<h2>Found ',
+                                            '<span data-toggle="tooltip" data-placement="top" title="',
+                                            length(mCache[, unique(rsc.ID)]), ' in scope">',
+                                            nrow(experiments), '</span> experiments differentially expressing ',
+                                            '<span data-toggle="tooltip" data-placement="top" title="',
+                                            paste0(colnames(experiments)[1:(ncol(experiments) - 1)], collapse = ', '), '">',
+                                            (ncol(experiments) - 1), ' genes</span>')))
+        })
+        
+        # Merge in gene scores
+        geneScores <- data.table(def = unique(conditions$Definition))
+        
+        for(indx in 1:(ncol(experiments) - 1)) {
+          geneScores[, Evidence := paste0(DATA.HOLDER[[taxa]]@experiment.meta[rsc.ID %in% mCache[Definition == def, rsc.ID], unique(ee.ID)], collapse = ','), def]
+          geneScores[, colnames(experiments)[indx] := paste0(eDF[mCache[Definition == def, rsc.ID], indx], collapse = ','), def]
+          # geneScores[, colnames(experiments)[indx] := mean(eDF[mCache[Definition == def, rsc.ID], indx], na.rm = T), def]
+        }
+        
+        # Rename things and add the ES
+        conditions <- merge(conditions, geneScores, by.x = 'Definition', by.y = 'def') %>% setorder(pv.chisq) %>%
+          setnames(c('chisq', 'pv.chisq', 'pv.fisher'), c('χ2', 'P-value (χ2)', 'P-value (Fisher)')) %>%
+          .[, `E` := (N.ranked * (N.bg + N.x - N.y)) / ((N.tags - N.ranked) * (N.x + N.y))]
+        
+        output$plot <- renderPlotly({ generateResultsPlot(taxa, scope, experiments, conditions, options, input) })
         output$results <- generateResults(taxa, scope, experiments, conditions, options)
       }
     }
