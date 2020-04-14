@@ -96,6 +96,8 @@ if(!exists('DATA.HOLDER')) {
       metaGene <- metaGene %>% as.data.table %>% .[, .(entrez.ID, gene.ID, ensembl.ID, gene.Name, alias.Name,
                                                        gene.Desc, mfx.Rank)]
       
+      metaGene$n.DE <- rowSums2(dataHolder$adj.pv < 0.05, na.rm = T)
+      
       metaData$ee.ID <- metaData$ee.ID %>% as.factor
       metaData$ee.Name <- metaData$ee.Name %>% as.factor
       metaData$ee.Source <- metaData$ee.Source %>% as.factor

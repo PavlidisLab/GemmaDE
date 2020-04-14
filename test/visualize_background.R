@@ -7,8 +7,12 @@ library(parallel)
 options('mc.cores' = 6)
 theme_set(theme_cowplot())
 
-SUMMARY$OBI[rsc.ID %in% unique(SUMMARY$OBI$rsc.ID)[10:20]] %>%
-  ggplot(aes(score, color = rsc.ID)) + geom_density(fill = NA) +
+SUMMARY <- readRDS('data/bootstrap/bootstrap.OBI.rds')
+SUMMARY <- do.call(rbind, lapply(SUMMARY, function(x) data.table(rsc.ID = names(x$experiments), score = x$experiments))) %>%
+  as.data.table
+
+SUMMARY[rsc.ID %in% (DATA.HOLDER$human@experiment.meta[, .(n.DE, rsc.ID)] %>% setorder(-n.DE) %>% .[1:10, rsc.ID])] %>%
+  as.data.frame %>% ggplot(aes(score, color = rsc.ID)) + geom_density(fill = NA) +
   scale_x_continuous(expand = c(0, 0)) + scale_y_continuous(expand = c(0, 0)) +
   xlab('Experiment Score') + ylab('Density') + theme(legend.position = 'none')
 

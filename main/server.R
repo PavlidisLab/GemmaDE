@@ -179,7 +179,7 @@ server <- function(input, output, session) {
         # Rename things and add the ES
         conditions <- merge(conditions, geneScores, by.x = 'Definition', by.y = 'def') %>% setorder(pv.chisq) %>%
           setnames(c('chisq', 'pv.chisq', 'pv.fisher'), c('χ2', 'P-value (χ2)', 'P-value (Fisher)')) %>%
-          .[, `E` := (N.ranked * (N.bg + N.x - N.y)) / ((N.tags - N.ranked) * (N.x + N.y))]
+          .[, `E` := (N.ranked * (N.bg - N.y)) / ((N.tags - N.ranked) * N.y)]
         
         output$plot <- renderPlotly({ generateResultsPlot(taxa, scope, experiments, conditions, options, input) })
         output$results <- generateResults(taxa, scope, experiments, conditions, options)

@@ -74,7 +74,8 @@ generateResults <- function(taxa = 'human', scope = 'DO', experiments, condition
                                       # list(targets = 0,
                                       #      width = '20%'),
                                        list(targets = 1,
-                                            className = 'dt-right'),
+                                            className = 'dt-right',
+                                            searchable = F, orderable = F),
                                        list(targets = 5:length(outputColumns),
                                             render = JS('asSparkline'), width = '1px', className = 'dt-center', searchable = F, orderable = F)
                                      ),

@@ -41,7 +41,8 @@ search <- function(genes, taxa = 'human', scope = NULL, options = DEFAULT_OPTION
   pv <- pv[, colFilter] %>% as.data.table
   
   # Number of DEs for experiments that pass thresholds
-  n.DE <- DATA.HOLDER[[taxa]]@experiment.meta$n.DE[colFilter]
+  n.DE.exp <- DATA.HOLDER[[taxa]]@experiment.meta$n.DE[colFilter]
+  n.DE.gen <- DATA.HOLDER[[taxa]]@gene.meta$n.DE[rowFilter]
   
   # logFCs for only the GOI/EOI and maintain structure.
   logFC <- DATA.HOLDER[[taxa]]@data$fc[rowFilter, colFilter]
@@ -58,14 +59,14 @@ search <- function(genes, taxa = 'human', scope = NULL, options = DEFAULT_OPTION
     colFilter <- colSums2(exFilter) > 0
     logFC <- logFC %>% .[, colFilter, with = F]
     pv <- pv[, colFilter, with = F]
-    n.DE <- n.DE[colFilter]
+    n.DE.exp <- n.DE.exp[colFilter]
   }
   
   # Data Processing ---------------------------------------------------------
   advanceProgress(session, 'Ranking')
   
   tf <- logFC
-  tf <- t(t(tf) / log2(1 + n.DE)) %>% as.data.table # Weight by number of DEs
+  tf <- t(t(tf) / log2(1 + n.DE.exp)) %>% as.data.table # Weight by number of DEs
   
   pv[is.na(pv)] <- 1
   tf <- tf * -log10(pv) # TODO
@@ -75,9 +76,11 @@ search <- function(genes, taxa = 'human', scope = NULL, options = DEFAULT_OPTION
   # Shrink by MFX /after/ extracting the query
   
   if(MFX)
-    tf <- tf * (1 - DATA.HOLDER[[taxa]]@gene.meta$mfx.Rank[rowFilter] / 4) # TODO
+    tf <- tf * (1 - DATA.HOLDER[[taxa]]@gene.meta$mfx.Rank[rowFilter] / 4) # TODO Fine tune? Effect similar to idf?
   
-  idf <- log10(ncol(tf) / (1 + rowSums2(tf != 0))) + 1
+  # TODO Should we do IDF on a corpus-level or subset level?
+  idf <- log10(length(DATA.HOLDER[[taxa]]@gene.meta$n.DE) / (1 + n.DE.gen)) + 1
+  # idf <- log10(ncol(tf) / (1 + rowSums2(tf != 0))) + 1
   tf[, query := query]
   tfidf <- tf * idf
   
@@ -212,14 +215,14 @@ enrich <- function(rankings, taxa = 'human', scope = 'DO', session = NULL) {
   fisher <- function(input) {
     input[, c('pv.fisher', 'OR') :=
             suppressWarnings(fisher.test(matrix(c(N.ranked, N.tags - N.ranked,
-                                                  N.x + N.y, N.bg + N.x - N.y),# N.y, N.bg - N.y),
+                                                  N.y, N.bg - N.y),
                                                 nrow = 2), alternative = 'greater', conf.int = F))[c('p.value', 'estimate')], Definition]
   }
   
   chisq <- function(input) {
-    input[, c('pv.chisq', 'chisq') := ifelse((N.ranked * (N.bg + N.x - N.y)) / ((N.tags - N.ranked) * (N.x + N.y)) <= 1, list(1, 1),#(N.ranked * (N.bg - N.y)) / ((N.tags - N.ranked) * N.y) <= 1, 1,
+    input[, c('pv.chisq', 'chisq') := ifelse((N.ranked * (N.bg - N.y)) / ((N.tags - N.ranked) * N.y) <= 1, list(1, 1),
                                              suppressWarnings(chisq.test(matrix(c(N.ranked, N.tags - N.ranked,
-                                                                                  N.x + N.y, N.bg + N.x - N.y),#N.y, N.bg - N.y),
+                                                                                  N.y, N.bg - N.y),
                                                                                 nrow = 2)))[c('p.value', 'statistic')]), Definition]
   }
 
