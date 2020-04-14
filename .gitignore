@@ -2,5 +2,5 @@
 .Rhistory
 .RData
 .Ruserdata
-.rds
-
+data/bootstrap/*
+data/DATA.HOLDER.rds
