@@ -5,8 +5,6 @@ library(data.table)
 library(dplyr)
 library(shinycssloaders)
 
-MAX_PROGRESS_STEPS <- 5
-
 fineProgress <- function(session, steps) {
   if(!is.null(session))
     session$userData$progress.bar.steps <- steps
@@ -24,12 +22,12 @@ setProgress <- function(session, progress, detail, fine = F) {
   if(fine)
     session$userData$progress.bar$inc(amount = 1 / session$userData$progress.bar.steps)
   else if(progress == 0) {
-    session$userData$progress.bar <- shiny::Progress$new(min = 0, max = MAX_PROGRESS_STEPS)
+    session$userData$progress.bar <- shiny::Progress$new(min = 0, max = getOption('max.progress.steps'))
     session$userData$progress.bar$set(message = 'Searching...', detail = detail)
   } else {
     session$userData$progress.bar$set(value = progress, detail = detail)
   
-    if(progress >= MAX_PROGRESS_STEPS)
+    if(progress >= getOption('max.progress.steps'))
       session$userData$progress.bar$close()
   }
 }
@@ -47,9 +45,11 @@ server <- function(input, output, session) {
     updateSelectizeInput(session, 'genes', options = list(persist = F, create = T, createOnBlur = T))
     session$sendCustomMessage('querySet', genes)
     updateSelectizeInput(session, 'taxa', selected = query$taxa)
-    updateCheckboxInput(session, 'mfx', value = ifelse(is.null(query$mfx), DEFAULT_OPTIONS$mfx, query$mfx))
-    updateNumericInput(session, 'pv', value = ifelse(is.null(query$pv), DEFAULT_OPTIONS$pv, query$pv))
-    updateSliderInput(session, 'fc', value = ifelse(is.null(query$fc), c(DEFAULT_OPTIONS$fc.lower, DEFAULT_OPTIONS$fc.upper), query$fc %>% jsonify %>% as.numeric))
+    updateSelectizeInput(session, 'directional', selected = ifelse(is.null(query$dir), getOption('app.directional'), query$dir))
+    updateCheckboxInput(session, 'mfx', value = ifelse(is.null(query$mfx), getOption('app.mfx'), query$mfx))
+    updateNumericInput(session, 'distance', value = ifelse(is.null(query$distance), getOption('app.distance_cutoff'), query$distance))
+    updateNumericInput(session, 'pv', value = ifelse(is.null(query$pv), getOption('app.pv'), query$pv))
+    updateSliderInput(session, 'fc', value = ifelse(is.null(query$fc), c(getOption('app.fc_lower'), getOption('app.fc_upper')), query$fc %>% jsonify %>% as.numeric))
     
     # Use DO as a default scope, if unspecified
     scope <- query$scope %>% jsonify
@@ -77,11 +77,12 @@ server <- function(input, output, session) {
   observeEvent(input$reset, {
     updateTextInput(session, 'genes', value = '')
     updateSelectizeInput(session, 'taxa', selected = NULL)
-    updateSelectizeInput(session, 'scope', selected = 'DO')
-    updateCheckboxInput(session, 'mfx', value = DEFAULT_OPTIONS$mfx)
-    updateCheckboxInput(session, 'filter', value = DEFAULT_OPTIONS$filterSame)
-    updateNumericInput(session, 'pv', value = DEFAULT_OPTIONS$pv)
-    updateSliderInput(session, 'fc', value = c(DEFAULT_OPTIONS$fc.lower, DEFAULT_OPTIONS$fc.upper))
+    updateSelectizeInput(session, 'scope', selected = getOption('app.ontology'))
+    updateSelectizeInput(session, 'directional', selected = getOption('app.directional'))
+    updateCheckboxInput(session, 'mfx', value = getOption('app.mfx'))
+    updateNumericInput(session, 'distance', value = getOption('app.distance_cutoff'))
+    updateNumericInput(session, 'pv', value = getOption('app.pv'))
+    updateSliderInput(session, 'fc', value = c(getOption('app.fc_lower'), getOption('app.fc_upper')))
     session$sendCustomMessage('fileUpload', F)
   })
   
@@ -122,11 +123,11 @@ server <- function(input, output, session) {
   #' @param options The search options
   #' @param scope The ontology scope
   #' @param options The search options
-  handleSearch <- function(genes, taxa, scope, options = DEFAULT_OPTIONS) {
-    experiments <- search(genes, taxa, scope, options, session)
+  handleSearch <- function(genes, taxa, scope, options = getOption('app.all_options')) {
+    experiments <- search(genes, taxa, options, session)
     
     if(is.null(experiments)) {
-      setProgress(session, MAX_PROGRESS_STEPS, '')
+      setProgress(session, getOption('max.progress.steps'), '')
       output$results_header <- renderUI({
         generateResultsHeader(HTML('<h2 data-toggle="tooltip" data-placement="top" title="Relax thresholds or modify gene set.">Invalid search.</h2>'))
       })
@@ -135,36 +136,27 @@ server <- function(input, output, session) {
       conditions <- enrich(experiments, taxa, scope, session)
       
       if(is.null(conditions)) {
-        setProgress(session, MAX_PROGRESS_STEPS, '')
+        setProgress(session, getOption('max.progress.steps'), '')
         output$results_header <- renderUI({ generateResultsHeader('No conditions found in scope.') })
         output$results <- NULL
       } else {
-        # Filter equal scoring children
-        filterResults <- function(conditions) {
-          do.call(rbind, lapply(1:(nrow(conditions) - 1), function(indx) {
-            if(conditions$N.ranked[indx] != conditions$N.ranked[indx + 1])
-              conditions[indx, ]
-          })) %>% as.data.table
-        }
-        if(options$filter && nrow(conditions) > 1)
-          conditions <- filterResults(conditions)
+        conditions <- conditions[distance <= options$distance]
         
         # Compute experiments in scope
-        mCache <- do.call(rbind, lapply(scope, function(id) CACHE.BACKGROUND[[taxa]][[id]])) %>%
-          .[rsc.ID %in% rownames(experiments) & Definition %in% conditions$Definition]
-        eDF <- experiments %>% as.data.frame
-        rownames(eDF) <- rownames(experiments)
-        colnames(eDF) <- colnames(experiments)
+        mCache <- merge(CACHE.BACKGROUND[[taxa]][, .(tag, rsc.ID)],
+                        ONTOLOGIES.DEFS[OntologyScope %in% scope, .(Node_Long, Definition)],
+                        by.x = 'tag', by.y = 'Node_Long') %>% unique %>%
+          .[Definition %in% conditions$Definition]
+        eDF <- experiments %>% as.data.frame %>% `rownames<-`(rownames(experiments)) %>% `colnames<-`(colnames(experiments))
         
         # Generate the results header
         output$results_header <- renderUI({
           generateResultsHeader(HTML(paste0('<h2>Found ',
-                                            '<span data-toggle="tooltip" data-placement="top" title="',
-                                            length(mCache[, unique(rsc.ID)]), ' in scope">',
-                                            nrow(experiments), '</span> experiments differentially expressing ',
-                                            '<span data-toggle="tooltip" data-placement="top" title="',
-                                            paste0(colnames(experiments)[1:(ncol(experiments) - 1)], collapse = ', '), '">',
-                                            (ncol(experiments) - 1), ' genes</span>')))
+                                            nrow(experiments), ' sample', ifelse(nrow(experiments) > 1, 's', ''), ' differentially expressing ',
+                                            ifelse(ncol(experiments) == 2, colnames(experiments)[1],
+                                                   paste0('<span data-toggle="tooltip" data-placement="top" title="',
+                                                          paste0(colnames(experiments)[1:(ncol(experiments) - 1)], collapse = ', '), '">',
+                                                          ncol(experiments) - 1, ' genes', '</span>')))))
         })
         
         # Merge in gene scores
@@ -178,8 +170,8 @@ server <- function(input, output, session) {
         
         # Rename things and add the ES
         conditions <- merge(conditions, geneScores, by.x = 'Definition', by.y = 'def') %>% setorder(pv.chisq) %>%
-          setnames(c('chisq', 'pv.chisq', 'pv.fisher'), c('χ2', 'P-value (χ2)', 'P-value (Fisher)')) %>%
-          .[, `E` := (N.ranked * (N.bg - N.y)) / ((N.tags - N.ranked) * N.y)]
+          setnames(c('chisq', 'pv.chisq', 'pv.fisher'), c('χ2', 'P-value (χ2)', 'P-value (Fisher)'))# %>%
+          # .[, `E` := (N.ranked * (N.bg - N.y)) / ((N.tags - N.ranked) * N.y)]
         
         output$plot <- renderPlotly({ generateResultsPlot(taxa, scope, experiments, conditions, options, input) })
         output$results <- generateResults(taxa, scope, experiments, conditions, options)
@@ -206,27 +198,29 @@ server <- function(input, output, session) {
                     pv = input$pv,
                     fc.lower = input$fc[1], fc.upper = input$fc[2],
                     score.lower = input$score[1], score.upper = input$score[2],
+                    dir = input$directional,
                     mfx = input$mfx,
-                    filter = input$filter)
+                    distance = input$distance)
     
     # Update the query string
     if(update) {
       query <- paste0('?genes=',
                       switch(min(2, length(genes)), genes, paste0('[', paste0(genes, collapse = ','), ']')),
-                      switch((taxa == TAXA[[1]]) + 1, paste0('&taxa=', taxa), ''),
-                      switch((length(scope) == 1 && scope == 'DO') + 1,
+                      switch((taxa == getOption('app.taxa')) + 1, paste0('&taxa=', taxa), ''),
+                      switch((length(scope) == 1 && scope == getOption('app.ontology')) + 1,
                              paste0('&scope=', switch(min(2, length(scope)), scope,
                                                       paste0('[', paste0(scope, collapse = ','), ']'), ''))),
-                      switch((options$pv == DEFAULT_OPTIONS$pv) + 1, paste0('&pv=', options$pv), ''),
-                      switch(isTRUE(all.equal(input$fc, c(DEFAULT_OPTIONS$fc.lower, DEFAULT_OPTIONS$fc.upper))) + 1,
+                      switch((options$pv == getOption('app.pv')) + 1, paste0('&pv=', options$pv), ''),
+                      switch(isTRUE(all.equal(input$fc, c(getOption('app.fc_lower'), getOption('app.fc_upper')))) + 1,
                              paste0('&fc=[', paste0(input$fc, collapse = ','), ']'), ''),
-                      switch((options$mfx == DEFAULT_OPTIONS$mfx) + 1, paste0('&mfx=', options$mfx), ''),
-                      switch((options$filter == DEFAULT_OPTIONS$filterSame) + 1, paste0('&filter=', options$filter), ''))
+                      switch((options$dir == getOption('app.directional')) + 1, paste0('&dir=', options$dir), ''),
+                      switch((options$mfx == getOption('app.mfx')) + 1, paste0('&mfx=', options$mfx), ''),
+                      switch((options$distance == getOption('app.distance_cutoff')) + 1, paste0('&distance=', options$distance), ''))
       updateQueryString(query, 'push')
     }
     
-    if(is.null(taxa)) taxa <- 'human'
-    if(is.null(scope)) scope <- 'DO'
+    if(is.null(taxa)) taxa <- getOption('app.taxa')
+    if(is.null(scope)) scope <- getOption('app.ontology')
     
     # Clean numerics (interpreted as entrez IDs) and remove them from further processing.
     cleanGenes <- suppressWarnings(Filter(function(x) !is.na(as.integer(x)), genes))

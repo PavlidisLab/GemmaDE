@@ -3,6 +3,8 @@ library(jsonlite)
 library(dplyr)
 library(matrixStats)
 library(igraph)
+library(gemmaAPI)
+library(parallel)
 
 #' JSONify
 #' 
@@ -33,23 +35,15 @@ parseListEntry <- function(entry, withKey = NULL) {
 }
 
 isDataLoaded <- function() {
-  exists('ONTOLOGIES') & exists('ONTOLOGIES.DEFS') &
-    exists('BLACKLIST') & exists('CACHE.BACKGROUND')
+  exists('ONTOLOGIES') & exists('ONTOLOGIES.DEFS') & exists('BLACKLIST')
 }
+
+setClass('EData', representation(taxon = 'character', data = 'list',
+                                 experiment.meta = 'data.table', gene.meta = 'data.table'))
 
 # Load the data into the global environment
 if(!isDataLoaded()) {
-  setClass('EData', representation(taxon = 'character', data = 'list',
-                                   experiment.meta = 'data.table', gene.meta = 'data.table'))
-  
-  TAXA <- list(`H. sapiens` = 'human', `M. musculus` = 'mouse', `R. norvegicus` = 'rat', TEST = 'artificial')
   BLACKLIST <- read.csv('data/blacklist.csv', header = F)$V1
-  
-  CACHE.BACKGROUND <- list()
-  
-  DEFAULT_OPTIONS <- list(pv = 0.05,
-                          fc.lower = 0, fc.upper = 10,
-                          mfx = T, filterSame = T)
   
   ONTOLOGIES <- fread('/space/grp/nlim/CronGemmaDump/Ontology/Ontology_Dump_MERGED.TSV')
   ONTOLOGIES.DEFS <- fread('/space/grp/nlim/CronGemmaDump/Ontology/Ontology_Dump_MERGED_DEF.TSV')
@@ -71,7 +65,7 @@ if(!exists('DATA.HOLDER')) {
   if(file.exists('data/DATA.HOLDER.rds'))
     DATA.HOLDER <- readRDS('data/DATA.HOLDER.rds')
   else {
-    DATA.HOLDER <- lapply(TAXA, function(taxon) {
+    DATA.HOLDER <- lapply(Filter(function(x) x != 'artificial', getOption('app.all_taxa')), function(taxon) {
       load(paste0('/home/nlim/MDE/RScripts/DataFreeze/Packaged/Current/', taxon, '.RDAT.XZ'))
       
       dataHolder$adj.pv <- apply(dataHolder$pv, 2, function(pv)
@@ -93,12 +87,22 @@ if(!exists('DATA.HOLDER')) {
                                                        cf.Cat, cf.CatLongUri, cf.ValLongUri, cf.BaseLongUri,
                                                        n.DE, mean.fc)]
       
+      metaData$ee.ID <- metaData$ee.ID %>% as.integer
+      
       metaGene <- metaGene %>% as.data.table %>% .[, .(entrez.ID, gene.ID, ensembl.ID, gene.Name, alias.Name,
                                                        gene.Desc, mfx.Rank)]
       
       metaGene$n.DE <- rowSums2(dataHolder$adj.pv < 0.05, na.rm = T)
       
-      metaData$ee.ID <- metaData$ee.ID %>% as.factor
+      # Split into 500 ee.ID chunks (so the URI doesn't get too long) and fetch quality scores from Gemma for all experiments.
+      metaData <- rbindlist(lapply(lapply(metaData$ee.ID %>% unique %>% split(ceiling(seq_along(.[]) / 500)),
+                                               datasetInfo, memoized = T) %>% unlist(recursive = F), function(ee.ID) {
+                                                 data.table(ee.ID = ee.ID$id,
+                                                            ee.qScore = ee.ID$geeq$publicQualityScore,
+                                                            ee.sScore = ee.ID$geeq$publicSuitabilityScore)
+                                                 })) %>% merge(metaData, by = 'ee.ID', all.y = T)
+      forgetGemmaMemoised()
+      
       metaData$ee.Name <- metaData$ee.Name %>% as.factor
       metaData$ee.Source <- metaData$ee.Source %>% as.factor
       metaData$ee.TagLongUri <- metaData$ee.TagLongUri %>% as.factor
@@ -117,15 +121,19 @@ if(!exists('DATA.HOLDER')) {
           experiment.meta = metaData, gene.meta = metaGene)
     })
     
-    names(DATA.HOLDER) <- unlist(TAXA)
+    names(DATA.HOLDER) <- unlist(Filter(function(x) x != 'artificial', getOption('app.all_taxa')))
     
     saveRDS(DATA.HOLDER, 'data/DATA.HOLDER.rds')
   }
   
   # Pre-load all ontology expansions
-  lapply(unique(ONTOLOGIES$OntologyScope), function(scope) {
-    lapply(TAXA, function(taxa) {
-      getTags(taxa = taxa, scope = scope)
-    })
-  })
+  if(file.exists('data/CACHE.BACKGROUND.rds'))
+    CACHE.BACKGROUND <<- readRDS('data/CACHE.BACKGROUND.rds')
+  else {
+    CACHE.BACKGROUND <<- lapply(Filter(function(x) x != 'artificial', getOption('app.all_taxa')), precomputeTags)
+    
+    names(CACHE.BACKGROUND) <<- Filter(function(x) x != 'artificial', getOption('app.all_taxa'))
+    
+    saveRDS(CACHE.BACKGROUND, 'data/CACHE.BACKGROUND.v2.rds')
+  }
 }

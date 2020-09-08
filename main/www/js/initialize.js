@@ -50,7 +50,7 @@ function validate() {
 }
 
 function asScientificNotation(row, data) {
-  for(var i of [2, 3, 4]) {
+  for(var i of [2, 3]) {
     $('td:eq(' + i + ')', row).html(Math.round((data[i] + Number.EPSILON) * 1e3) / 1e3);
   }
 }

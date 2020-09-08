@@ -9,18 +9,18 @@ library(matrixStats)
 #'
 #' @param genes A list of Entrez Gene IDs (ie. 1, 22, 480) as characters
 #' @param taxa A taxa scope. Can be one of [human, mouse, rat].
-#' @param scope The ontology scope, or null. If null, no weighting by experiment prior is done
 #' @param options Optional extra parameters to pass, such as:
 #' * pv: A p-value cutoff (default: 0.05)
 #' * fc.lower / fc.upper: Upper and lower logFC thresholds (default: 0 / 10)
 #' * mfx: Whether or not to scale by gene multifunctionality
 #' @param session The Shiny session
-search <- function(genes, taxa = 'human', scope = NULL, options = DEFAULT_OPTIONS, session = NULL) {
+search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app.all_options'), session = NULL) {
   advanceProgress(session, 'Loading experiments')
   
   P_THRESHOLD <- options$pv
   FC_L_THRESHOLD <- options$fc.lower
   FC_U_THRESHOLD <- options$fc.upper
+  DIR <- options$dir
   MFX <- options$mfx
   
   # Data Extraction ---------------------------------------------------------
@@ -37,17 +37,32 @@ search <- function(genes, taxa = 'human', scope = NULL, options = DEFAULT_OPTION
     pv <- t(pv)
   
   # Only retain experiments that have at least one of the GOI as DE (pv < threshold)
-  colFilter <- colSums2(pv < P_THRESHOLD, na.rm = T) > 0
-  pv <- pv[, colFilter] %>% as.data.table
+  # TODO For some reason these aren't the same length?
+  colFilter <- colSums2(pv < P_THRESHOLD, na.rm = T) > 0 &
+    DATA.HOLDER[[taxa]]@experiment.meta[, !is.na(cf.BaseLongUri) | !is.na(cf.ValLongUri)]
+  pv <- pv[, colFilter]
+  
+  if(n.genes == 1)
+    pv <- t(pv)
+  
+  pv <- pv %>% as.data.table
   
   # Number of DEs for experiments that pass thresholds
+  geeq <- DATA.HOLDER[[taxa]]@experiment.meta$ee.qScore[colFilter]
   n.DE.exp <- DATA.HOLDER[[taxa]]@experiment.meta$n.DE[colFilter]
   n.DE.gen <- DATA.HOLDER[[taxa]]@gene.meta$n.DE[rowFilter]
   
   # logFCs for only the GOI/EOI and maintain structure.
   logFC <- DATA.HOLDER[[taxa]]@data$fc[rowFilter, colFilter]
   logFC[is.na(logFC)] <- 0
-  logFC <- logFC %>% abs %>% as.data.table
+  
+  if(DIR == 'Ignore')
+    logFC <- abs(logFC)
+  
+  if(n.genes == 1)
+    logFC <- t(logFC)
+  
+  logFC <- logFC %>% as.data.table
   
   # Only retain experiments that have at least one of the GOI with threshold_u > abs(logFC) > threshold_l
   if(FC_L_THRESHOLD != 0 || FC_U_THRESHOLD != 0) {
@@ -60,31 +75,47 @@ search <- function(genes, taxa = 'human', scope = NULL, options = DEFAULT_OPTION
     logFC <- logFC %>% .[, colFilter, with = F]
     pv <- pv[, colFilter, with = F]
     n.DE.exp <- n.DE.exp[colFilter]
+    geeq <- geeq[colFilter]
+  }
+  
+  if(DIR != 'Ignore') {
+    # Force all entries to be positive
+    if(any(logFC < 0))
+      logFC <- logFC + abs(min(logFC))
+    
+    # Flip the matrix so maximum values will be the smallest (or largest negative) ones
+    if(DIR == 'Downregulated')
+      logFC <- max(logFC) - logFC
   }
   
   # Data Processing ---------------------------------------------------------
   advanceProgress(session, 'Ranking')
   
-  tf <- logFC
-  tf <- t(t(tf) / log2(1 + n.DE.exp)) %>% as.data.table # Weight by number of DEs
+  tf <- t(t(logFC) / (1 + rowMeans2(abs(logFC) %>% as.matrix, na.rm = T))) %>% as.data.table
+  
+  n.DE.exp[is.na(n.DE.exp)] <- 0
+  tf <- t(t(tf) / log2(2 + n.DE.exp)) %>% as.data.table # Weight by number of DEGs in this experiment
+  
+  geeq[is.na(geeq)] <- 0
+  tf <- t(t(tf) * (1 + pmax(geeq, 0))) %>% as.data.table # Weight by experiment quality score
   
   pv[is.na(pv)] <- 1
   tf <- tf * -log10(pv) # TODO
-  
+
   query <- rowMaxs(tf %>% as.matrix)
-  
+
   # Shrink by MFX /after/ extracting the query
   
   if(MFX)
-    tf <- tf * (1 - DATA.HOLDER[[taxa]]@gene.meta$mfx.Rank[rowFilter] / 4) # TODO Fine tune? Effect similar to idf?
+    tf <- tf * (1 - DATA.HOLDER[[taxa]]@gene.meta$mfx.Rank[rowFilter] / 5) # TODO Fine tune? Effect similar to idf?
   
-  # TODO Should we do IDF on a corpus-level or subset level?
+  # TODO Should we do IDF on a corpus-level or subset level? Should it recompute n.DE for the p threshold?
   idf <- log10(length(DATA.HOLDER[[taxa]]@gene.meta$n.DE) / (1 + n.DE.gen)) + 1
   # idf <- log10(ncol(tf) / (1 + rowSums2(tf != 0))) + 1
   tf[, query := query]
   tfidf <- tf * idf
   
-  if(nrow(tfidf) > 1)
+  if(n.genes > 1)
     tfidf <- scale(tfidf, center = F, scale = colSums2(as.matrix(tfidf))) %>% as.data.table
   
   query <- tfidf[, query]
@@ -93,10 +124,15 @@ search <- function(genes, taxa = 'human', scope = NULL, options = DEFAULT_OPTION
   tfidf <- as.matrix(tfidf)
   scores <- query %*% tfidf
   
-  mData <- rbind(tfidf, scores) %>% t %>% as.data.table
-  colnames(mData) <- c(DATA.HOLDER[[taxa]]@gene.meta$gene.Name[rowFilter], 'score')
-  rownames(mData) <- colnames(tfidf)
-  mData %>% setorder(-score)
+  # Gene scores are meaningless for single gene queries and scores need scaling.
+  if(n.genes == 1) {
+    tfidf <- tfidf / tfidf
+    scores <- scores / max(scores)
+  }
+  
+  rbind(tfidf, scores) %>% t %>% as.data.table %>%
+    `colnames<-`(c(DATA.HOLDER[[taxa]]@gene.meta$gene.Name[rowFilter], 'score')) %>%
+    `rownames<-`(colnames(tfidf)) %>% setorder(-score)
 }
 
 #' getTags
@@ -105,77 +141,44 @@ search <- function(genes, taxa = 'human', scope = NULL, options = DEFAULT_OPTION
 #'
 #' @param taxa A taxa scope. Can be one of [human, mouse, rat].
 #' @param scope The ontology scope.
-#' @param rsc.IDs A list of experiment rsc IDs. Runs each list item separately and collapses into a single data table.
+#' @param rsc.IDs A list of experiment rsc IDs or NULL for everything
 #' @param session The Shiny session
-getTags <- function(taxa = 'human', scope = 'DO', rsc.IDs = list(NULL), session = NULL) {
-  ontoScope <- ONTOLOGIES[OntologyScope %in% scope, .(ChildNode_Long, ParentNode_Long)]
-  graph <- igraph::graph_from_data_frame(ontoScope)
+getTags <- function(taxa = getOption('app.taxa'), scope = getOption('app.ontology'), rsc.IDs = NULL, session = NULL) {
+  if(!exists('CACHE.BACKGROUND'))
+    precomputeTags(taxa)
   
-  tags <- DATA.HOLDER[[taxa]]@experiment.meta[!is.na(ee.TagLongUri) |
-                                                      !is.na(cf.ValLongUri) |
-                                                      !is.na(cf.BaseLongUri)]
+  if(is.null(rsc.IDs))
+    rsc.IDs <- CACHE.BACKGROUND[[taxa]][, unique(rsc.ID)]
   
-  allTerms <- ontoScope[, ChildNode_Long]
-  lapply(1:length(rsc.IDs), function(indx) {
-    IDs <- rsc.IDs[[indx]]
+  CACHE.BACKGROUND[[taxa]] %>%
+    .[rsc.ID %in% rsc.IDs & tag %in% ONTOLOGIES[OntologyScope %in% scope, as.character(ChildNode_Long, ParentNode_Long)]] %>%
+    merge(ONTOLOGIES.DEFS[OntologyScope %in% scope], by.x = 'tag', by.y = 'Node_Long') %>%
+    .[, .(distance = mean(distance)), .(rsc.ID, Definition)] %>% setorder(distance, rsc.ID)
+}
 
-    advanceProgress(session, paste0('Calculating scores (', indx, '/', length(rsc.IDs), ')'))
-    
-    # Subset to experiment IDs if we have them
-    if(!is.null(IDs)) mTags <- tags[rsc.ID %in% IDs]
-    
-    # Otherwise cache background populations
-    else {
-      # All were already cached
-      if(all(scope %in% names(CACHE.BACKGROUND[[taxa]])))
-        return(do.call(rbind, lapply(scope, function(id) CACHE.BACKGROUND[[taxa]][[id]])))
-      
-      # Not all were cached. Cache the ones that aren't
-      else if(length(scope) > 1) {
-        existing <- intersect(scope, names(CACHE.BACKGROUND[[taxa]]))
-        if(length(existing) > 0) # Load cached
-          existing <- do.call(rbind, lapply(existing, function(id) CACHE.BACKGROUND[[taxa]][[id]]))
-        else
-          existing <- NULL
-        
-        # Make sure to make `session` NULL so we don't generate extra loading bar steps.
-        # TODO Loading bar won't reflect extra caches to be done...
-        other <- do.call(rbind, lapply(setdiff(scope, names(CACHE.BACKGROUND[[taxa]])),
-                                       function(id) getTags(taxa, id, NULL, NULL)))
-        
-        return(rbind(existing, other))
-      }
-      
-      mTags <- tags
-    }
-    
-    fineProgress(session, nrow(mTags))
-    
-    do.call(rbind, lapply(1:nrow(mTags), function(indx) {
-      advanceProgress(session, fine = T)
-      
-      filteredTags <- Filter(function(tag) !is.na(tag) & tag %in% allTerms,
-                             c(parseListEntry(mTags[indx, ee.TagLongUri]),
-                               parseListEntry(mTags[indx, cf.BaseLongUri]),
-                               parseListEntry(mTags[indx, cf.ValLongUri]))) # TODO sf?
-      
-      do.call(rbind, lapply(filteredTags, function(entry) {
-        data.table(rsc.ID = mTags[indx, rsc.ID], tag = names(igraph::subcomponent(graph, entry, 'out')))
-      }))
-    })) -> mMap
-    
-    if(is.null(mMap)) return(NULL)
-    mMap <- mMap[tag != 'NA']
-    
-    mData <- unique(ONTOLOGIES.DEFS[OntologyScope %in% scope & Node_Long %in% mMap[, unique(tag)],
-                                    Definition, Node_Long]) %>%
-      merge(mMap, by.x = 'Node_Long', by.y = 'tag', allow.cartesian = T, sort = F) %>%
-      .[, .(Definition, rsc.ID)] %>% unique
-    
-    if(is.null(IDs)) CACHE.BACKGROUND[[taxa]][[scope]] <<- mData
-    
-    mData
-  })
+#' Precompute Tags
+#' 
+#' Get all the expanded ontology tags within a given taxon.
+#'
+#' @param taxa A taxa scope. Can be one of [human, mouse, rat].
+precomputeTags <- function(taxa = getOption('app.taxa')) {
+  graph <- simplify(igraph::graph_from_data_frame(ONTOLOGIES[, .(ChildNode_Long, ParentNode_Long)]))
+  graphTerms <- unique(ONTOLOGIES[, as.character(ChildNode_Long, ParentNode_Long)])
+  
+  availableMeta <- DATA.HOLDER[[taxa]]@experiment.meta[!is.na(cf.BaseLongUri) | !is.na(cf.ValLongUri)]
+  
+  availableTags <- availableMeta[, list(tags = Filter(function(tag) !is.na(tag) & tag %in% graphTerms,
+                                                      unique(c(parseListEntry(as.character(cf.BaseLongUri)),
+                                                               parseListEntry(as.character(cf.ValLongUri)))))), rsc.ID]
+  
+  expandTags <- function(entries) {
+    rbindlist(lapply(entries, function(entry) {
+      to <- igraph::subcomponent(graph, entry, 'out')
+      data.table(tag = names(to), distance = c(igraph::distances(graph, entry, to)))
+    }))
+  }
+  
+  availableTags[, expandTags(.SD), rsc.ID] %>% .[tag != 'NA' & is.finite(distance)]
 }
 
 #' Enrich
@@ -187,31 +190,25 @@ getTags <- function(taxa = 'human', scope = 'DO', rsc.IDs = list(NULL), session 
 #' @param taxa The taxon
 #' @param scope The ontology scope.
 #' @param session The Shiny session.
-enrich <- function(rankings, taxa = 'human', scope = 'DO', session = NULL) {
+enrich <- function(rankings, taxa = getOption('app.taxa'), scope = getOption('app.ontology'), session = NULL) {
   rankings <- data.table(rsc.ID = rownames(rankings), rank = rankings$score)
   
-  mMaps <- getTags(taxa, scope, list(NULL, rankings[, rsc.ID]), session)
+  # mMaps[[1]] is the background tags, mMaps[[2]] is the foreground tags.
+  mMaps <- list(getTags(taxa, scope, NULL, session), getTags(taxa, scope, rankings[, rsc.ID], session))
   
   mMaps[[2]] <- mMaps[[2]] %>% merge(rankings, by = 'rsc.ID', sort = F)
   
+  tmp0 <<- rankings
+  tmp1 <<- mMaps
+  
   advanceProgress(session, 'Wrapping up')
   
-  prior <- function() {
-    merge(mMaps[[2]][, .(N.x = .N, N.ranked = sum(rank)), Definition][, N.tags := sum(N.ranked)],
-          merge(mMaps[[1]][!(rsc.ID %in% rankings[, rsc.ID])],
-                do.call(rbind, lapply(scope, function(id) SUMMARY[[id]]))$experiments[, .(prior = mean(score)), rsc.ID],
-                by = 'rsc.ID', sort = F) %>%
-            .[, .(N.y = sum(prior)), Definition] %>% .[, N.bg := sum(N.y)],
-          by = 'Definition', sort = F)
-  }
-  
   aprior <- function() {
-    merge(mMaps[[2]][, .(N.x = .N, N.ranked = sum(rank)), Definition][, N.tags := sum(N.ranked)],
+    merge(mMaps[[2]][, .(N.x = .N, N.ranked = sum(rank), distance = median(distance)), Definition][, N.tags := sum(N.ranked)],
           mMaps[[1]][!(rsc.ID %in% rankings[, rsc.ID]), .(N.y = .N), Definition][, N.bg := sum(N.y)],
           by = 'Definition', sort = F)
   }
   
-  # Test this
   fisher <- function(input) {
     input[, c('pv.fisher', 'OR') :=
             suppressWarnings(fisher.test(matrix(c(N.ranked, N.tags - N.ranked,
@@ -226,8 +223,5 @@ enrich <- function(rankings, taxa = 'human', scope = 'DO', session = NULL) {
                                                                                 nrow = 2)))[c('p.value', 'statistic')]), Definition]
   }
 
-  mMaps <- aprior()
-  mMap <- mMaps %>% chisq %>% fisher
-  
-  mMap[!(Definition %in% BLACKLIST)] %>% setorder(pv.chisq)
+  aprior() %>% chisq %>% fisher %>% .[!(Definition %in% BLACKLIST)] %>% setorder(pv.chisq)
 }

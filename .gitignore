@@ -3,4 +3,4 @@
 .RData
 .Ruserdata
 data/bootstrap/*
-data/DATA.HOLDER.rds
+data/*

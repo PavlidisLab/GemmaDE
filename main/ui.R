@@ -15,7 +15,7 @@ generateResultsHeader <- function(title) {
     fluidRow(class = 'info-text', column(12, title))
 }
 
-generateResultsPlot <- function(taxa = 'human', scope = 'DO', experiments, conditions, options = DEFAULT_OPTIONS, input) {
+generateResultsPlot <- function(taxa = getOption('app.taxa'), scope = getOption('app.ontology'), experiments, conditions, options = DEFAULT_OPTIONS, input) {
   if(length(unlist(input$plotData$selected)) > 0)
     conditions <- conditions[1 + unlist(input$plotData$selected), ]
   else if(input$plot_page)
@@ -34,15 +34,16 @@ generateResultsPlot <- function(taxa = 'human', scope = 'DO', experiments, condi
   }
 }
 
-generateResults <- function(taxa = 'human', scope = 'DO', experiments, conditions, options = DEFAULT_OPTIONS) {
-  outputColumns <- c('Evidence', 'E', 'P-value (χ2)', 'P-value (Fisher)', colnames(experiments)[1:(ncol(experiments) - 1)])
+generateResults <- function(taxa = getOption('app.taxa'), scope = getOption('app.ontology'), experiments, conditions, options = DEFAULT_OPTIONS) {
+  # outputColumns <- c('Evidence', 'E', 'P-value (χ2)', 'P-value (Fisher)', colnames(experiments)[1:(ncol(experiments) - 1)])
+  outputColumns <- c('Evidence', 'P-value (χ2)', 'P-value (Fisher)', colnames(experiments)[1:(ncol(experiments) - 1)])
   
   conditions[, Evidence := paste0('<span data-toggle="popover" title="Experiments" data-html="true" data-content="',
                                   lapply(unlist(strsplit(Evidence, ',')), function(experiment) {
                                     paste0('<a target=_blank href=https://gemma.msl.ubc.ca/expressionExperiment/showExpressionExperiment.html?id=',
                                            experiment, '>',
                                            DATA.HOLDER[[taxa]]@experiment.meta[ee.ID == experiment, unique(ee.Name)], '</a>')
-                                  }) %>% paste0(collapse = ', '), '">', paste(length(unlist(strsplit(Evidence, ','))), 'Experiments', '<i class="fas fa-question-circle"></i>'), '</span>'), Definition]
+                                  }) %>% paste0(collapse = ', '), '">', paste(length(unlist(strsplit(Evidence, ','))), paste0('Experiment', ifelse(length(unlist(strsplit(Evidence, ','))) > 1, 's', '')), '<i class="fas fa-question-circle" style="cursor: pointer;"></i>'), '</span>'), Definition]
   
   mTable <- datatable(conditions[, outputColumns, with = F] %>% as.data.frame,
                       extensions = c('FixedHeader', 'Buttons'),
@@ -51,7 +52,7 @@ generateResults <- function(taxa = 'human', scope = 'DO', experiments, condition
                       filter = 'top',
                       options = list(pageLength = 10,
                                      order = list(
-                                       list(3, 'asc')),
+                                       list(2, 'asc')),
                                      language = list(lengthMenu = 'Show _MENU_ conditions per page',
                                                      processing = '',
                                                      emptyTable = 'No matching conditions found.',
@@ -66,7 +67,6 @@ generateResults <- function(taxa = 'human', scope = 'DO', experiments, condition
                                      searchCols = list(
                                                        NULL,
                                                        NULL,
-                                                       NULL,
                                                        list(search = '0 ... 0.05'),
                                                        list(search = '0 ... 0.05')),
                                      autoWidth = T,
@@ -76,7 +76,7 @@ generateResults <- function(taxa = 'human', scope = 'DO', experiments, condition
                                        list(targets = 1,
                                             className = 'dt-right',
                                             searchable = F, orderable = F),
-                                       list(targets = 5:length(outputColumns),
+                                       list(targets = 4:length(outputColumns),
                                             render = JS('asSparkline'), width = '1px', className = 'dt-center', searchable = F, orderable = F)
                                      ),
                                      search = list(
@@ -115,10 +115,10 @@ ui <- fluidPage(style = 'height: 100%;',
     script(src = 'https://kit.fontawesome.com/33dcd9d8f9.js', crossorigin = 'anonymous'),
     link(rel = 'stylesheet', type = 'text/css', href = 'css/style.css'),
     
-    title(options('app.name')),
-    meta(name = 'description', content = options('app.description')),
-    meta(name = 'keywords', content = options('app.tags')),
-    meta(name = 'author', content = options('app.author')),
+    title(getOption('app.name')),
+    meta(name = 'description', content = getOption('app.description')),
+    meta(name = 'keywords', content = getOption('app.tags')),
+    meta(name = 'author', content = getOption('app.author')),
     
     link(rel = 'icon', href = 'https://gemma.msl.ubc.ca/images/favicon.ico')
   )),
@@ -140,11 +140,11 @@ ui <- fluidPage(style = 'height: 100%;',
       column(2, uiOutput('genes.csv.ui')),
       
       # Taxa entry
-      column(2, selectInput('taxa', 'Taxon', TAXA)),
+      column(2, selectInput('taxa', 'Taxon', getOption('app.all_taxa'))),
       
       # Ontology entry (with more options, as it's on the right)
       column(3,
-             selectizeInput('scope', 'Ontologies', ONTOLOGIES[, unique(OntologyScope)], selected = 'DO', multiple = T,
+             selectizeInput('scope', 'Ontologies', ONTOLOGIES[, unique(OntologyScope)], selected = getOption('app.ontology'), multiple = T,
                             options = list(selectOnTab = T)),
              helpText(style = 'float: right;', HTML('<a data-toggle="collapse" data-target="#options">More options...</a>')))
       ),
@@ -153,11 +153,12 @@ ui <- fluidPage(style = 'height: 100%;',
       wellPanel(class = 'collapse', id = 'options',
                 fluidRow(style = 'display: flex; flex-direction: row;',
                          column(6, wellPanel(`well-name` = 'Filtering',
-                           materialSwitch('filter', 'Filter equal-scoring children', value = DEFAULT_OPTIONS$filterSame, right = T))),
+                           numericInput('distance', 'Ontology expansion limit', value = getOption('app.distance_cutoff'), step = 0.25, min = 0, max = 10))),
                          column(6, wellPanel(`well-name` = 'Scoring',
-                           materialSwitch('mfx', 'Multifunctionality', value = DEFAULT_OPTIONS$mfx, right = T),
-                           numericInput('pv', 'P-value threshold', value = DEFAULT_OPTIONS$pv, step = 0.01, min = 0, max = 1),
-                           sliderInput('fc', 'FC threshold', value = c(DEFAULT_OPTIONS$fc.lower, DEFAULT_OPTIONS$fc.upper), step = 0.1, min = 0, max = 10, ticks = F)))
+                           selectizeInput('directional', 'Desired Sign', c('Ignore', 'Upregulated', 'Downregulated'), selected = getOption('app.directional')),
+                           materialSwitch('mfx', 'Multifunctionality', value = getOption('app.mfx'), right = T),
+                           numericInput('pv', 'P-value threshold', value = getOption('app.pv'), step = 0.01, min = 0, max = 1),
+                           sliderInput('fc', 'FC threshold', value = c(getOption('app.fc_lower'), getOption('app.fc_upper')), step = 0.1, min = 0, max = 10, ticks = F)))
                 )),
       
       # Buttons
