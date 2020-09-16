@@ -77,8 +77,7 @@ if(!exists('DATA.HOLDER')) {
       metaData <- metaData %>% as.data.table %>% .[, .(rsc.ID, ee.Troubled, ee.Public, ee.ID, ee.Name, ee.Source,
                                                        ee.NumSamples, ee.TagLongUri, ad.Name, ad.Company,
                                                        ad.Sequencing, sf.Subset, sf.Cat, sf.CatLongUri, sf.ValLongUri,
-                                                       cf.Cat, cf.CatLongUri, cf.ValLongUri, cf.BaseLongUri,
-                                                       n.DE, mean.fc)]
+                                                       cf.Cat, cf.CatLongUri, cf.ValLongUri, cf.BaseLongUri)]
       
       # Clean up the data.
       
@@ -109,8 +108,8 @@ if(!exists('DATA.HOLDER')) {
         p.adjust(pv, method = 'BH', n = length(pv))) # Assuming NaN p-values should be 1.
       dataHolder$pv <- NULL
       
-      metaData$n.DE <- colSums2(dataHolder$adj.pv < 0.05, na.rm = T)
-      metaData$mean.fc <- colMeans2(dataHolder$fc, na.rm = T)
+      metaData[, n.DE := colSums2(dataHolder$adj.pv < 0.05, na.rm = T)]
+      metaData[, mean.fc := colMeans2(dataHolder$fc, na.rm = T)]
       
       metaData$ee.ID <- metaData$ee.ID %>% as.integer
       
