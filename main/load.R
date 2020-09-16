@@ -68,24 +68,49 @@ if(!exists('DATA.HOLDER')) {
     DATA.HOLDER <- lapply(Filter(function(x) x != 'artificial', getOption('app.all_taxa')), function(taxon) {
       load(paste0('/home/nlim/MDE/RScripts/DataFreeze/Packaged/Current/', taxon, '.RDAT.XZ'))
       
-      dataHolder$adj.pv <- apply(dataHolder$pv, 2, function(pv)
-        p.adjust(pv, method = 'BH', n = length(Filter(Negate(is.nan), pv))))
-      
-      metaData$n.DE <- colSums2(dataHolder$adj.pv < 0.05, na.rm = T)
-      metaData$mean.fc <- colMeans2(dataHolder$fc, na.rm = T)
-      
       dataHolder$ts <- NULL
-      dataHolder$pv <- NULL
       dataHolder$meanrank <- NULL
       dataHolder$meanval <- NULL
       dataHolder$baserank <- NULL
       dataHolder$baseval <- NULL
       
-      metaData <- metaData %>% as.data.table %>% .[, .(rsc.ID, ee.ID, ee.Name, ee.Source, ee.NumSamples,
-                                                       ee.TagLongUri, ad.Name, ad.Company, ad.Sequencing,
-                                                       sf.Subset, sf.Cat, sf.CatLongUri, sf.ValLongUri,
+      metaData <- metaData %>% as.data.table %>% .[, .(rsc.ID, ee.Troubled, ee.Public, ee.ID, ee.Name, ee.Source,
+                                                       ee.NumSamples, ee.TagLongUri, ad.Name, ad.Company,
+                                                       ad.Sequencing, sf.Subset, sf.Cat, sf.CatLongUri, sf.ValLongUri,
                                                        cf.Cat, cf.CatLongUri, cf.ValLongUri, cf.BaseLongUri,
                                                        n.DE, mean.fc)]
+      
+      # Clean up the data.
+      
+      # If it was a free-text entry, it becomes NA here.
+      metaData[grepl('NA', cf.BaseLongUri, fixed = T), cf.BaseLongUri := gsub('; $', '', gsub('NA(; )?', '', cf.BaseLongUri))]
+      metaData[grepl('NA', cf.ValLongUri, fixed = T), cf.ValLongUri := gsub('; $', '', gsub('NA(; )?', '', cf.ValLongUri))]
+      metaData[grepl('NA', sf.CatLongUri, fixed = T), sf.CatLongUri := gsub('; $', '', gsub('NA(; )?', '', sf.CatLongUri))]
+      metaData[grepl('NA', sf.ValLongUri, fixed = T), sf.ValLongUri := gsub('; $', '', gsub('NA(; )?', '', sf.ValLongUri))]
+      
+      # After filtering NAs, we should make them real NAs
+      metaData[cf.BaseLongUri == '', cf.BaseLongUri := NA]
+      metaData[cf.ValLongUri == '', cf.ValLongUri := NA]
+      metaData[sf.CatLongUri == '', sf.CatLongUri := NA]
+      metaData[sf.ValLongUri == '', sf.ValLongUri := NA]
+      
+      # We don't want timecourse or dose-dependent contrasts, or ones where one/both contrasts is/are unknown
+      bad.rscs <- metaData[ee.Troubled | !ee.Public |
+                             cf.Cat %in% c('timepoint', 'generation', 'dose') |
+                             is.na(cf.BaseLongUri) |
+                             is.na(cf.ValLongUri), rsc.ID]
+      
+      # Drop experiment samples that don't meet our needs
+      dataHolder$fc[, bad.rscs] <- NULL
+      dataHolder$pv[, bad.rscs] <- NULL
+      metaData <- metaData[!(rsc.ID %in% bad.rscs)]
+      
+      dataHolder$adj.pv <- apply(dataHolder$pv, 2, function(pv)
+        p.adjust(pv, method = 'BH', n = length(pv))) # Assuming NaN p-values should be 1.
+      dataHolder$pv <- NULL
+      
+      metaData$n.DE <- colSums2(dataHolder$adj.pv < 0.05, na.rm = T)
+      metaData$mean.fc <- colMeans2(dataHolder$fc, na.rm = T)
       
       metaData$ee.ID <- metaData$ee.ID %>% as.integer
       
