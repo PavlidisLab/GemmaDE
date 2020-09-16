@@ -2,16 +2,18 @@ library(data.table)
 library(dplyr)
 library(compcodeR)
 library(DESeq2)
-library(pbmcapply)
-library(parallel)
+library(pbapply)
 library(edgeR)
 library(matrixStats)
+library(dqrng)
+library(matrixStats)
+library(parallel)
 
 mu.phi.estimates <- system.file("extdata", "Pickrell.Cheung.Mu.Phi.Estimates.rds",
                                 package = "compcodeR")
 mu.phi.estimates <- readRDS(mu.phi.estimates)
 
-# Copied from compcodeR::generateSyntheticData to remove IO in function body
+# Copied from compcodeR::generateSyntheticData to optimize
 generateSyntheticData <- function(dataset, n.vars, samples.per.cond, n.diffexp, repl.id = 1, 
                                   seqdepth = 1e7, minfact = 0.7, maxfact = 1.4, 
                                   relmeans = "auto", dispersions = "auto", 
@@ -21,48 +23,18 @@ generateSyntheticData <- function(dataset, n.vars, samples.per.cond, n.diffexp, 
                                   random.outlier.low.prob = 0, single.outlier.high.prob = 0, 
                                   single.outlier.low.prob = 0, effect.size = 1.5, 
                                   output.file = NULL) {
-  
-  ## Check output file name
-  if (!is.null(output.file)) {
-    if (!(substr(output.file, nchar(output.file) - 3, nchar(output.file)) == ".rds")) {
-      stop("output.file must be an .rds file.")
-    }
-  }
-  
-  ## Generate a unique ID for the data set
-  uID <- paste(sample(c(0:9, letters, LETTERS), 10, replace = TRUE), collapse = "")
-  
   ## Define conditions
   condition <- rep(c(1, 2), each = samples.per.cond)
   S1 <- which(condition == 1)
   S2 <- which(condition == 2)
   
   ## Define sets of upregulated, downregulated and non-differentially regulated genes
-  if (length(effect.size) == 1) {
-    n.upregulated <- floor(fraction.upregulated * n.diffexp)
-    if (fraction.upregulated != 0 & n.diffexp != 0) {
-      genes.upreg <- 1:n.upregulated
-    } else {
-      genes.upreg <- NULL
-    }
-    if (fraction.upregulated != 1 & n.diffexp != 0) {
-      genes.downreg <- (n.upregulated + 1):n.diffexp
-    } else {
-      genes.downreg <- NULL
-    }
-    genes.nonreg <- setdiff(1:n.vars, union(genes.upreg, genes.downreg))
-  } else {
-    if (length(effect.size) != n.vars) {
-      stop("The length of the effect.size vector must be the same as the number of simulated genes.")
-    } else {
-      genes.upreg <- which(effect.size > 1)
-      genes.downreg <- which(effect.size < 1)
-      genes.nonreg <- which(effect.size == 1)
-      n.upregulated <- length(genes.upreg)
-      n.diffexp <- length(genes.upreg) + length(genes.downreg)
-      fraction.upregulated <- n.upregulated/n.diffexp
-    }
-  }
+  genes.upreg <- which(effect.size > 1)
+  genes.downreg <- which(effect.size < 1)
+  genes.nonreg <- which(effect.size == 1)
+  n.upregulated <- length(genes.upreg)
+  n.diffexp <- length(genes.upreg) + length(genes.downreg)
+  fraction.upregulated <- n.upregulated/n.diffexp
   
   ### Differentially expressed genes
   differential.expression <- rep(0, n.vars)
@@ -73,263 +45,58 @@ generateSyntheticData <- function(dataset, n.vars, samples.per.cond, n.diffexp, 
   downregulation <- rep(0, n.vars)
   downregulation[genes.downreg] <- 1
   
-  if (is.character(relmeans) | is.character(dispersions)) {  # if they are 'auto'
-    ### Load mu and phi estimates from real data (Pickrell data set and Cheung data set)
-    # mu.phi.estimates <- system.file("extdata", "Pickrell.Cheung.Mu.Phi.Estimates.rds",
-    #                                 package = "compcodeR")
-    # mu.phi.estimates <- readRDS(mu.phi.estimates)
-    mu.estimates <- mu.phi.estimates$pickrell.cheung.mu
-    phi.estimates <- mu.phi.estimates$pickrell.cheung.phi
-    
-    ### Sample a mu and a phi for each gene in condition S1
-    to.include <- sample(1:length(mu.estimates), n.vars, 
+  ### Load mu and phi estimates from real data (Pickrell data set and Cheung data set)
+  mu.estimates <- mu.phi.estimates$pickrell.cheung.mu
+  phi.estimates <- mu.phi.estimates$pickrell.cheung.phi
+  
+  ### Sample a mu and a phi for each gene in condition S1
+  to.include <- dqsample(1:length(mu.estimates), n.vars,
                          replace = ifelse(n.vars > length(mu.estimates), TRUE, FALSE))
-    truedispersions.S1 <- phi.estimates[to.include]
-    truemeans.S1 <- mu.estimates[to.include]
-  } 
-  if (!is.character(relmeans)) {
-    if (length(relmeans) != n.vars) stop("The length of the relmeans vector must be the same as the number of simulated genes.")
-    truemeans.S1 <- c(relmeans)
-  }
-  if (!is.character(dispersions)) {
-    if (nrow(cbind(dispersions)) != n.vars) stop("The number of provided dispersions must be the same as the number of simulated genes.")
-    truedispersions.S1 <- cbind(dispersions)[, 1]
-    if (ncol(cbind(dispersions)) > 1) {
-      truedispersions.S2 <- cbind(dispersions)[, 2]
-    } else {
-      truedispersions.S2 <- truedispersions.S1
-    }
-  }
-  
+  truedispersions.S1 <<- phi.estimates[to.include]
+  truemeans.S1 <- mu.estimates[to.include]
+    
   ### Generate sequencing depths (nfacts * Nk)
-  nfacts <- runif(2 * samples.per.cond, min = minfact, max = maxfact)
-  seq.depths <- nfacts * seqdepth
-  
-  ### If not all genes are overdispersed, let some of them be Poisson distributed (dispersion = 0)
-  overdispersed <- rep(1, n.vars)
-  if (fraction.non.overdispersed > 0) {
-    overdispersed[genes.upreg[1:round(fraction.non.overdispersed * length(genes.upreg))]] <- 0
-    overdispersed[genes.downreg[1:round(fraction.non.overdispersed * length(genes.downreg))]] <- 0
-    overdispersed[genes.nonreg[1:round(fraction.non.overdispersed * length(genes.nonreg))]] <- 0
-  }
+  seq.depths <<- dqrunif(2 * samples.per.cond, min = minfact, max = maxfact) * seqdepth
   
   ### Find rates of mapping to each gene in each condition
   prob.S1 <- truemeans.S1
-  prob.S2 <- rep(0, length(prob.S1))
+  prob.S2 <- effect.size * prob.S1
   
-  if (length(effect.size) == 1) {
-    for (i in 1:n.vars) {
-      if (i %in% genes.upreg) {
-        prob.S2[i] <- (effect.size + rexp(1, rate = 1)) * prob.S1[i]
-      } else {
-        if (i %in% genes.downreg) {
-          prob.S2[i] <- 1/(effect.size + rexp(1, rate = 1)) * prob.S1[i]
-        } else {
-          prob.S2[i] <- prob.S1[i]
-        }
-      }
-    }
-  } else {
-    prob.S2 <- c(effect.size) * prob.S1
-  }
-  true.log2foldchange <- log2(prob.S2/prob.S1)
-  sum.S1 <- sum(prob.S1)
-  sum.S2 <- sum(prob.S2)
+  p.S1 <<- prob.S1 / sum(prob.S1)
+  p.S2 <- prob.S2 / sum(prob.S2)
   
   ### Find new dispersions for condition S2, depending on what prob.S2 is. 
   ### From the mu/phi estimates, sample a phi value from 
   ### the pairs where mu is similar to prob.S2.
-  if (is.character(dispersions)) {
-    truedispersions.S2 <- truedispersions.S1
-    if (between.group.diffdisp == TRUE) {
-      for (i in 1:length(truedispersions.S2)) {
-        sample.base <- phi.estimates[abs(log10(mu.estimates) - 
-                                           log10(prob.S2[i])) < 0.05]
-        if (length(sample.base) < 50) {
-          sample.base <- phi.estimates[order(abs(log10(mu.estimates) - 
-                                                   log10(prob.S2[i])))][1:500]
-        }
-        truedispersions.S2[i] <- sample(sample.base, 1)
-      }
-    }
-  }
-  
-  truedispersions.S1 <- truedispersions.S1 * overdispersed
-  truedispersions.S2 <- truedispersions.S2 * overdispersed
+  truedispersions.S2 <- truedispersions.S1
   
   ### Initialize data matrix
-  Z <- matrix(0, n.vars, length(S1) + length(S2))
   
   ### Generate data
-  for (i in 1:n.vars) {
-    for (j in 1:ncol(Z)) {
-      if (j %in% S1) {
-        if (overdispersed[i] == 1) {
-          Z[i, j] <- rnbinom(n = 1, mu = prob.S1[i]/sum.S1 * seq.depths[j], 
-                             size = 1/truedispersions.S1[i])
-        } else {
-          Z[i, j] <- rpois(n = 1, lambda = prob.S1[i]/sum.S1 * seq.depths[j])
-        }
-      } else {
-        if (overdispersed[i] == 1) {
-          Z[i, j] <- rnbinom(n = 1, mu = prob.S2[i]/sum.S2 * seq.depths[j], 
-                             size = 1/truedispersions.S2[i])
-        } else {
-          Z[i, j] <- rpois(n = 1, lambda = prob.S2[i]/sum.S2 * seq.depths[j])
-        }
-      }
-    }
-  }
-  
-  ### Add 'random' outliers
-  random.outliers <- matrix(0, nrow(Z), ncol(Z))
-  random.outliers.factor <- matrix(1, nrow(Z), ncol(Z))
-  if (random.outlier.high.prob != 0 | random.outlier.low.prob != 0) {
-    for (i in 1:nrow(Z)) {
-      for (j in 1:ncol(Z)) {
-        tmp <- runif(1)
-        if (tmp < random.outlier.high.prob) {
-          random.outliers[i, j] <- 1
-          random.outliers.factor[i, j] <- runif(1, min = 5, max = 10)
-        } else if (tmp < random.outlier.low.prob + random.outlier.high.prob) {
-          random.outliers[i, j] <- (-1)
-          random.outliers.factor[i, j] <- 1/runif(1, min = 5, max = 10)
-        }
-      }
-    }
-    Z <- round(random.outliers.factor * Z)
-  }
-  
-  ### Add 'single' outliers
-  has.single.outlier <- rep(0, n.vars)
-  single.outliers <- matrix(0, nrow(Z), ncol(Z))
-  single.outliers.factor <- matrix(1, nrow(Z), ncol(Z))
-  if (single.outlier.high.prob != 0 | single.outlier.low.prob != 0) {
-    has.single.outlier[genes.upreg[1:floor((single.outlier.high.prob + 
-                                              single.outlier.low.prob) * 
-                                             length(genes.upreg))]] <- 1
-    has.single.outlier[genes.downreg[1:floor((single.outlier.high.prob + 
-                                                single.outlier.low.prob) * 
-                                               length(genes.downreg))]] <- 1
-    has.single.outlier[genes.nonreg[1:floor((single.outlier.high.prob + 
-                                               single.outlier.low.prob) * 
-                                              length(genes.nonreg))]] <- 1
-    
-    for (i in 1:nrow(Z)) {
-      if (has.single.outlier[i] == 1) {
-        the.sample <- sample(1:(ncol(Z)), 1)
-        if (runif(1) < (single.outlier.high.prob/(single.outlier.high.prob + 
-                                                  single.outlier.low.prob))) {
-          single.outliers[i, the.sample] <- 1
-          single.outliers.factor[i, the.sample] <- runif(1, min = 5, max = 10)
-        } else {
-          single.outliers[i, the.sample] <- (-1)
-          single.outliers.factor[i, the.sample] <- 1/runif(1, min = 5, max = 10)
-        }
-      }
-    }
-    Z <- round(single.outliers.factor * Z)
-  }
+  Z <- do.call(cbind, lapply(1:(length(S1) + length(S2)), function(j) {
+    if(j %in% S1)
+      rnbinom(n.vars, 1/truedispersions.S1, mu = p.S1 * seq.depths[j])
+    else
+      rnbinom(n.vars, 1/truedispersions.S2, mu = p.S2 * seq.depths[j])
+  }))
   
   ### Assign variable names to rows
-  rownames(Z) <- 1:n.vars
-  
-  ### Find number of outliers (random, single, up, down) in each group
-  n.random.outliers.up.S1 <- apply(random.outliers[, S1] > 0, 1, sum)
-  n.random.outliers.up.S2 <- apply(random.outliers[, S2] > 0, 1, sum)
-  n.random.outliers.down.S1 <- apply(random.outliers[, S1] < 0, 1, sum)
-  n.random.outliers.down.S2 <- apply(random.outliers[, S2] < 0, 1, sum)
-  n.single.outliers.up.S1 <- apply(single.outliers[, S1] > 0, 1, sum)
-  n.single.outliers.up.S2 <- apply(single.outliers[, S2] > 0, 1, sum)
-  n.single.outliers.down.S1 <- apply(single.outliers[, S1] < 0, 1, sum)
-  n.single.outliers.down.S2 <- apply(single.outliers[, S2] < 0, 1, sum)
-  
-  ### Normalize (TMM) and compute A and M values from the pseudocounts
-  nf <- calcNormFactors(Z)
-  norm.factors <- nf * colSums(Z)
-  common.libsize <- exp(mean(log(colSums(Z))))
-  pseudocounts <- sweep(Z + 0.5, 2, norm.factors, '/') * common.libsize
-  log2.pseudocounts <- log2(pseudocounts)
-  M.value <- apply(log2.pseudocounts[, S2], 1, mean) - 
-    apply(log2.pseudocounts[, S1], 1, mean)
-  A.value <- 0.5*(apply(log2.pseudocounts[, S2], 1, mean) + 
-                    apply(log2.pseudocounts[, S1], 1, mean))
-  
-  ### Create an annotation data frame
-  variable.annotations <- data.frame(truedispersions.S1 = truedispersions.S1, 
-                                     truedispersions.S2 = truedispersions.S2, 
-                                     truemeans.S1 = prob.S1, 
-                                     truemeans.S2 = prob.S2, 
-                                     n.random.outliers.up.S1 = n.random.outliers.up.S1, 
-                                     n.random.outliers.up.S2 = n.random.outliers.up.S2, 
-                                     n.random.outliers.down.S1 = n.random.outliers.down.S1, 
-                                     n.random.outliers.down.S2 = n.random.outliers.down.S2, 
-                                     n.single.outliers.up.S1 = n.single.outliers.up.S1, 
-                                     n.single.outliers.up.S2 = n.single.outliers.up.S2, 
-                                     n.single.outliers.down.S1 = n.single.outliers.down.S1, 
-                                     n.single.outliers.down.S2 = n.single.outliers.down.S2, 
-                                     M.value = M.value, 
-                                     A.value = A.value, 
-                                     truelog2foldchanges = true.log2foldchange, 
-                                     upregulation = upregulation, 
-                                     downregulation = downregulation, 
-                                     differential.expression = differential.expression)
-  rownames(variable.annotations) <- rownames(Z)
+  rownames(Z) <- paste0('g', 1:nrow(Z))
+  colnames(Z) <- paste0('sample', 1:ncol(Z))
   
   ### Create a sample annotation data frame
-  sample.annotations <- data.frame(condition = condition, 
-                                   depth.factor = nfacts)
-  
-  ### Include information about the parameters
-  info.parameters <- list('n.diffexp' = n.diffexp, 
-                          'fraction.upregulated' = fraction.upregulated, 
-                          'between.group.diffdisp' = between.group.diffdisp, 
-                          'filter.threshold.total' = filter.threshold.total, 
-                          'filter.threshold.mediancpm' = filter.threshold.mediancpm, 
-                          'fraction.non.overdispersed' = fraction.non.overdispersed, 
-                          'random.outlier.high.prob' = random.outlier.high.prob,
-                          'random.outlier.low.prob' = random.outlier.low.prob,
-                          'single.outlier.high.prob' = single.outlier.high.prob, 
-                          'single.outlier.low.prob' = single.outlier.low.prob,
-                          'effect.size' = effect.size, 
-                          'samples.per.cond' = samples.per.cond, 
-                          'repl.id' = repl.id, 'dataset' = dataset, 
-                          'uID' = uID, 'seqdepth' = seqdepth, 
-                          'minfact' = minfact, 'maxfact' = maxfact)
+  sample.annotations <- data.frame(condition = condition)
   
   ### Filter the data with respect to total count
-  s <- apply(Z, 1, sum)
-  keep.T <- which(s >= filter.threshold.total)
-  Z.T <- Z[keep.T, ]
-  variable.annotations.T <- variable.annotations[keep.T, ]
-  filtering <- paste('total count >=', filter.threshold.total)
+  Z <- Z[rowSums2(Z) >= filter.threshold.total, ]
   
   ### Filter the data with respect to median cpm
-  cpm <- sweep(Z.T, 2, apply(Z.T, 2, sum), '/') * 1e6
-  m <- apply(cpm, 1, median)
-  keep.C <- which(m >= filter.threshold.mediancpm)
-  Z.TC <- Z.T[keep.C, ]
-  variable.annotations.TC <- variable.annotations.T[keep.C, ]
-  filtering <- paste(filtering, "; ", paste('median cpm >=', filter.threshold.mediancpm))
+  Z <- Z[rowMedians(t(t(Z) / colSums2(Z))) >= (filter.threshold.mediancpm / 1e6), ]
   
   ### Generate sample and variable names
-  rownames(Z.TC) <- paste("g", 1:nrow(Z.TC), sep = "")
-  colnames(Z.TC) <- paste("sample", 1:ncol(Z.TC), sep = "")
-  rownames(sample.annotations) <- colnames(Z.TC)
-  rownames(variable.annotations.TC) <- rownames(Z.TC)
+  rownames(sample.annotations) <- colnames(Z)
   
-  data.object <- compData(count.matrix = Z.TC, 
-                          variable.annotations = variable.annotations.TC, 
-                          sample.annotations = sample.annotations, 
-                          filtering = filtering, 
-                          info.parameters = info.parameters)
-  
-  ## Save results
-  if (!is.null(output.file)) {
-    saveRDS(data.object, file = output.file)
-  }
-  
-  return(invisible(data.object))
+  list(count.matrix = Z, sample.annotations = sample.annotations)
 }
 
 letterWrap <- function(n, depth = 1) {
@@ -344,7 +111,7 @@ letterWrap <- function(n, depth = 1) {
 
 set.seed(18232)
 
-N_EXPERIMENTS <- floor(11880/3)
+N_EXPERIMENTS <- 11880
 N_GENES <- 27151
 
 experiments <- letterWrap(N_EXPERIMENTS)
@@ -367,16 +134,16 @@ saveRDS(gene.meta, '/space/scratch/jsicherman/Thesis Work/data/artificial.gene.m
 
 experiment.samples <- 2 + as.integer(rgamma(N_EXPERIMENTS, 0.5, 8) * 1e3)
 
-options(mc.cores = 9)
-
-experiment.data <- pbmclapply(1:N_EXPERIMENTS, function(experiment) {
+options(mc.cores = 30)
+experiment.data <- mclapply(1:N_EXPERIMENTS, function(experiment) {
+  cat(paste0(Sys.time(), ' ..... ', round(100 * experiment/N_EXPERIMENTS), '%\n'))
   genes.dysregulated <- sapply(1:N_GENES, function(x) {
     sample(-1:1, 1, prob = c(genes.diff.prob[x] * (1 - genes.diff.prob.up[x]),
                              1 - genes.diff.prob[x],
                              genes.diff.prob[x] * genes.diff.prob.up[x]))
   })
   
-  effects <- (1.5 + rexp(N_GENES)) * (genes.dysregulated != 0)
+  effects <- (1.5 + dqrexp(N_GENES)) * (genes.dysregulated != 0)
   
   effects[genes.dysregulated == 0] <- 1
   effects[genes.dysregulated == -1] <- 1 / effects[genes.dysregulated == -1]
@@ -385,17 +152,16 @@ experiment.data <- pbmclapply(1:N_EXPERIMENTS, function(experiment) {
                                n.vars = N_GENES, samples.per.cond = experiment.samples[experiment],
                                effect.size = effects)
   
-  tmp@sample.annotations$condition <- factor(tmp@sample.annotations$condition, labels = LETTERS[1:2])
+  tmp$sample.annotations$condition <- factor(tmp$sample.annotations$condition, labels = LETTERS[1:2])
   
-  tmp <- DESeqDataSetFromMatrix(countData = tmp@count.matrix,
-                                colData = tmp@sample.annotations,
-                                design = ~ condition, tidy = ) %>% DESeq(quiet = T) %>% results %>%
-    as.data.frame %>% .[, c('log2FoldChange', 'padj')]
-  
-  list(fc = tmp[, 'log2FoldChange'], adj.pv = tmp[, 'padj'])
+  suppressMessages(DESeqDataSetFromMatrix(countData = tmp$count.matrix,
+                                          colData = tmp$sample.annotations,
+                                          design = ~ condition) %>% DESeq(quiet = T) %>% results %>%
+                     as.data.table(keep.rownames = T) %>% .[, .(entrez.ID = rn, fc = log2FoldChange, adj.pv = padj)])
 })
 
 saveRDS(experiment.data, '/space/scratch/jsicherman/Thesis Work/data/artificial.rds')
+source('/home/jsicherman/Thesis Work/main/load.R')
 
 geneAssociations <- function(N) {
   # Divide all genes into discrete categories (age, behavior, biological process, biological sex, etc.)
@@ -414,17 +180,18 @@ geneAssociations <- function(N) {
 
 gene.assoc <- geneAssociations(N_GENES)
 
+saveRDS(gene.assoc, '/space/scratch/jsicherman/Thesis Work/data/gene.associations.rds')
+
 pipeFilter <- function(data, FUNC) {
   Filter(FUNC, data)
 }
 
-exp.assoc <- rbindlist(pbmclapply(experiment.data, function(experiment) {
-  # Each experiment is a list(fc = ..., adj.pv = ...)
+exp.assoc <- rbindlist(mclapply(experiment.data, function(experiment) {
+  experiment <- experiment[!is.na(adj.pv)]
   # Each gene has an associated factor its upregulation is associated with (reverse for downregulation)
 
   # An experiment's tags can be driven by any DEG
-  genes <- which(experiment$adj.pv < 0.05)
-  genes <- data.table(entrez.ID = paste0('g', genes), upregulated = experiment$fc[genes] > 0)
+  genes <- experiment[adj.pv < 0.05, .(entrez.ID, upregulated = fc > 0)]
 
   # Select between one and three genes whose tags will be used to generate this experiment's tags
   whichGenes <- genes$entrez.ID[sample(1:nrow(genes), sample(1:min(nrow(genes), 3), 1, prob = c(0.8, 0.15, 0.05)[1:min(nrow(genes), 3)]))]
@@ -458,8 +225,8 @@ exp.assoc <- rbindlist(pbmclapply(experiment.data, function(experiment) {
              ee.TagLongUri = ee.TagLongUri,
              cf.ValLongUri = cf.ValLongUri,
              cf.BaseLongUri = cf.BaseLongUri,
-             n.DE = sum(experiment$adj.pv < 0.05, na.rm = T),
-             mean.fc = mean(experiment$fc, na.rm = T))
+             n.DE = experiment[adj.pv < 0.05, .N],
+             mean.fc = experiment[, mean(fc, na.rm = T)])
 }))
 
 rm(pipeFilter)

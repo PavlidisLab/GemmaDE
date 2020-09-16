@@ -15,7 +15,7 @@ advanceProgress <- function(session, detail, fine = F) {
     setProgress(session, session$userData$progress + 1, detail, fine)
 }
 
-setProgress <- function(session, progress, detail, fine = F) {
+setProgress <- function(session, progress, detail = '', fine = F) {
   if(!fine)
     session$userData$progress <- progress
   
@@ -80,6 +80,7 @@ server <- function(input, output, session) {
     updateSelectizeInput(session, 'scope', selected = getOption('app.ontology'))
     updateSelectizeInput(session, 'directional', selected = getOption('app.directional'))
     updateCheckboxInput(session, 'mfx', value = getOption('app.mfx'))
+    updateCheckboxInput(session, 'geeq', value = getOption('app.geeq'))
     updateNumericInput(session, 'distance', value = getOption('app.distance_cutoff'))
     updateNumericInput(session, 'pv', value = getOption('app.pv'))
     updateSliderInput(session, 'fc', value = c(getOption('app.fc_lower'), getOption('app.fc_upper')))
@@ -127,7 +128,7 @@ server <- function(input, output, session) {
     experiments <- search(genes, taxa, options, session)
     
     if(is.null(experiments)) {
-      setProgress(session, getOption('max.progress.steps'), '')
+      setProgress(session, getOption('max.progress.steps'))
       output$results_header <- renderUI({
         generateResultsHeader(HTML('<h2 data-toggle="tooltip" data-placement="top" title="Relax thresholds or modify gene set.">Invalid search.</h2>'))
       })
@@ -136,7 +137,7 @@ server <- function(input, output, session) {
       conditions <- enrich(experiments, taxa, scope, session)
       
       if(is.null(conditions)) {
-        setProgress(session, getOption('max.progress.steps'), '')
+        setProgress(session, getOption('max.progress.steps'))
         output$results_header <- renderUI({ generateResultsHeader('No conditions found in scope.') })
         output$results <- NULL
       } else {
@@ -145,14 +146,14 @@ server <- function(input, output, session) {
         # Compute experiments in scope
         mCache <- merge(CACHE.BACKGROUND[[taxa]][, .(tag, rsc.ID)],
                         ONTOLOGIES.DEFS[OntologyScope %in% scope, .(Node_Long, Definition)],
-                        by.x = 'tag', by.y = 'Node_Long') %>% unique %>%
+                        by.x = 'tag', by.y = 'Node_Long', sort = F, allow.cartesian = T) %>% unique %>%
           .[Definition %in% conditions$Definition]
         eDF <- experiments %>% as.data.frame %>% `rownames<-`(rownames(experiments)) %>% `colnames<-`(colnames(experiments))
         
         # Generate the results header
         output$results_header <- renderUI({
           generateResultsHeader(HTML(paste0('<h2>Found ',
-                                            nrow(experiments), ' sample', ifelse(nrow(experiments) > 1, 's', ''), ' differentially expressing ',
+                                            nrow(experiments), ' experiment', ifelse(nrow(experiments) > 1, 's', ''), ' differentially expressing ',
                                             ifelse(ncol(experiments) == 2, colnames(experiments)[1],
                                                    paste0('<span data-toggle="tooltip" data-placement="top" title="',
                                                           paste0(colnames(experiments)[1:(ncol(experiments) - 1)], collapse = ', '), '">',
@@ -163,13 +164,13 @@ server <- function(input, output, session) {
         geneScores <- data.table(def = unique(conditions$Definition))
         
         for(indx in 1:(ncol(experiments) - 1)) {
-          geneScores[, Evidence := paste0(DATA.HOLDER[[taxa]]@experiment.meta[rsc.ID %in% mCache[Definition == def, rsc.ID], unique(ee.ID)], collapse = ','), def]
-          geneScores[, colnames(experiments)[indx] := paste0(eDF[mCache[Definition == def, rsc.ID], indx], collapse = ','), def]
-          # geneScores[, colnames(experiments)[indx] := mean(eDF[mCache[Definition == def, rsc.ID], indx], na.rm = T), def]
+          geneScores[, N := DATA.HOLDER[[taxa]]@experiment.meta[rsc.ID %in% mCache[Definition == def, rsc.ID], length(unique(ee.ID))], def]
+          geneScores[, Evidence := paste0(head(DATA.HOLDER[[taxa]]@experiment.meta[rsc.ID %in% mCache[Definition == def, rsc.ID], unique(ee.ID)], 20), collapse = ','), def]
+          geneScores[, colnames(experiments)[indx] := paste0(head(eDF[intersect(rownames(eDF), mCache[Definition == def, rsc.ID]), indx], 20), collapse = ','), def]
         }
         
         # Rename things and add the ES
-        conditions <- merge(conditions, geneScores, by.x = 'Definition', by.y = 'def') %>% setorder(pv.chisq) %>%
+        conditions <- merge(conditions, geneScores, by.x = 'Definition', by.y = 'def', sort = F, allow.cartesian = T) %>% setorder(pv.chisq) %>%
           setnames(c('chisq', 'pv.chisq', 'pv.fisher'), c('χ2', 'P-value (χ2)', 'P-value (Fisher)'))# %>%
           # .[, `E` := (N.ranked * (N.bg - N.y)) / ((N.tags - N.ranked) * N.y)]
         
@@ -200,6 +201,7 @@ server <- function(input, output, session) {
                     score.lower = input$score[1], score.upper = input$score[2],
                     dir = input$directional,
                     mfx = input$mfx,
+                    geeq = input$geeq,
                     distance = input$distance)
     
     # Update the query string
@@ -215,6 +217,7 @@ server <- function(input, output, session) {
                              paste0('&fc=[', paste0(input$fc, collapse = ','), ']'), ''),
                       switch((options$dir == getOption('app.directional')) + 1, paste0('&dir=', options$dir), ''),
                       switch((options$mfx == getOption('app.mfx')) + 1, paste0('&mfx=', options$mfx), ''),
+                      switch((options$geeq == getOption('app.geeq')) + 1, paste0('&geeq=', options$geeq), ''),
                       switch((options$distance == getOption('app.distance_cutoff')) + 1, paste0('&distance=', options$distance), ''))
       updateQueryString(query, 'push')
     }

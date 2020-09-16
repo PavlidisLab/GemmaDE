@@ -22,6 +22,7 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
   FC_U_THRESHOLD <- options$fc.upper
   DIR <- options$dir
   MFX <- options$mfx
+  GEEQ <- options$geeq
   
   # Data Extraction ---------------------------------------------------------
 
@@ -37,7 +38,6 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
     pv <- t(pv)
   
   # Only retain experiments that have at least one of the GOI as DE (pv < threshold)
-  # TODO For some reason these aren't the same length?
   colFilter <- colSums2(pv < P_THRESHOLD, na.rm = T) > 0 &
     DATA.HOLDER[[taxa]]@experiment.meta[, !is.na(cf.BaseLongUri) | !is.na(cf.ValLongUri)]
   pv <- pv[, colFilter]
@@ -90,27 +90,29 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
   
   # Data Processing ---------------------------------------------------------
   advanceProgress(session, 'Ranking')
-  
+
   tf <- t(t(logFC) / (1 + rowMeans2(abs(logFC) %>% as.matrix, na.rm = T))) %>% as.data.table
   
   n.DE.exp[is.na(n.DE.exp)] <- 0
   tf <- t(t(tf) / log2(2 + n.DE.exp)) %>% as.data.table # Weight by number of DEGs in this experiment
   
   geeq[is.na(geeq)] <- 0
-  tf <- t(t(tf) * (1 + pmax(geeq, 0))) %>% as.data.table # Weight by experiment quality score
+  if(GEEQ)
+    tf <- t(t(tf) * (1 + pmax(geeq, 0))) %>% as.data.table # Weight by experiment quality score
   
   pv[is.na(pv)] <- 1
-  tf <- tf * -log10(pv) # TODO
+  tf <- tf * -log10(pv + 1e-50) # TODO
 
-  query <- rowMaxs(tf %>% as.matrix)
+  query <- matrixStats::rowQuantiles(tf %>% as.matrix, probs = 0.8)# rowMaxs(tf %>% as.matrix)
 
   # Shrink by MFX /after/ extracting the query
   
-  if(MFX)
-    tf <- tf * (1 - DATA.HOLDER[[taxa]]@gene.meta$mfx.Rank[rowFilter] / 5) # TODO Fine tune? Effect similar to idf?
+  # if(MFX)
+  #   tf <- tf * (1 - DATA.HOLDER[[taxa]]@gene.meta$mfx.Rank[rowFilter] / 5) # TODO Fine tune? Effect similar to idf?
   
   # TODO Should we do IDF on a corpus-level or subset level? Should it recompute n.DE for the p threshold?
-  idf <- log10(length(DATA.HOLDER[[taxa]]@gene.meta$n.DE) / (1 + n.DE.gen)) + 1
+  idf <- log10(length(DATA.HOLDER[[taxa]]@gene.meta$n.DE) / (1 + DATA.HOLDER[[taxa]]@gene.meta$mfx.Rank[rowFilter])) + 1
+  # idf <- log10(length(DATA.HOLDER[[taxa]]@gene.meta$n.DE) / (1 + n.DE.gen)) + 1
   # idf <- log10(ncol(tf) / (1 + rowSums2(tf != 0))) + 1
   tf[, query := query]
   tfidf <- tf * idf
@@ -144,15 +146,12 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
 #' @param rsc.IDs A list of experiment rsc IDs or NULL for everything
 #' @param session The Shiny session
 getTags <- function(taxa = getOption('app.taxa'), scope = getOption('app.ontology'), rsc.IDs = NULL, session = NULL) {
-  if(!exists('CACHE.BACKGROUND'))
-    precomputeTags(taxa)
-  
   if(is.null(rsc.IDs))
     rsc.IDs <- CACHE.BACKGROUND[[taxa]][, unique(rsc.ID)]
   
   CACHE.BACKGROUND[[taxa]] %>%
     .[rsc.ID %in% rsc.IDs & tag %in% ONTOLOGIES[OntologyScope %in% scope, as.character(ChildNode_Long, ParentNode_Long)]] %>%
-    merge(ONTOLOGIES.DEFS[OntologyScope %in% scope], by.x = 'tag', by.y = 'Node_Long') %>%
+    merge(ONTOLOGIES.DEFS[OntologyScope %in% scope], by.x = 'tag', by.y = 'Node_Long', sort = F, allow.cartesian = T) %>%
     .[, .(distance = mean(distance)), .(rsc.ID, Definition)] %>% setorder(distance, rsc.ID)
 }
 
@@ -196,17 +195,14 @@ enrich <- function(rankings, taxa = getOption('app.taxa'), scope = getOption('ap
   # mMaps[[1]] is the background tags, mMaps[[2]] is the foreground tags.
   mMaps <- list(getTags(taxa, scope, NULL, session), getTags(taxa, scope, rankings[, rsc.ID], session))
   
-  mMaps[[2]] <- mMaps[[2]] %>% merge(rankings, by = 'rsc.ID', sort = F)
-  
-  tmp0 <<- rankings
-  tmp1 <<- mMaps
+  mMaps[[2]] <- mMaps[[2]] %>% merge(rankings, by = 'rsc.ID', sort = F, allow.cartesian = T)
   
   advanceProgress(session, 'Wrapping up')
   
   aprior <- function() {
-    merge(mMaps[[2]][, .(N.x = .N, N.ranked = sum(rank), distance = median(distance)), Definition][, N.tags := sum(N.ranked)],
+    merge(mMaps[[2]][, .(N.x = .N, N.ranked = sum(rank / (1 + distance)), distance = median(distance)), Definition][, N.tags := sum(N.ranked)],
           mMaps[[1]][!(rsc.ID %in% rankings[, rsc.ID]), .(N.y = .N), Definition][, N.bg := sum(N.y)],
-          by = 'Definition', sort = F)
+          by = 'Definition', sort = F, allow.cartesian = T)
   }
   
   fisher <- function(input) {
@@ -223,5 +219,5 @@ enrich <- function(rankings, taxa = getOption('app.taxa'), scope = getOption('ap
                                                                                 nrow = 2)))[c('p.value', 'statistic')]), Definition]
   }
 
-  aprior() %>% chisq %>% fisher %>% .[!(Definition %in% BLACKLIST)] %>% setorder(pv.chisq)
+  aprior() %>% chisq %>% fisher %>% setorder(pv.chisq) # %>% .[!(Definition %in% BLACKLIST)] 
 }

@@ -43,7 +43,7 @@ generateResults <- function(taxa = getOption('app.taxa'), scope = getOption('app
                                     paste0('<a target=_blank href=https://gemma.msl.ubc.ca/expressionExperiment/showExpressionExperiment.html?id=',
                                            experiment, '>',
                                            DATA.HOLDER[[taxa]]@experiment.meta[ee.ID == experiment, unique(ee.Name)], '</a>')
-                                  }) %>% paste0(collapse = ', '), '">', paste(length(unlist(strsplit(Evidence, ','))), paste0('Experiment', ifelse(length(unlist(strsplit(Evidence, ','))) > 1, 's', '')), '<i class="fas fa-question-circle" style="cursor: pointer;"></i>'), '</span>'), Definition]
+                                  }) %>% paste0(collapse = ', '), '">', paste(N, paste0('Experiment', ifelse(N > 1, 's', '')), '<i class="fas fa-question-circle" style="cursor: pointer;"></i>'), '</span>'), Definition]
   
   mTable <- datatable(conditions[, outputColumns, with = F] %>% as.data.frame,
                       extensions = c('FixedHeader', 'Buttons'),
@@ -157,7 +157,8 @@ ui <- fluidPage(style = 'height: 100%;',
                          column(6, wellPanel(`well-name` = 'Scoring',
                            selectizeInput('directional', 'Desired Sign', c('Ignore', 'Upregulated', 'Downregulated'), selected = getOption('app.directional')),
                            materialSwitch('mfx', 'Multifunctionality', value = getOption('app.mfx'), right = T),
-                           numericInput('pv', 'P-value threshold', value = getOption('app.pv'), step = 0.01, min = 0, max = 1),
+                           materialSwitch('geeq', 'Experiment quality', value = getOption('app.geeq'), right = T),
+                           numericInput('pv', 'Significance threshold', value = getOption('app.pv'), step = 0.01, min = 0, max = 1),
                            sliderInput('fc', 'FC threshold', value = c(getOption('app.fc_lower'), getOption('app.fc_upper')), step = 0.1, min = 0, max = 10, ticks = F)))
                 )),
       

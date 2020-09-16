@@ -128,11 +128,11 @@ if(!exists('DATA.HOLDER')) {
   
   # Pre-load all ontology expansions
   if(file.exists('data/CACHE.BACKGROUND.rds'))
-    CACHE.BACKGROUND <<- readRDS('data/CACHE.BACKGROUND.rds')
+    CACHE.BACKGROUND <- readRDS('data/CACHE.BACKGROUND.rds')
   else {
-    CACHE.BACKGROUND <<- lapply(Filter(function(x) x != 'artificial', getOption('app.all_taxa')), precomputeTags)
+    CACHE.BACKGROUND <- lapply(getOption('app.all_taxa'), precomputeTags)
     
-    names(CACHE.BACKGROUND) <<- Filter(function(x) x != 'artificial', getOption('app.all_taxa'))
+    names(CACHE.BACKGROUND) <- getOption('app.all_taxa')
     
     saveRDS(CACHE.BACKGROUND, 'data/CACHE.BACKGROUND.v2.rds')
   }
