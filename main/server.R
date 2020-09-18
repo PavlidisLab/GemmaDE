@@ -45,7 +45,6 @@ server <- function(input, output, session) {
     updateSelectizeInput(session, 'genes', options = list(persist = F, create = T, createOnBlur = T))
     session$sendCustomMessage('querySet', genes)
     updateSelectizeInput(session, 'taxa', selected = query$taxa)
-    updateSelectizeInput(session, 'directional', selected = ifelse(is.null(query$dir), getOption('app.directional'), query$dir))
     updateCheckboxInput(session, 'mfx', value = ifelse(is.null(query$mfx), getOption('app.mfx'), query$mfx))
     updateNumericInput(session, 'distance', value = ifelse(is.null(query$distance), getOption('app.distance_cutoff'), query$distance))
     updateNumericInput(session, 'pv', value = ifelse(is.null(query$pv), getOption('app.pv'), query$pv))
@@ -78,7 +77,6 @@ server <- function(input, output, session) {
     updateTextInput(session, 'genes', value = '')
     updateSelectizeInput(session, 'taxa', selected = NULL)
     updateSelectizeInput(session, 'scope', selected = getOption('app.ontology'))
-    updateSelectizeInput(session, 'directional', selected = getOption('app.directional'))
     updateCheckboxInput(session, 'mfx', value = getOption('app.mfx'))
     updateCheckboxInput(session, 'geeq', value = getOption('app.geeq'))
     updateNumericInput(session, 'distance', value = getOption('app.distance_cutoff'))
@@ -158,6 +156,7 @@ server <- function(input, output, session) {
           .[rsc.ID %in% rownames(experiments)] %>%
           merge(ONTOLOGIES.DEFS[OntologyScope %in% scope], by.x = 'cf.BaseLongUri', by.y = 'Node_Long', sort = F, allow.cartesian = T) %>%
           merge(ONTOLOGIES.DEFS[OntologyScope %in% scope], by.x = 'cf.ValLongUri', by.y = 'Node_Long', sort = F, allow.cartesian = T) %>%
+          .[is.na(Definition.x), Definition.x := cf.BaseLongUri] %>% .[is.na(Definition.y), Definition.y := cf.ValLongUri] %>%
           .[, .(rsc.ID, cf.BaseLongUri = Definition.x, cf.ValLongUri = Definition.y)] %>%
           .[cf.BaseLongUri %in% conditions[, cf.BaseLongUri] & cf.ValLongUri %in% conditions[, cf.ValLongUri]] %>%
           unique %>% merge(DATA.HOLDER[[taxa]]@experiment.meta[, .(rsc.ID, ee.ID)], by = 'rsc.ID', sort = F, allow.cartesian = T) %>%
@@ -207,7 +206,6 @@ server <- function(input, output, session) {
                     pv = input$pv,
                     fc.lower = input$fc[1], fc.upper = input$fc[2],
                     score.lower = input$score[1], score.upper = input$score[2],
-                    dir = input$directional,
                     mfx = input$mfx,
                     geeq = input$geeq,
                     distance = input$distance)
@@ -223,7 +221,6 @@ server <- function(input, output, session) {
                       switch((options$pv == getOption('app.pv')) + 1, paste0('&pv=', options$pv), ''),
                       switch(isTRUE(all.equal(input$fc, c(getOption('app.fc_lower'), getOption('app.fc_upper')))) + 1,
                              paste0('&fc=[', paste0(input$fc, collapse = ','), ']'), ''),
-                      switch((options$dir == getOption('app.directional')) + 1, paste0('&dir=', options$dir), ''),
                       switch((options$mfx == getOption('app.mfx')) + 1, paste0('&mfx=', options$mfx), ''),
                       switch((options$geeq == getOption('app.geeq')) + 1, paste0('&geeq=', options$geeq), ''),
                       switch((options$distance == getOption('app.distance_cutoff')) + 1, paste0('&distance=', options$distance), ''))

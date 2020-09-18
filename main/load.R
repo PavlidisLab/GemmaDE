@@ -21,10 +21,8 @@ jsonify <- function(str) {
 #' return a vector of those values, coercing NA strings into true NAs.
 #'
 #' @param entry NA or a character of semicolon delimited (; ) values.
-#' @param withKey A key to associate with this
 #'
-#' @return A character vector of values in the input character. If @param withKey is non-null, a data table with
-#' two columns, one for each key and entry.
+#' @return A character vector of values in the input character.
 parseListEntry <- function(entry, withKey = NULL) {
   if(length(entry) == 0) return(NA)
   
@@ -77,21 +75,32 @@ if(!exists('DATA.HOLDER')) {
       metaData <- metaData %>% as.data.table %>% .[, .(rsc.ID, ee.Troubled, ee.Public, ee.ID, ee.Name, ee.Source,
                                                        ee.NumSamples, ee.TagLongUri, ad.Name, ad.Company,
                                                        ad.Sequencing, sf.Subset, sf.Cat, sf.CatLongUri, sf.ValLongUri,
-                                                       cf.Cat, cf.CatLongUri, cf.ValLongUri, cf.BaseLongUri)]
+                                                       cf.Cat, cf.CatLongUri, cf.Val, cf.ValLongUri, cf.Baseline, cf.BaseLongUri)]
       
       # Clean up the data.
+      
+      # Add structured text entries that will be dealt with specially
+      metaData[is.na(cf.BaseLongUri), cf.BaseLongUri := cf.Baseline]
+      metaData[is.na(cf.ValLongUri), cf.ValLongUri := cf.Val]
+      
+      clean <- function(baselines, baseUris) {
+        unlist(lapply(1:length(baselines), function(i) {
+          tmp <- parseListEntry(baseUris[i])
+          tmp[is.na(tmp)] <- parseListEntry(baselines[i])[is.na(tmp)]
+          paste0(tmp, collapse = '; ')
+        }))
+      }
+      
+      metaData[grepl('NA', cf.BaseLongUri, fixed = T), cf.BaseLongUri := clean(cf.Baseline, cf.BaseLongUri)]
+      metaData[grepl('NA', cf.ValLongUri, fixed = T), cf.ValLongUri := clean(cf.Val, cf.ValLongUri)]
       
       # If it was a free-text entry, it becomes NA here.
       metaData[grepl('NA', cf.BaseLongUri, fixed = T), cf.BaseLongUri := gsub('; $', '', gsub('NA(; )?', '', cf.BaseLongUri))]
       metaData[grepl('NA', cf.ValLongUri, fixed = T), cf.ValLongUri := gsub('; $', '', gsub('NA(; )?', '', cf.ValLongUri))]
-      metaData[grepl('NA', sf.CatLongUri, fixed = T), sf.CatLongUri := gsub('; $', '', gsub('NA(; )?', '', sf.CatLongUri))]
-      metaData[grepl('NA', sf.ValLongUri, fixed = T), sf.ValLongUri := gsub('; $', '', gsub('NA(; )?', '', sf.ValLongUri))]
       
       # After filtering NAs, we should make them real NAs
       metaData[cf.BaseLongUri == '', cf.BaseLongUri := NA]
       metaData[cf.ValLongUri == '', cf.ValLongUri := NA]
-      metaData[sf.CatLongUri == '', sf.CatLongUri := NA]
-      metaData[sf.ValLongUri == '', sf.ValLongUri := NA]
       
       # We don't want:
       # Troubled or private experiments

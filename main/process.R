@@ -20,7 +20,6 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
   P_THRESHOLD <- options$pv
   FC_L_THRESHOLD <- options$fc.lower
   FC_U_THRESHOLD <- options$fc.upper
-  DIR <- options$dir
   MFX <- options$mfx
   GEEQ <- options$geeq
   
@@ -56,13 +55,13 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
   logFC <- DATA.HOLDER[[taxa]]@data$fc[rowFilter, colFilter]
   logFC[is.na(logFC)] <- 0
   
-  if(DIR == 'Ignore')
-    logFC <- abs(logFC)
-  
   if(n.genes == 1)
     logFC <- t(logFC)
   
   logFC <- logFC %>% as.data.table
+  
+  directions <- ifelse(colMeans2(logFC %>% as.matrix) < 0, -1, 1)
+  logFC <- abs(logFC)
   
   # Only retain experiments that have at least one of the GOI with threshold_u > abs(logFC) > threshold_l
   if(FC_L_THRESHOLD != 0 || FC_U_THRESHOLD != 0) {
@@ -73,19 +72,10 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
     
     colFilter <- colSums2(exFilter) > 0
     logFC <- logFC %>% .[, colFilter, with = F]
+    directions <- directions[colFilter]
     pv <- pv[, colFilter, with = F]
     n.DE.exp <- n.DE.exp[colFilter]
     geeq <- geeq[colFilter]
-  }
-  
-  if(DIR != 'Ignore') {
-    # Force all entries to be positive
-    if(any(logFC < 0))
-      logFC <- logFC + abs(min(logFC))
-    
-    # Flip the matrix so maximum values will be the smallest (or largest negative) ones
-    if(DIR == 'Downregulated')
-      logFC <- max(logFC) - logFC
   }
   
   # Data Processing ---------------------------------------------------------
@@ -134,6 +124,7 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
   
   rbind(tfidf, scores) %>% t %>% as.data.table %>%
     `colnames<-`(c(DATA.HOLDER[[taxa]]@gene.meta$gene.Name[rowFilter], 'score')) %>%
+    .[, direction := directions] %>%
     `rownames<-`(colnames(tfidf)) %>% setorder(-score)
 }
 
@@ -149,12 +140,13 @@ getTags <- function(taxa = getOption('app.taxa'), scope = getOption('app.ontolog
   if(is.null(rsc.IDs))
     rsc.IDs <- CACHE.BACKGROUND[[taxa]][, unique(rsc.ID)]
   
-  graphTerms <- ONTOLOGIES[OntologyScope %in% scope, as.character(ChildNode_Long, ParentNode_Long)]
+  graphTerms <- ONTOLOGIES[!(OntologyScope %in% scope), as.character(ChildNode_Long, ParentNode_Long)]
   
   CACHE.BACKGROUND[[taxa]] %>%
-    .[rsc.ID %in% rsc.IDs & cf.BaseLongUri %in% graphTerms & cf.ValLongUri %in% graphTerms] %>%
-    merge(ONTOLOGIES.DEFS[OntologyScope %in% scope], by.x = 'cf.BaseLongUri', by.y = 'Node_Long', sort = F, allow.cartesian = T) %>%
-    merge(ONTOLOGIES.DEFS[OntologyScope %in% scope], by.x = 'cf.ValLongUri', by.y = 'Node_Long', sort = F, allow.cartesian = T) %>%
+    .[rsc.ID %in% rsc.IDs & !(cf.BaseLongUri %in% graphTerms) & !(cf.ValLongUri %in% graphTerms)] %>%
+    merge(ONTOLOGIES.DEFS[OntologyScope %in% scope], by.x = 'cf.BaseLongUri', by.y = 'Node_Long', sort = F, allow.cartesian = T, all.x = T) %>%
+    merge(ONTOLOGIES.DEFS[OntologyScope %in% scope], by.x = 'cf.ValLongUri', by.y = 'Node_Long', sort = F, allow.cartesian = T, all.x = T) %>%
+    .[is.na(Definition.x), Definition.x := cf.BaseLongUri] %>% .[is.na(Definition.y), Definition.y := cf.ValLongUri] %>%
     .[, .(rsc.ID, cf.BaseLongUri = Definition.x, cf.ValLongUri = Definition.y, distance, OntologyScope.x, OntologyScope.y)] %>%
     .[, .(distance = mean(distance)), .(rsc.ID, cf.BaseLongUri, cf.ValLongUri)] %>% setorder(distance, rsc.ID)
 }
@@ -167,11 +159,11 @@ getTags <- function(taxa = getOption('app.taxa'), scope = getOption('app.ontolog
 precomputeTags <- function(taxa = getOption('app.taxa')) {
   graph <- simplify(igraph::graph_from_data_frame(ONTOLOGIES[, .(ChildNode_Long, ParentNode_Long)]))
   graphTerms <- unique(ONTOLOGIES[, as.character(ChildNode_Long, ParentNode_Long)])
-
+  
   mTags <- DATA.HOLDER[[taxa]]@experiment.meta[, .(cf.BaseLongUri = Filter(function(tag) tag %in% graphTerms,
-                                                                             unique(parseListEntry(as.character(cf.BaseLongUri))))), rsc.ID] %>%
+                                                                           unique(parseListEntry(as.character(cf.BaseLongUri))))), rsc.ID] %>%
     merge(DATA.HOLDER[[taxa]]@experiment.meta[, .(cf.ValLongUri = Filter(function(tag) tag %in% graphTerms,
-                                                                             unique(parseListEntry(as.character(cf.ValLongUri))))), rsc.ID],
+                                                                         unique(parseListEntry(as.character(cf.ValLongUri))))), rsc.ID],
           by = 'rsc.ID', sort = F, allow.cartesian = T)
   
   mTags <- mTags[, rbindlist(lapply(.SD[, unique(cf.BaseLongUri)], function(uri) {
@@ -186,7 +178,17 @@ precomputeTags <- function(taxa = getOption('app.taxa')) {
       
       data.table(tag = names(cf.ValLongUri), type = 'cf.ValLongUri', distance = c(distance))
     }))
-  ), rsc.ID] %>% .[is.finite(distance)]
+  ), rsc.ID] %>% .[is.finite(distance)] %>%
+    rbind(
+      DATA.HOLDER[[taxa]]@experiment.meta[, .(tag = Filter(function(tag) !(tag %in% graphTerms),
+                                                                      unique(parseListEntry(as.character(cf.BaseLongUri))))), rsc.ID] %>%
+        .[, .(tag, type = 'cf.BaseLongUri', distance = 0)] %>%
+        rbind(
+          DATA.HOLDER[[taxa]]@experiment.meta[, .(tag = Filter(function(tag) !(tag %in% graphTerms),
+                                                               unique(parseListEntry(as.character(cf.ValLongUri))))), rsc.ID] %>%
+            .[, .(tag, type = 'cf.ValLongUri', distance = 0)]
+        )
+    )
   
   mTags[, (expand.grid(cf.BaseLongUri = .SD[type == 'cf.BaseLongUri', tag],
                        cf.ValLongUri = .SD[type == 'cf.ValLongUri', tag])), rsc.ID] %>%
@@ -209,7 +211,7 @@ precomputeTags <- function(taxa = getOption('app.taxa')) {
 #' @param session The Shiny session.
 enrich <- function(rankings, taxa = getOption('app.taxa'), scope = getOption('app.ontology'),
                    options = getOption('app.all_options'), session = NULL) {
-  rankings <- data.table(rsc.ID = rownames(rankings), rank = rankings$score)
+  rankings <- data.table(rsc.ID = rownames(rankings), rank = rankings$score, direction = rankings$direction)
   
   advanceProgress(session, 'Looking up ontology terms')
   
@@ -244,5 +246,5 @@ enrich <- function(rankings, taxa = getOption('app.taxa'), scope = getOption('ap
           .(cf.BaseLongUri, cf.ValLongUri)]
   }
 
-  aprior() %>% chisq %>% fisher %>% setorder(pv.chisq) # %>% .[!(Definition %in% BLACKLIST)] 
+  aprior() %>% chisq %>% fisher %>% setorder(pv.chisq)
 }
