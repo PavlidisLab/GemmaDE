@@ -93,15 +93,20 @@ if(!exists('DATA.HOLDER')) {
       metaData[sf.CatLongUri == '', sf.CatLongUri := NA]
       metaData[sf.ValLongUri == '', sf.ValLongUri := NA]
       
-      # We don't want timecourse or dose-dependent contrasts, or ones where one/both contrasts is/are unknown
+      # We don't want:
+      # Troubled or private experiments
+      # Timecourse or dose-dependent contrasts
+      # Experiments where one/both contrasts is/are unknown
+      # Experiments when the contrasts are identical (seemingly dose-dependent)
       bad.rscs <- metaData[ee.Troubled | !ee.Public |
                              cf.Cat %in% c('timepoint', 'generation', 'dose') |
                              is.na(cf.BaseLongUri) |
-                             is.na(cf.ValLongUri), rsc.ID]
+                             is.na(cf.ValLongUri) |
+                             cf.BaseLongUri == cf.ValLongUri, rsc.ID]
       
       # Drop experiment samples that don't meet our needs
-      dataHolder$fc[, bad.rscs] <- NULL
-      dataHolder$pv[, bad.rscs] <- NULL
+      dataHolder$fc <- dataHolder$fc[, !(colnames(dataHolder$fc) %in% bad.rscs)]
+      dataHolder$pv <- dataHolder$pv[, !(colnames(dataHolder$pv) %in% bad.rscs)]
       metaData <- metaData[!(rsc.ID %in% bad.rscs)]
       
       dataHolder$adj.pv <- apply(dataHolder$pv, 2, function(pv)
@@ -154,10 +159,10 @@ if(!exists('DATA.HOLDER')) {
   if(file.exists('data/CACHE.BACKGROUND.rds'))
     CACHE.BACKGROUND <- readRDS('data/CACHE.BACKGROUND.rds')
   else {
-    CACHE.BACKGROUND <- lapply(getOption('app.all_taxa'), precomputeTags)
+    CACHE.BACKGROUND <- lapply(Filter(function(x) x != 'artificial', getOption('app.all_taxa')), precomputeTags)
     
-    names(CACHE.BACKGROUND) <- getOption('app.all_taxa')
+    names(CACHE.BACKGROUND) <- Filter(function(x) x != 'artificial', getOption('app.all_taxa'))
     
-    saveRDS(CACHE.BACKGROUND, 'data/CACHE.BACKGROUND.v2.rds')
+    saveRDS(CACHE.BACKGROUND, 'data/CACHE.BACKGROUND.rds')
   }
 }

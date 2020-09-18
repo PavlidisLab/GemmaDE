@@ -43,12 +43,13 @@ generateResults <- function(taxa = getOption('app.taxa'), scope = getOption('app
                                     paste0('<a target=_blank href=https://gemma.msl.ubc.ca/expressionExperiment/showExpressionExperiment.html?id=',
                                            experiment, '>',
                                            DATA.HOLDER[[taxa]]@experiment.meta[ee.ID == experiment, unique(ee.Name)], '</a>')
-                                  }) %>% paste0(collapse = ', '), '">', paste(N, paste0('Experiment', ifelse(N > 1, 's', '')), '<i class="fas fa-question-circle" style="cursor: pointer;"></i>'), '</span>'), Definition]
+                                  }) %>% paste0(collapse = ', '), '">', paste(N, paste0('Experiment', ifelse(N > 1, 's', '')), '<i class="fas fa-question-circle" style="cursor: pointer;"></i>'), '</span>'),
+             .(cf.BaseLongUri, cf.ValLongUri)]
   
   mTable <- datatable(conditions[, outputColumns, with = F] %>% as.data.frame,
                       extensions = c('FixedHeader', 'Buttons'),
-                      rownames = conditions$Definition,
-                      escape = -2,
+                      rownames = paste0('<b>', conditions$cf.BaseLongUri, '</b> vs. <b>', conditions$cf.ValLongUri, '</b>'),
+                      escape = -c(1, 2),
                       filter = 'top',
                       options = list(pageLength = 10,
                                      order = list(
@@ -56,9 +57,9 @@ generateResults <- function(taxa = getOption('app.taxa'), scope = getOption('app
                                      language = list(lengthMenu = 'Show _MENU_ conditions per page',
                                                      processing = '',
                                                      emptyTable = 'No matching conditions found.',
-                                                     infoEmpty = 'Showing 0 to 0 of 0 conditions',
-                                                     info = 'Showing _START_ to _END_ of _TOTAL_ conditions',
-                                                     infoFiltered = '(filtered from _MAX_ total conditions)'),
+                                                     infoEmpty = 'Showing 0 to 0 of 0 condition-comparisons',
+                                                     info = 'Showing _START_ to _END_ of _TOTAL_ condition-comparisons',
+                                                     infoFiltered = '(filtered from over _MAX_ total)'),
                                      fixedHeader = T,
                                      rowCallback = JS('asScientificNotation'),
                                      initComplete = JS('onTableCreated'),
@@ -71,11 +72,13 @@ generateResults <- function(taxa = getOption('app.taxa'), scope = getOption('app
                                                        list(search = '0 ... 0.05')),
                                      autoWidth = T,
                                      columnDefs = list(
-                                      # list(targets = 0,
-                                      #      width = '20%'),
+                                       list(targets = 0,
+                                            width = '25%'),
                                        list(targets = 1,
                                             className = 'dt-right',
                                             searchable = F, orderable = F),
+                                       list(targets = 2:3,
+                                            width = '8%'),
                                        list(targets = 4:length(outputColumns),
                                             render = JS('asSparkline'), width = '1px', className = 'dt-center', searchable = F, orderable = F)
                                      ),

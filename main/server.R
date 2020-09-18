@@ -134,22 +134,13 @@ server <- function(input, output, session) {
       })
       output$results <- NULL
     } else {
-      conditions <- enrich(experiments, taxa, scope, session)
+      conditions <- enrich(experiments, taxa, scope, options, session)
       
       if(is.null(conditions)) {
         setProgress(session, getOption('max.progress.steps'))
         output$results_header <- renderUI({ generateResultsHeader('No conditions found in scope.') })
         output$results <- NULL
       } else {
-        conditions <- conditions[distance <= options$distance]
-        
-        # Compute experiments in scope
-        mCache <- merge(CACHE.BACKGROUND[[taxa]][, .(tag, rsc.ID)],
-                        ONTOLOGIES.DEFS[OntologyScope %in% scope, .(Node_Long, Definition)],
-                        by.x = 'tag', by.y = 'Node_Long', sort = F, allow.cartesian = T) %>% unique %>%
-          .[Definition %in% conditions$Definition]
-        eDF <- experiments %>% as.data.frame %>% `rownames<-`(rownames(experiments)) %>% `colnames<-`(colnames(experiments))
-        
         # Generate the results header
         output$results_header <- renderUI({
           generateResultsHeader(HTML(paste0('<h2>Found ',
@@ -160,22 +151,39 @@ server <- function(input, output, session) {
                                                           ncol(experiments) - 1, ' genes', '</span>')))))
         })
         
-        # Merge in gene scores
-        geneScores <- data.table(def = unique(conditions$Definition))
+        advanceProgress(session, 'Fetching Gemma data')
         
-        for(indx in 1:(ncol(experiments) - 1)) {
-          geneScores[, N := DATA.HOLDER[[taxa]]@experiment.meta[rsc.ID %in% mCache[Definition == def, rsc.ID], length(unique(ee.ID))], def]
-          geneScores[, Evidence := paste0(head(DATA.HOLDER[[taxa]]@experiment.meta[rsc.ID %in% mCache[Definition == def, rsc.ID], unique(ee.ID)], 20), collapse = ','), def]
-          geneScores[, colnames(experiments)[indx] := paste0(head(eDF[intersect(rownames(eDF), mCache[Definition == def, rsc.ID]), indx], 20), collapse = ','), def]
-        }
+        # Compute experiments in scope
+        mCache <- CACHE.BACKGROUND[[taxa]] %>%
+          .[rsc.ID %in% rownames(experiments)] %>%
+          merge(ONTOLOGIES.DEFS[OntologyScope %in% scope], by.x = 'cf.BaseLongUri', by.y = 'Node_Long', sort = F, allow.cartesian = T) %>%
+          merge(ONTOLOGIES.DEFS[OntologyScope %in% scope], by.x = 'cf.ValLongUri', by.y = 'Node_Long', sort = F, allow.cartesian = T) %>%
+          .[, .(rsc.ID, cf.BaseLongUri = Definition.x, cf.ValLongUri = Definition.y)] %>%
+          .[cf.BaseLongUri %in% conditions[, cf.BaseLongUri] & cf.ValLongUri %in% conditions[, cf.ValLongUri]] %>%
+          unique %>% merge(DATA.HOLDER[[taxa]]@experiment.meta[, .(rsc.ID, ee.ID)], by = 'rsc.ID', sort = F, allow.cartesian = T) %>%
+          .[, N := length(unique(ee.ID)), .(cf.BaseLongUri, cf.ValLongUri)] %>%
+          merge(data.table(rsc.ID = rownames(experiments), experiments[, !'score']), by = 'rsc.ID')
         
+        advanceProgress(session, 'Adding cross references')
+        
+        geneScores <- data.table(conditions[, .(cf.BaseLongUri, cf.ValLongUri)]) %>%
+          merge(mCache[, !'rsc.ID'], by = c('cf.BaseLongUri', 'cf.ValLongUri')) %>%
+          .[, Evidence := paste0(head(unique(ee.ID), 20), collapse = ','), .(cf.BaseLongUri, cf.ValLongUri)]
+        
+        geneScores <- geneScores[, .(cf.BaseLongUri, cf.ValLongUri, N, Evidence)] %>%
+          merge(geneScores[, !c('ee.ID', 'Evidence', 'N')] %>%
+                  .[, lapply(.SD, function(x) paste0(head(round(x, 3), 100), collapse = ',')),
+                    .(cf.BaseLongUri, cf.ValLongUri)],
+                by = c('cf.BaseLongUri', 'cf.ValLongUri')) %>% unique
+
         # Rename things and add the ES
-        conditions <- merge(conditions, geneScores, by.x = 'Definition', by.y = 'def', sort = F, allow.cartesian = T) %>% setorder(pv.chisq) %>%
-          setnames(c('chisq', 'pv.chisq', 'pv.fisher'), c('χ2', 'P-value (χ2)', 'P-value (Fisher)'))# %>%
-          # .[, `E` := (N.ranked * (N.bg - N.y)) / ((N.tags - N.ranked) * N.y)]
+        conditions <- merge(conditions, geneScores, by = c('cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T) %>% setorder(pv.chisq) %>%
+          setnames(c('chisq', 'pv.chisq', 'pv.fisher'), c('χ2', 'P-value (χ2)', 'P-value (Fisher)'))
+        
+        advanceProgress(session, 'Finishing up')
         
         output$plot <- renderPlotly({ generateResultsPlot(taxa, scope, experiments, conditions, options, input) })
-        output$results <- generateResults(taxa, scope, experiments, conditions, options)
+        output$results <- generateResults(taxa, scope, experiments, head(conditions, getOption('max.rows')), options)
       }
     }
   }

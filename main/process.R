@@ -149,10 +149,14 @@ getTags <- function(taxa = getOption('app.taxa'), scope = getOption('app.ontolog
   if(is.null(rsc.IDs))
     rsc.IDs <- CACHE.BACKGROUND[[taxa]][, unique(rsc.ID)]
   
+  graphTerms <- ONTOLOGIES[OntologyScope %in% scope, as.character(ChildNode_Long, ParentNode_Long)]
+  
   CACHE.BACKGROUND[[taxa]] %>%
-    .[rsc.ID %in% rsc.IDs & tag %in% ONTOLOGIES[OntologyScope %in% scope, as.character(ChildNode_Long, ParentNode_Long)]] %>%
-    merge(ONTOLOGIES.DEFS[OntologyScope %in% scope], by.x = 'tag', by.y = 'Node_Long', sort = F, allow.cartesian = T) %>%
-    .[, .(distance = mean(distance)), .(rsc.ID, Definition)] %>% setorder(distance, rsc.ID)
+    .[rsc.ID %in% rsc.IDs & cf.BaseLongUri %in% graphTerms & cf.ValLongUri %in% graphTerms] %>%
+    merge(ONTOLOGIES.DEFS[OntologyScope %in% scope], by.x = 'cf.BaseLongUri', by.y = 'Node_Long', sort = F, allow.cartesian = T) %>%
+    merge(ONTOLOGIES.DEFS[OntologyScope %in% scope], by.x = 'cf.ValLongUri', by.y = 'Node_Long', sort = F, allow.cartesian = T) %>%
+    .[, .(rsc.ID, cf.BaseLongUri = Definition.x, cf.ValLongUri = Definition.y, distance, OntologyScope.x, OntologyScope.y)] %>%
+    .[, .(distance = mean(distance)), .(rsc.ID, cf.BaseLongUri, cf.ValLongUri)] %>% setorder(distance, rsc.ID)
 }
 
 #' Precompute Tags
@@ -163,21 +167,34 @@ getTags <- function(taxa = getOption('app.taxa'), scope = getOption('app.ontolog
 precomputeTags <- function(taxa = getOption('app.taxa')) {
   graph <- simplify(igraph::graph_from_data_frame(ONTOLOGIES[, .(ChildNode_Long, ParentNode_Long)]))
   graphTerms <- unique(ONTOLOGIES[, as.character(ChildNode_Long, ParentNode_Long)])
+
+  mTags <- DATA.HOLDER[[taxa]]@experiment.meta[, .(cf.BaseLongUri = Filter(function(tag) tag %in% graphTerms,
+                                                                             unique(parseListEntry(as.character(cf.BaseLongUri))))), rsc.ID] %>%
+    merge(DATA.HOLDER[[taxa]]@experiment.meta[, .(cf.ValLongUri = Filter(function(tag) tag %in% graphTerms,
+                                                                             unique(parseListEntry(as.character(cf.ValLongUri))))), rsc.ID],
+          by = 'rsc.ID', sort = F, allow.cartesian = T)
   
-  availableMeta <- DATA.HOLDER[[taxa]]@experiment.meta[!is.na(cf.BaseLongUri) | !is.na(cf.ValLongUri)]
-  
-  availableTags <- availableMeta[, list(tags = Filter(function(tag) !is.na(tag) & tag %in% graphTerms,
-                                                      unique(c(parseListEntry(as.character(cf.BaseLongUri)),
-                                                               parseListEntry(as.character(cf.ValLongUri)))))), rsc.ID]
-  
-  expandTags <- function(entries) {
-    rbindlist(lapply(entries, function(entry) {
-      to <- igraph::subcomponent(graph, entry, 'out')
-      data.table(tag = names(to), distance = c(igraph::distances(graph, entry, to)))
+  mTags <- mTags[, rbindlist(lapply(.SD[, unique(cf.BaseLongUri)], function(uri) {
+    cf.BaseLongUri <- igraph::subcomponent(graph, uri, 'out')
+    distance <- igraph::distances(graph, uri, cf.BaseLongUri)
+    
+    data.table(tag = names(cf.BaseLongUri), type = 'cf.BaseLongUri', distance = c(distance))
+  })) %>% rbind(
+    rbindlist(lapply(.SD[, unique(cf.ValLongUri)], function(uri) {
+      cf.ValLongUri <- igraph::subcomponent(graph, uri, 'out')
+      distance <- igraph::distances(graph, uri, cf.ValLongUri)
+      
+      data.table(tag = names(cf.ValLongUri), type = 'cf.ValLongUri', distance = c(distance))
     }))
-  }
+  ), rsc.ID] %>% .[is.finite(distance)]
   
-  availableTags[, expandTags(.SD), rsc.ID] %>% .[tag != 'NA' & is.finite(distance)]
+  mTags[, (expand.grid(cf.BaseLongUri = .SD[type == 'cf.BaseLongUri', tag],
+                       cf.ValLongUri = .SD[type == 'cf.ValLongUri', tag])), rsc.ID] %>%
+    merge(mTags[type == 'cf.BaseLongUri', .(rsc.ID, tag, distance)],
+          by.x = c('rsc.ID', 'cf.BaseLongUri'), by.y = c('rsc.ID', 'tag'), sort = F, allow.cartesian = T) %>%
+    merge(mTags[type == 'cf.ValLongUri', .(rsc.ID, tag, distance)],
+          by.x = c('rsc.ID', 'cf.ValLongUri'), by.y = c('rsc.ID', 'tag'), sort = F, allow.cartesian = T) %>%
+    .[, c('distance', 'distance.x', 'distance.y') := list(rowMeans2(cbind(distance.x, distance.y)), NULL, NULL)]
 }
 
 #' Enrich
@@ -188,35 +205,43 @@ precomputeTags <- function(taxa = getOption('app.taxa')) {
 #' @param rankings A named numeric (@seealso search).
 #' @param taxa The taxon
 #' @param scope The ontology scope.
+#' @param options The options
 #' @param session The Shiny session.
-enrich <- function(rankings, taxa = getOption('app.taxa'), scope = getOption('app.ontology'), session = NULL) {
+enrich <- function(rankings, taxa = getOption('app.taxa'), scope = getOption('app.ontology'),
+                   options = getOption('app.all_options'), session = NULL) {
   rankings <- data.table(rsc.ID = rownames(rankings), rank = rankings$score)
+  
+  advanceProgress(session, 'Looking up ontology terms')
   
   # mMaps[[1]] is the background tags, mMaps[[2]] is the foreground tags.
   mMaps <- list(getTags(taxa, scope, NULL, session), getTags(taxa, scope, rankings[, rsc.ID], session))
   
   mMaps[[2]] <- mMaps[[2]] %>% merge(rankings, by = 'rsc.ID', sort = F, allow.cartesian = T)
   
-  advanceProgress(session, 'Wrapping up')
-  
   aprior <- function() {
-    merge(mMaps[[2]][, .(N.x = .N, N.ranked = sum(rank / (1 + distance)), distance = median(distance)), Definition][, N.tags := sum(N.ranked)],
-          mMaps[[1]][!(rsc.ID %in% rankings[, rsc.ID]), .(N.y = .N), Definition][, N.bg := sum(N.y)],
-          by = 'Definition', sort = F, allow.cartesian = T)
-  }
-  
-  fisher <- function(input) {
-    input[, c('pv.fisher', 'OR') :=
-            suppressWarnings(fisher.test(matrix(c(N.ranked, N.tags - N.ranked,
-                                                  N.y, N.bg - N.y),
-                                                nrow = 2), alternative = 'greater', conf.int = F))[c('p.value', 'estimate')], Definition]
+    mMaps[[2]][distance <= options$distance,
+               .(A = sum(rank) / (1 + sum(distance))), .(cf.BaseLongUri, cf.ValLongUri)][, B := sum(A)] %>%
+      merge(mMaps[[1]][distance <= options$distance & !(rsc.ID %in% rankings[, rsc.ID]),
+                       .(C = .N / (1 + sum(distance))), .(cf.BaseLongUri, cf.ValLongUri)][, D := sum(C)],
+            by = c('cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T)
   }
   
   chisq <- function(input) {
-    input[, c('pv.chisq', 'chisq') := ifelse((N.ranked * (N.bg - N.y)) / ((N.tags - N.ranked) * N.y) <= 1, list(1, 1),
-                                             suppressWarnings(chisq.test(matrix(c(N.ranked, N.tags - N.ranked,
-                                                                                  N.y, N.bg - N.y),
-                                                                                nrow = 2)))[c('p.value', 'statistic')]), Definition]
+    advanceProgress(session, 'Running tests (1/2)')
+    
+    input[, c('pv.chisq', 'chisq') :=
+            ifelse((A * (D - C)) / ((B - A) * C) <= 1, list(1, 1),
+                   suppressWarnings(chisq.test(matrix(c(A, B - A, C, D - C), nrow = 2)))[c('p.value', 'statistic')]),
+          .(cf.BaseLongUri, cf.ValLongUri)]
+  }
+  
+  fisher <- function(input) {
+    advanceProgress(session, 'Running tests (2/2)')
+    
+    input[, c('pv.fisher', 'OR') :=
+            suppressWarnings(fisher.test(matrix(c(A, B - A, C, D - C), nrow = 2),
+                                         alternative = 'greater', conf.int = F))[c('p.value', 'estimate')],
+          .(cf.BaseLongUri, cf.ValLongUri)]
   }
 
   aprior() %>% chisq %>% fisher %>% setorder(pv.chisq) # %>% .[!(Definition %in% BLACKLIST)] 
