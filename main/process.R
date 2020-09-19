@@ -182,11 +182,11 @@ precomputeTags <- function(taxa = getOption('app.taxa')) {
     rbind(
       DATA.HOLDER[[taxa]]@experiment.meta[, .(tag = Filter(function(tag) !(tag %in% graphTerms),
                                                                       unique(parseListEntry(as.character(cf.BaseLongUri))))), rsc.ID] %>%
-        .[, .(tag, type = 'cf.BaseLongUri', distance = 0)] %>%
+        .[, .(rsc.ID, tag, type = 'cf.BaseLongUri', distance = 0)] %>%
         rbind(
           DATA.HOLDER[[taxa]]@experiment.meta[, .(tag = Filter(function(tag) !(tag %in% graphTerms),
                                                                unique(parseListEntry(as.character(cf.ValLongUri))))), rsc.ID] %>%
-            .[, .(tag, type = 'cf.ValLongUri', distance = 0)]
+            .[, .(rsc.ID, tag, type = 'cf.ValLongUri', distance = 0)]
         )
     )
   
