@@ -26,7 +26,7 @@ setProgress <- function(session, progress, detail = '', fine = F) {
     session$userData$progress.bar$set(message = 'Searching...', detail = detail)
   } else {
     session$userData$progress.bar$set(value = progress, detail = detail)
-  
+    
     if(progress >= getOption('max.progress.steps'))
       session$userData$progress.bar$close()
   }
@@ -35,7 +35,7 @@ setProgress <- function(session, progress, detail = '', fine = F) {
 #' Server
 #'
 #' Query strings are supported as follows:
-#' ?genes=[list of genes]&taxa=[human|mouse|rat]&scope=[list of ontologies]
+#' ?genes=[list of genes]&taxa=[human|mouse|rat]&scope=[list of ontologies]...
 server <- function(input, output, session) {
   # On connect, observe the query string. Search if any genes are specified
   observeEvent(input$LOAD, {
@@ -91,6 +91,7 @@ server <- function(input, output, session) {
     if(!is.null(input$genes.csv))
       genes <- read.csv(input$genes.csv$datapath, header = F)$V1 %>% as.character
     
+    session$userData$startTime <- Sys.time()
     searchGenes(genes)
   })
   
@@ -118,12 +119,15 @@ server <- function(input, output, session) {
   #' Call the processing function to handle searching and update the display.
   #'
   #' @param genes A character vector of entrez IDs
+  #' @param cache A subsetted version of CACHE.BACKGROUND for the taxa scope.
+  #' @param data A subsetted version of DATA.HOLDER for the taxa scope.
   #' @param taxa The taxon ([human|mouse|rat])
   #' @param options The search options
   #' @param scope The ontology scope
   #' @param options The search options
-  handleSearch <- function(genes, taxa, scope, options = getOption('app.all_options')) {
-    experiments <- search(genes, taxa, options, session)
+  handleSearch <- function(genes, cache, data, taxa, scope, options = getOption('app.all_options')) {
+    #future({
+    experiments <- search(data, genes, taxa, options, session)
     
     if(is.null(experiments)) {
       setProgress(session, getOption('max.progress.steps'))
@@ -132,7 +136,7 @@ server <- function(input, output, session) {
       })
       output$results <- NULL
     } else {
-      conditions <- enrich(experiments, taxa, scope, options, session)
+      conditions <- enrich(cache, experiments, taxa, scope, options, session)
       
       if(is.null(conditions)) {
         setProgress(session, getOption('max.progress.steps'))
@@ -146,20 +150,21 @@ server <- function(input, output, session) {
                                             ifelse(ncol(experiments) == 2, colnames(experiments)[1],
                                                    paste0('<span data-toggle="tooltip" data-placement="top" title="',
                                                           paste0(colnames(experiments)[1:(ncol(experiments) - 1)], collapse = ', '), '">',
-                                                          ncol(experiments) - 1, ' genes', '</span>')))))
+                                                          ncol(experiments) - 1, ' genes', '</span>')),
+                                            ' in ', as.integer(Sys.time() - session$userData$startTime), ' seconds.', '</h2>')))
         })
         
         advanceProgress(session, 'Fetching Gemma data')
         
         # Compute experiments in scope
-        mCache <- CACHE.BACKGROUND[[taxa]] %>%
+        mCache <- cache %>%
           .[rsc.ID %in% rownames(experiments)] %>%
           merge(ONTOLOGIES.DEFS[OntologyScope %in% scope], by.x = 'cf.BaseLongUri', by.y = 'Node_Long', sort = F, allow.cartesian = T) %>%
           merge(ONTOLOGIES.DEFS[OntologyScope %in% scope], by.x = 'cf.ValLongUri', by.y = 'Node_Long', sort = F, allow.cartesian = T) %>%
           .[is.na(Definition.x), Definition.x := cf.BaseLongUri] %>% .[is.na(Definition.y), Definition.y := cf.ValLongUri] %>%
           .[, .(rsc.ID, cf.BaseLongUri = Definition.x, cf.ValLongUri = Definition.y)] %>%
           .[cf.BaseLongUri %in% conditions[, cf.BaseLongUri] & cf.ValLongUri %in% conditions[, cf.ValLongUri]] %>%
-          unique %>% merge(DATA.HOLDER[[taxa]]@experiment.meta[, .(rsc.ID, ee.ID)], by = 'rsc.ID', sort = F, allow.cartesian = T) %>%
+          unique %>% merge(data@experiment.meta[, .(rsc.ID, ee.ID)], by = 'rsc.ID', sort = F, allow.cartesian = T) %>%
           .[, N := length(unique(ee.ID)), .(cf.BaseLongUri, cf.ValLongUri)] %>%
           merge(data.table(rsc.ID = rownames(experiments), experiments[, !'score']), by = 'rsc.ID')
         
@@ -173,8 +178,8 @@ server <- function(input, output, session) {
           merge(geneScores[, !c('ee.ID', 'Evidence', 'N')] %>%
                   .[, lapply(.SD, function(x) paste0(head(round(x, 3), 100), collapse = ',')),
                     .(cf.BaseLongUri, cf.ValLongUri)],
-                by = c('cf.BaseLongUri', 'cf.ValLongUri')) %>% unique
-
+                by = c('cf.BaseLongUri', 'cf.ValLongUri')) %>% unique # TODO Look into this
+        
         # Rename things and add the ES
         conditions <- merge(conditions, geneScores, by = c('cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T) %>% setorder(pv.chisq) %>%
           setnames(c('chisq', 'pv.chisq', 'pv.fisher'), c('χ2', 'P-value (χ2)', 'P-value (Fisher)'))
@@ -182,9 +187,11 @@ server <- function(input, output, session) {
         advanceProgress(session, 'Finishing up')
         
         output$plot <- renderPlotly({ generateResultsPlot(taxa, scope, experiments, conditions, options, input) })
-        output$results <- generateResults(taxa, scope, experiments, head(conditions, getOption('max.rows')), options)
+        output$results <- generateResults(data, taxa, scope, experiments, head(conditions, getOption('max.rows')), options)
       }
     }
+    #}, globals = c(as.vector(lsf.str()), 'ONTOLOGIES', 'ONTOLOGIES.DEFS', 'ui',
+    #               'genes', 'cache', 'data', 'taxa', 'scope', 'options'))
   }
   
   #' Search Genes
@@ -249,7 +256,7 @@ server <- function(input, output, session) {
     # Try to match to gene names and descriptions.
     if(length(genes) > 0) {
       descriptors <- DATA.HOLDER[[taxa]]@gene.meta[gene.Name %in% genes | gene.Desc %in% genes,
-                                             .(entrez.ID, gene.Name, gene.Desc)]
+                                                   .(entrez.ID, gene.Name, gene.Desc)]
       if(nrow(descriptors) != 0) {
         cleanGenes <- c(cleanGenes, descriptors[, entrez.ID])
         genes <- genes[!(genes %in% descriptors[, c(gene.Name, gene.Desc)])]
@@ -265,6 +272,6 @@ server <- function(input, output, session) {
     }
     
     # Done processing, handle the search.
-    handleSearch(cleanGenes, taxa, scope, options)
+    handleSearch(cleanGenes, DATA.HOLDER[[taxa]], CACHE.BACKGROUND[[taxa]], taxa, scope, options)
   }
 }

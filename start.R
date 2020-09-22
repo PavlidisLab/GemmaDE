@@ -1,4 +1,7 @@
 library(shiny)
+library(promises)
+library(future)
+# plan(multiprocess)
 
 source('main/process.R')
 source('main/server.R')
@@ -11,6 +14,7 @@ options(app.tags = 'genomics,bioinformatics,genetics,transcriptomes,rnaseq,micro
 options(app.author = 'Jordan Sicherman (jordan.sicherman@msl.ubc.ca)')
 options(spinner.color = '#002145')
 options(spinner.type = 6)
+options('future.globals.maxSize' = 5 * 1024^3)
 
 options(max.progress.steps = 8)
 options(max.rows = 500)

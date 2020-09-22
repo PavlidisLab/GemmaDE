@@ -34,7 +34,7 @@ generateResultsPlot <- function(taxa = getOption('app.taxa'), scope = getOption(
   }
 }
 
-generateResults <- function(taxa = getOption('app.taxa'), scope = getOption('app.ontology'), experiments, conditions, options = DEFAULT_OPTIONS) {
+generateResults <- function(data, taxa = getOption('app.taxa'), scope = getOption('app.ontology'), experiments, conditions, options = DEFAULT_OPTIONS) {
   # outputColumns <- c('Evidence', 'E', 'P-value (χ2)', 'P-value (Fisher)', colnames(experiments)[1:(ncol(experiments) - 1)])
   outputColumns <- c('Evidence', 'P-value (χ2)', 'P-value (Fisher)', colnames(experiments)[1:(ncol(experiments) - 1)])
   
@@ -42,7 +42,7 @@ generateResults <- function(taxa = getOption('app.taxa'), scope = getOption('app
                                   lapply(unlist(strsplit(Evidence, ',')), function(experiment) {
                                     paste0('<a target=_blank href=https://gemma.msl.ubc.ca/expressionExperiment/showExpressionExperiment.html?id=',
                                            experiment, '>',
-                                           DATA.HOLDER[[taxa]]@experiment.meta[ee.ID == experiment, unique(ee.Name)], '</a>')
+                                           data@experiment.meta[ee.ID == experiment, unique(ee.Name)], '</a>')
                                   }) %>% paste0(collapse = ', '), '">', paste(N, paste0('Experiment', ifelse(N > 1, 's', '')), '<i class="fas fa-question-circle" style="cursor: pointer;"></i>'), '</span>'),
              .(cf.BaseLongUri, cf.ValLongUri)]
   

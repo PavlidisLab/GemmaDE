@@ -31,3 +31,5 @@ DATA.HOLDER$artificial <- new('EData', taxon = 'artificial', data = list(fc = fc
                               experiment.meta = artificial.exp.meta, gene.meta = artificial.gene.meta)
 DATA.HOLDER$artificial@gene.meta$n.DE <- rowSums2(DATA.HOLDER$artificial@data$adj.pv < 0.05, na.rm = T)
 rm(fc, pv, artificial.gene.meta, artificial.exp.meta)
+
+CACHE.BACKGROUND$artificial <- precomputeTags('artificial')
