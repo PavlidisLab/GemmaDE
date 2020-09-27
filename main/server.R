@@ -91,7 +91,6 @@ server <- function(input, output, session) {
     if(!is.null(input$genes.csv))
       genes <- read.csv(input$genes.csv$datapath, header = F)$V1 %>% as.character
     
-    session$userData$startTime <- Sys.time()
     searchGenes(genes)
   })
   
@@ -145,44 +144,45 @@ server <- function(input, output, session) {
       } else {
         # Generate the results header
         output$results_header <- renderUI({
-          generateResultsHeader(HTML(paste0('<h2>Found ',
+          generateResultsHeader(HTML(paste0('<div style="margin-bottom: 10px"><h2 style="display: inline">Found ',
                                             nrow(experiments), ' experiment', ifelse(nrow(experiments) > 1, 's', ''), ' differentially expressing ',
                                             ifelse(ncol(experiments) == 2, colnames(experiments)[1],
                                                    paste0('<span data-toggle="tooltip" data-placement="top" title="',
-                                                          paste0(colnames(experiments)[1:(ncol(experiments) - 1)], collapse = ', '), '">',
-                                                          ncol(experiments) - 1, ' genes', '</span>')),
-                                            ' in ', as.integer(Sys.time() - session$userData$startTime), ' seconds.', '</h2>')))
+                                                          paste0(colnames(experiments)[1:(ncol(experiments) - 2)], collapse = ', '), '">',
+                                                          ncol(experiments) - 2, ' genes', '</span>')),
+                                            '</h2><span class="timestamp">in ',
+                                            format(difftime(Sys.time(), session$userData$startTime), digits = 3), '.</span></span>')))
         })
         
         advanceProgress(session, 'Fetching Gemma data')
         
         # Compute experiments in scope
-        mCache <- cache %>%
-          .[rsc.ID %in% rownames(experiments)] %>%
-          merge(ONTOLOGIES.DEFS[OntologyScope %in% scope], by.x = 'cf.BaseLongUri', by.y = 'Node_Long', sort = F, allow.cartesian = T) %>%
-          merge(ONTOLOGIES.DEFS[OntologyScope %in% scope], by.x = 'cf.ValLongUri', by.y = 'Node_Long', sort = F, allow.cartesian = T) %>%
-          .[is.na(Definition.x), Definition.x := cf.BaseLongUri] %>% .[is.na(Definition.y), Definition.y := cf.ValLongUri] %>%
-          .[, .(rsc.ID, cf.BaseLongUri = Definition.x, cf.ValLongUri = Definition.y)] %>%
-          .[cf.BaseLongUri %in% conditions[, cf.BaseLongUri] & cf.ValLongUri %in% conditions[, cf.ValLongUri]] %>%
-          unique %>% merge(data@experiment.meta[, .(rsc.ID, ee.ID)], by = 'rsc.ID', sort = F, allow.cartesian = T) %>%
+        mCache <- getTags(cache, taxa, scope, rownames(experiments), options$distance) %>%
+          .[cf.BaseLongUri %in% conditions[, unique(cf.BaseLongUri)] & cf.ValLongUri %in% conditions[, unique(cf.ValLongUri)]] %>%
+          unique %>% merge(data@experiment.meta[rsc.ID %in% rownames(experiments), .(rsc.ID, ee.ID)], by = 'rsc.ID', sort = F, allow.cartesian = T) %>%
           .[, N := length(unique(ee.ID)), .(cf.BaseLongUri, cf.ValLongUri)] %>%
           merge(data.table(rsc.ID = rownames(experiments), experiments[, !'score']), by = 'rsc.ID')
         
         advanceProgress(session, 'Adding cross references')
         
         geneScores <- data.table(conditions[, .(cf.BaseLongUri, cf.ValLongUri)]) %>%
-          merge(mCache[, !'rsc.ID'], by = c('cf.BaseLongUri', 'cf.ValLongUri')) %>%
+          merge(mCache[, !'rsc.ID'], by = c('cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T) %>%
           .[, Evidence := paste0(head(unique(ee.ID), 20), collapse = ','), .(cf.BaseLongUri, cf.ValLongUri)]
         
-        geneScores <- geneScores[, .(cf.BaseLongUri, cf.ValLongUri, N, Evidence)] %>%
-          merge(geneScores[, !c('ee.ID', 'Evidence', 'N')] %>%
+        geneScores <- geneScores[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, N, Evidence)] %>%
+          merge(
+            merge(geneScores[, !c('ee.ID', 'cf.Cat', 'Evidence', 'N', 'direction')] %>%
                   .[, lapply(.SD, function(x) paste0(head(round(x, 3), 100), collapse = ',')),
                     .(cf.BaseLongUri, cf.ValLongUri)],
-                by = c('cf.BaseLongUri', 'cf.ValLongUri')) %>% unique # TODO Look into this
+                  geneScores[, .(cf.BaseLongUri, cf.ValLongUri, direction = ifelse(direction, 1, -1) * ifelse(reverse, -1, 1))] %>%
+                    .[, lapply(.SD, function(x) paste(sum(x == 1), sum(x == -1), sep = ',')),
+                      .(cf.BaseLongUri, cf.ValLongUri)],
+                  by = c('cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T),
+                by = c('cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T) %>% unique
         
         # Rename things and add the ES
-        conditions <- merge(conditions, geneScores, by = c('cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T) %>% setorder(pv.chisq) %>%
-          setnames(c('chisq', 'pv.chisq', 'pv.fisher'), c('χ2', 'P-value (χ2)', 'P-value (Fisher)'))
+        conditions <- merge(conditions, geneScores, by = c('cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T) %>% setorder(pv.fisher) %>%
+          setnames(c('pv.fisher', 'direction'), c('P-value', 'Direction'))
         
         advanceProgress(session, 'Finishing up')
         
@@ -207,6 +207,7 @@ server <- function(input, output, session) {
                           taxa = input$taxa,
                           scope = input$scope,
                           update = T) {
+    session$userData$startTime <- as.POSIXct(Sys.time())
     setProgress(session, 0, 'Validating input')
     
     options <- list(n.display = input$`top-n`,
@@ -272,6 +273,6 @@ server <- function(input, output, session) {
     }
     
     # Done processing, handle the search.
-    handleSearch(cleanGenes, DATA.HOLDER[[taxa]], CACHE.BACKGROUND[[taxa]], taxa, scope, options)
+    handleSearch(cleanGenes, CACHE.BACKGROUND[[taxa]], DATA.HOLDER[[taxa]], taxa, scope, options)
   }
 }

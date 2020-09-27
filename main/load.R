@@ -33,7 +33,7 @@ parseListEntry <- function(entry, withKey = NULL) {
 }
 
 isDataLoaded <- function() {
-  exists('ONTOLOGIES') & exists('ONTOLOGIES.DEFS') & exists('BLACKLIST')
+  exists('ONTOLOGIES') & exists('ONTOLOGIES.DEFS')# & exists('BLACKLIST')
 }
 
 setClass('EData', representation(taxon = 'character', data = 'list',
@@ -41,7 +41,7 @@ setClass('EData', representation(taxon = 'character', data = 'list',
 
 # Load the data into the global environment
 if(!isDataLoaded()) {
-  BLACKLIST <- read.csv('data/blacklist.csv', header = F)$V1
+  #BLACKLIST <- read.csv('data/blacklist.csv', header = F)$V1
   
   ONTOLOGIES <- fread('/space/grp/nlim/CronGemmaDump/Ontology/Ontology_Dump_MERGED.TSV')
   ONTOLOGIES.DEFS <- fread('/space/grp/nlim/CronGemmaDump/Ontology/Ontology_Dump_MERGED_DEF.TSV')
@@ -60,8 +60,8 @@ if(!isDataLoaded()) {
 
 # Load the lite versions if they're already created.
 if(!exists('DATA.HOLDER')) {
-  if(file.exists('data/DATA.HOLDER.rds'))
-    DATA.HOLDER <- readRDS('data/DATA.HOLDER.rds')
+  if(file.exists('/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER.rds'))
+    DATA.HOLDER <- readRDS('/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER.rds')
   else {
     DATA.HOLDER <- lapply(Filter(function(x) x != 'artificial', getOption('app.all_taxa')), function(taxon) {
       load(paste0('/home/nlim/MDE/RScripts/DataFreeze/Packaged/Current/', taxon, '.RDAT.XZ'))
@@ -161,17 +161,17 @@ if(!exists('DATA.HOLDER')) {
     
     names(DATA.HOLDER) <- unlist(Filter(function(x) x != 'artificial', getOption('app.all_taxa')))
     
-    saveRDS(DATA.HOLDER, 'data/DATA.HOLDER.rds')
+    saveRDS(DATA.HOLDER, '/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER.rds')
   }
   
   # Pre-load all ontology expansions
-  if(file.exists('data/CACHE.BACKGROUND.rds'))
-    CACHE.BACKGROUND <- readRDS('data/CACHE.BACKGROUND.rds')
+  if(file.exists('/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND.rds'))
+    CACHE.BACKGROUND <- readRDS('/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND.rds')
   else {
     CACHE.BACKGROUND <- lapply(Filter(function(x) x != 'artificial', getOption('app.all_taxa')), precomputeTags)
     
     names(CACHE.BACKGROUND) <- Filter(function(x) x != 'artificial', getOption('app.all_taxa'))
     
-    saveRDS(CACHE.BACKGROUND, 'data/CACHE.BACKGROUND.rds')
+    saveRDS(CACHE.BACKGROUND, '/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND.rds')
   }
 }

@@ -9,10 +9,10 @@ library(sparkline)
 library(shinycssloaders)
 
 generateResultsHeader <- function(title) {
-  if(is.character(title))
-    fluidRow(class = 'info-text', column(12, h2(title)))
-  else
+  if('html' %in% class(title))
     fluidRow(class = 'info-text', column(12, title))
+  else
+    fluidRow(class = 'info-text', column(12, h2(title)))
 }
 
 generateResultsPlot <- function(taxa = getOption('app.taxa'), scope = getOption('app.ontology'), experiments, conditions, options = DEFAULT_OPTIONS, input) {
@@ -28,15 +28,16 @@ generateResultsPlot <- function(taxa = getOption('app.taxa'), scope = getOption(
                                ][, colnames(experiments)[1:(ncol(experiments) - 1)], with = F] %>% as.data.frame %>% t,
                     limits = NULL, dendrogram = 'column', labCol = conditions$Definition)
     } else if(input$plot_data == 'P-value')
-      heatmaply_cor(conditions[, `P-value (χ2)`] %>% as.data.frame %>% t, limits = NULL,
-                dendrogram = 'column', labCol = conditions$Definition, labRow = 'P-value (χ2)', node_type = 'scatter',
-                point_size_mat = -log10(conditions[, `P-value (χ2)`]) %>% as.data.frame %>% t, point_size_name = '-log10(P)')
+      heatmaply_cor(conditions[, `P-value`] %>% as.data.frame %>% t, limits = NULL,
+                dendrogram = 'column', labCol = conditions$Definition, labRow = 'P-value', node_type = 'scatter',
+                point_size_mat = -log10(conditions[, `P-value`]) %>% as.data.frame %>% t, point_size_name = '-log10(P)')
   }
 }
 
 generateResults <- function(data, taxa = getOption('app.taxa'), scope = getOption('app.ontology'), experiments, conditions, options = DEFAULT_OPTIONS) {
   # outputColumns <- c('Evidence', 'E', 'P-value (χ2)', 'P-value (Fisher)', colnames(experiments)[1:(ncol(experiments) - 1)])
-  outputColumns <- c('Evidence', 'P-value (χ2)', 'P-value (Fisher)', colnames(experiments)[1:(ncol(experiments) - 1)])
+  
+  outputColumns <- c('Contrast', 'Direction', 'Evidence', 'P-value', colnames(experiments)[1:(ncol(experiments) - 2)])
   
   conditions[, Evidence := paste0('<span data-toggle="popover" title="Experiments" data-html="true" data-content="',
                                   lapply(unlist(strsplit(Evidence, ',')), function(experiment) {
@@ -46,44 +47,47 @@ generateResults <- function(data, taxa = getOption('app.taxa'), scope = getOptio
                                   }) %>% paste0(collapse = ', '), '">', paste(N, paste0('Experiment', ifelse(N > 1, 's', '')), '<i class="fas fa-question-circle" style="cursor: pointer;"></i>'), '</span>'),
              .(cf.BaseLongUri, cf.ValLongUri)]
   
+  conditions[, Contrast := paste0('<b>', cf.BaseLongUri, '</b> vs. <b>', cf.ValLongUri, '</b>')]
+  
   mTable <- datatable(conditions[, outputColumns, with = F] %>% as.data.frame,
                       extensions = c('FixedHeader', 'Buttons'),
-                      rownames = paste0('<b>', conditions$cf.BaseLongUri, '</b> vs. <b>', conditions$cf.ValLongUri, '</b>'),
-                      escape = -c(1, 2),
+                      rownames = conditions[, Category],
+                      escape = -(c(which(outputColumns == 'Contrast'), which(outputColumns == 'Evidence')) + 1),
                       filter = 'top',
                       options = list(pageLength = 10,
                                      order = list(
-                                       list(2, 'asc')),
+                                       list(which(outputColumns == 'P-value'), 'asc')),
                                      language = list(lengthMenu = 'Show _MENU_ conditions per page',
                                                      processing = '',
                                                      emptyTable = 'No matching conditions found.',
-                                                     infoEmpty = 'Showing 0 to 0 of 0 condition-comparisons',
+                                                     infoEmpty = 'Showing 0 to 0 of 0 over condition-comparisons',
                                                      info = 'Showing _START_ to _END_ of _TOTAL_ condition-comparisons',
-                                                     infoFiltered = '(filtered from over _MAX_ total)'),
+                                                     infoFiltered = '(filtered from over _MAX_)'),
                                      fixedHeader = T,
                                      rowCallback = JS('asScientificNotation'),
                                      initComplete = JS('onTableCreated'),
                                      drawCallback = JS('onTableDraw'),
                                      dom = 'lBfrtip',
-                                     searchCols = list(
-                                                       NULL,
-                                                       NULL,
-                                                       list(search = '0 ... 0.05'),
-                                                       list(search = '0 ... 0.05')),
+                                     searchCols = as.list(
+                                       c(rep(list(NULL), which(outputColumns == 'P-value')),
+                                         list(search = '0 ... 0.05'))
+                                     ),
                                      autoWidth = T,
                                      columnDefs = list(
                                        list(targets = 0,
                                             width = '25%'),
-                                       list(targets = 1,
+                                       list(targets = which(outputColumns == 'Evidence'),
                                             className = 'dt-right',
                                             searchable = F, orderable = F),
-                                       list(targets = 2:3,
+                                       list(targets = which(outputColumns == 'P-value'),
                                             width = '8%'),
-                                       list(targets = 4:length(outputColumns),
+                                       list(targets = which(outputColumns == 'Direction'),
+                                            render = JS('asSparkline2'), width = '1px', className = 'dt-center', searchable = F, orderable = F),
+                                       list(targets = (which(outputColumns == 'P-value') + 1):length(outputColumns),
                                             render = JS('asSparkline'), width = '1px', className = 'dt-center', searchable = F, orderable = F)
                                      ),
-                                     search = list(
-                                       list(regex = T)
+                                     search = as.list(
+                                       rep(list(regex = T), 2)
                                      ),
                                      buttons = list(
                                        list(extend = 'collection',

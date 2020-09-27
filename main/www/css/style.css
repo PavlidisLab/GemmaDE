@@ -53,6 +53,11 @@ a:hover {
   margin-top: -15px;
 }
 
+.timestamp {
+  font-size: 1.3rem;
+  margin-left: 1rem;
+}
+
 .modal-lg {
   width: 90vw !important;
   margin-top: 5vh;

@@ -2,6 +2,7 @@ library(igraph)
 library(data.table)
 library(dplyr)
 library(matrixStats)
+library(Rfast)
 
 #' Search
 #' 
@@ -11,9 +12,10 @@ library(matrixStats)
 #' @param genes A list of Entrez Gene IDs (ie. 1, 22, 480) as characters
 #' @param taxa A taxa scope. Can be one of [human, mouse, rat].
 #' @param options Optional extra parameters to pass, such as:
-#' * pv: A p-value cutoff (default: 0.05)
+#' * pv: An FDR cutoff (default: 0.05)
 #' * fc.lower / fc.upper: Upper and lower logFC thresholds (default: 0 / 10)
 #' * mfx: Whether or not to scale by gene multifunctionality
+#' * geeq: Whether or not to scale by GEEQ score
 #' @param session The Shiny session
 search <- function(data, genes, taxa = getOption('app.taxa'), options = getOption('app.all_options'), session = NULL) {
   advanceProgress(session, 'Loading experiments')
@@ -38,7 +40,8 @@ search <- function(data, genes, taxa = getOption('app.taxa'), options = getOptio
     pv <- t(pv)
   
   # Only retain experiments that have at least one of the GOI as DE (pv < threshold)
-  colFilter <- colSums2(pv < P_THRESHOLD, na.rm = T) > 0 &
+  pv[is.na(pv)] <- 1
+  colFilter <- Rfast::colsums(pv < P_THRESHOLD) > 0 &
     data@experiment.meta[, !is.na(cf.BaseLongUri) | !is.na(cf.ValLongUri)]
   pv <- pv[, colFilter]
   
@@ -61,7 +64,7 @@ search <- function(data, genes, taxa = getOption('app.taxa'), options = getOptio
   
   logFC <- logFC %>% as.data.table
   
-  directions <- ifelse(colMeans2(logFC %>% as.matrix) < 0, -1, 1)
+  directions <- ifelse(Rfast::colmeans(logFC %>% as.matrix) < 0, F, T)
   logFC <- abs(logFC)
   
   # Only retain experiments that have at least one of the GOI with threshold_u > abs(logFC) > threshold_l
@@ -71,7 +74,7 @@ search <- function(data, genes, taxa = getOption('app.taxa'), options = getOptio
     if(FC_U_THRESHOLD != FC_L_THRESHOLD)
       exFilter <- exFilter & (logFC < FC_U_THRESHOLD)
     
-    colFilter <- colSums2(exFilter) > 0
+    colFilter <- Rfast::colsums(exFilter) > 0
     logFC <- logFC %>% .[, colFilter, with = F]
     directions <- directions[colFilter]
     pv <- pv[, colFilter, with = F]
@@ -81,20 +84,21 @@ search <- function(data, genes, taxa = getOption('app.taxa'), options = getOptio
   
   # Data Processing ---------------------------------------------------------
   advanceProgress(session, 'Ranking')
-
+  
+  # TODO Rfast::rowmeans but drop NAs?
   tf <- t(t(logFC) / (1 + rowMeans2(abs(logFC) %>% as.matrix, na.rm = T))) %>% as.data.table
   
   n.DE.exp[is.na(n.DE.exp)] <- 0
-  tf <- t(t(tf) / log2(2 + n.DE.exp)) %>% as.data.table # Weight by number of DEGs in this experiment
+  tf <- t(t(tf) / c(Rfast::Log(2 + n.DE.exp))) %>% as.data.table # Weight by number of DEGs in this experiment
   
   geeq[is.na(geeq)] <- 0
   if(GEEQ)
-    tf <- t(t(tf) * (1 + pmax(geeq, 0))) %>% as.data.table # Weight by experiment quality score
+    tf <- t(t(tf) * (1 + Rfast::Pmax(geeq, 0))) %>% as.data.table # Weight by experiment quality score
   
   pv[is.na(pv)] <- 1
   tf <- tf * -log10(pv + 1e-50) # TODO
 
-  query <- matrixStats::rowQuantiles(tf %>% as.matrix, probs = 0.8)# rowMaxs(tf %>% as.matrix)
+  query <- matrixStats::rowQuantiles(tf %>% as.matrix, probs = 0.8)
 
   # Shrink by MFX /after/ extracting the query
   
@@ -109,7 +113,7 @@ search <- function(data, genes, taxa = getOption('app.taxa'), options = getOptio
   tfidf <- tf * idf
   
   if(n.genes > 1)
-    tfidf <- scale(tfidf, center = F, scale = colSums2(as.matrix(tfidf))) %>% as.data.table
+    tfidf <- scale(tfidf, center = F, scale = Rfast::colsums(as.matrix(tfidf))) %>% as.data.table
   
   query <- tfidf[, query]
   tfidf[, query := NULL]
@@ -131,26 +135,29 @@ search <- function(data, genes, taxa = getOption('app.taxa'), options = getOptio
 
 #' getTags
 #' 
-#' Expand the specified ontology for the specified experiments.
+#' Expand the specified ontology for the specified experiments. This could theoretically be done
+#' before and cached like this, but it seems to take up much more space in RAM.
 #'
 #' @param cache A subsetted version of CACHE.BACKGROUND for the taxa scope.
 #' @param taxa A taxa scope. Can be one of [human, mouse, rat].
 #' @param scope The ontology scope.
 #' @param rsc.IDs A list of experiment rsc IDs or NULL for everything
-#' @param session The Shiny session
-getTags <- function(cache, taxa = getOption('app.taxa'), scope = getOption('app.ontology'), rsc.IDs = NULL, session = NULL) {
+#' @param max.distance The maximum tree traversal distance to include
+getTags <- function(cache, taxa = getOption('app.taxa'), scope = getOption('app.ontology'),
+                    rsc.IDs = NULL, max.distance = Inf) {
   if(is.null(rsc.IDs))
-    rsc.IDs <- cache[, unique(rsc.ID)]
+    rsc.IDs <- cache[, unique(as.character(rsc.ID))]
   
-  graphTerms <- ONTOLOGIES[!(OntologyScope %in% scope), as.character(ChildNode_Long, ParentNode_Long)]
-  
+  graphTerms <- ONTOLOGIES.DEFS[!(OntologyScope %in% scope), as.character(Definition)]
+    
   cache %>%
+    .[distance <= max.distance] %>%
+    .[, .(rsc.ID = as.character(rsc.ID), cf.Cat = as.character(cf.Cat), cf.BaseLongUri = as.character(cf.BaseLongUri),
+          cf.ValLongUri = as.character(cf.ValLongUri), distance, reverse)] %>%
     .[rsc.ID %in% rsc.IDs & !(cf.BaseLongUri %in% graphTerms) & !(cf.ValLongUri %in% graphTerms)] %>%
-    merge(ONTOLOGIES.DEFS[OntologyScope %in% scope], by.x = 'cf.BaseLongUri', by.y = 'Node_Long', sort = F, allow.cartesian = T, all.x = T) %>%
-    merge(ONTOLOGIES.DEFS[OntologyScope %in% scope], by.x = 'cf.ValLongUri', by.y = 'Node_Long', sort = F, allow.cartesian = T, all.x = T) %>%
-    .[is.na(Definition.x), Definition.x := cf.BaseLongUri] %>% .[is.na(Definition.y), Definition.y := cf.ValLongUri] %>%
-    .[, .(rsc.ID, cf.BaseLongUri = Definition.x, cf.ValLongUri = Definition.y, distance, OntologyScope.x, OntologyScope.y)] %>%
-    .[, .(distance = mean(distance)), .(rsc.ID, cf.BaseLongUri, cf.ValLongUri)] %>% setorder(distance, rsc.ID)
+    .[as.character(cf.BaseLongUri) != as.character(cf.ValLongUri)] %>%
+    .[, .(distance = mean(distance), reverse = first(reverse)),
+      .(rsc.ID, cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>% setorder(distance, rsc.ID)
 }
 
 #' Precompute Tags
@@ -159,46 +166,97 @@ getTags <- function(cache, taxa = getOption('app.taxa'), scope = getOption('app.
 #'
 #' @param taxa A taxa scope. Can be one of [human, mouse, rat].
 precomputeTags <- function(taxa = getOption('app.taxa')) {
-  graph <- simplify(igraph::graph_from_data_frame(ONTOLOGIES[, .(ChildNode_Long, ParentNode_Long)]))
+  mGraph <- simplify(igraph::graph_from_data_frame(ONTOLOGIES[, .(ChildNode_Long, ParentNode_Long)]))
   graphTerms <- unique(ONTOLOGIES[, as.character(ChildNode_Long, ParentNode_Long)])
   
-  mTags <- DATA.HOLDER[[taxa]]@experiment.meta[, .(cf.BaseLongUri = Filter(function(tag) tag %in% graphTerms,
-                                                                           unique(parseListEntry(as.character(cf.BaseLongUri))))), rsc.ID] %>%
-    merge(DATA.HOLDER[[taxa]]@experiment.meta[, .(cf.ValLongUri = Filter(function(tag) tag %in% graphTerms,
-                                                                         unique(parseListEntry(as.character(cf.ValLongUri))))), rsc.ID],
-          by = 'rsc.ID', sort = F, allow.cartesian = T)
+  mSimpleTags <- DATA.HOLDER[[taxa]]@experiment.meta[, .(tag = unique(cf.BaseLongUri), type = 'cf.BaseLongUri'), .(rsc.ID, ee.ID)] %>%
+    .[tag %in% graphTerms] %>%
+    rbind(DATA.HOLDER[[taxa]]@experiment.meta[, .(tag = unique(cf.ValLongUri), type = 'cf.ValLongUri'), .(rsc.ID, ee.ID)] %>%
+            .[tag %in% graphTerms])
   
-  mTags <- mTags[, rbindlist(lapply(.SD[, unique(cf.BaseLongUri)], function(uri) {
-    cf.BaseLongUri <- igraph::subcomponent(graph, uri, 'out')
-    distance <- igraph::distances(graph, uri, cf.BaseLongUri)
-    
-    data.table(tag = names(cf.BaseLongUri), type = 'cf.BaseLongUri', distance = c(distance))
-  })) %>% rbind(
-    rbindlist(lapply(.SD[, unique(cf.ValLongUri)], function(uri) {
-      cf.ValLongUri <- igraph::subcomponent(graph, uri, 'out')
-      distance <- igraph::distances(graph, uri, cf.ValLongUri)
-      
-      data.table(tag = names(cf.ValLongUri), type = 'cf.ValLongUri', distance = c(distance))
-    }))
-  ), rsc.ID] %>% .[is.finite(distance)] %>%
+  bagged <- DATA.HOLDER[[taxa]]@experiment.meta[, grepl('; ', cf.BaseLongUri, fixed = T) |
+                                                  grepl('; ', cf.ValLongUri, fixed = T)]
+  
+  mStructuredTags <- DATA.HOLDER[[taxa]]@experiment.meta[!bagged, .(tag = unique(cf.BaseLongUri),
+                                                             type = 'cf.BaseLongUri'), .(rsc.ID, ee.ID)] %>%
+    .[!(tag %in% graphTerms)] %>%
+    rbind(DATA.HOLDER[[taxa]]@experiment.meta[!bagged, .(tag = unique(cf.ValLongUri),
+                                                  type = 'cf.ValLongUri'), .(rsc.ID, ee.ID)] %>%
+            .[!(tag %in% graphTerms)]) %>% na.omit %>% .[, distance := 0]
+  
+  mBagOfWords <- DATA.HOLDER[[taxa]]@experiment.meta[bagged, .(tag = unique(cf.BaseLongUri),
+                                                                type = 'cf.BaseLongUri'), .(rsc.ID, ee.ID)] %>%
+    .[!(tag %in% graphTerms)] %>%
+    rbind(DATA.HOLDER[[taxa]]@experiment.meta[bagged, .(tag = unique(cf.ValLongUri),
+                                                         type = 'cf.ValLongUri'), .(rsc.ID, ee.ID)] %>%
+            .[!(tag %in% graphTerms)]) %>% na.omit %>%
+    .[, lapply(.SD, function(x) parseListEntry(as.character(x))), .(rsc.ID, ee.ID, type)] %>%
+    .[, ID := 1:length(tag), .(rsc.ID, ee.ID, type)]
+  
+  mComputedTags <- rbindlist(lapply(union(mSimpleTags[, unique(tag)], mBagOfWords[tag %in% graphTerms, tag]), function(uri) {
+    tag <- igraph::subcomponent(mGraph, uri, 'out')
+    distance <- igraph::distances(mGraph, uri, tag)
+    data.table(startTag = uri, tag = names(tag), distance = c(distance))
+  }))
+  
+  mTags <- mSimpleTags %>% merge(mComputedTags[startTag %in% mSimpleTags[, unique(tag)]],
+                                 by.x = 'tag', by.y = 'startTag', sort = F, allow.cartesian = T) %>%
+    .[, c('tag', 'tag.y') := list(tag.y, NULL)] %>% .[, ID := NA] %>%
+    rbind(mStructuredTags[, ID := NA] %>% .[, .(tag, rsc.ID, ee.ID, type, distance, ID)]) %>%
     rbind(
-      DATA.HOLDER[[taxa]]@experiment.meta[, .(tag = Filter(function(tag) !(tag %in% graphTerms),
-                                                                      unique(parseListEntry(as.character(cf.BaseLongUri))))), rsc.ID] %>%
-        .[, .(rsc.ID, tag, type = 'cf.BaseLongUri', distance = 0)] %>%
-        rbind(
-          DATA.HOLDER[[taxa]]@experiment.meta[, .(tag = Filter(function(tag) !(tag %in% graphTerms),
-                                                               unique(parseListEntry(as.character(cf.ValLongUri))))), rsc.ID] %>%
-            .[, .(rsc.ID, tag, type = 'cf.ValLongUri', distance = 0)]
-        )
+      mBagOfWords %>%
+        merge(mComputedTags[startTag %in% mBagOfWords[, unique(tag)]],
+              by.x = 'tag', by.y = 'startTag', all = T, sort = F, allow.cartesian = T) %>%
+        .[is.na(tag.y), c('tag.y', 'distance') := list(tag, 0)] %>%
+        .[, c('tag', 'tag.y') := list(tag.y, NULL)]
     )
   
-  mTags[, (expand.grid(cf.BaseLongUri = .SD[type == 'cf.BaseLongUri', tag],
-                       cf.ValLongUri = .SD[type == 'cf.ValLongUri', tag])), rsc.ID] %>%
-    merge(mTags[type == 'cf.BaseLongUri', .(rsc.ID, tag, distance)],
-          by.x = c('rsc.ID', 'cf.BaseLongUri'), by.y = c('rsc.ID', 'tag'), sort = F, allow.cartesian = T) %>%
-    merge(mTags[type == 'cf.ValLongUri', .(rsc.ID, tag, distance)],
-          by.x = c('rsc.ID', 'cf.ValLongUri'), by.y = c('rsc.ID', 'tag'), sort = F, allow.cartesian = T) %>%
-    .[, c('distance', 'distance.x', 'distance.y') := list(rowMeans2(cbind(distance.x, distance.y)), NULL, NULL)]
+  mTags <- mTags %>%
+    merge(unique(ONTOLOGIES.DEFS[, .(Node_Long, Definition)]),
+          by.x = 'tag', by.y = 'Node_Long', sort = F, allow.cartesian = T, all.x = T) %>%
+    .[is.na(Definition), Definition := tag] %>%
+    .[, .(rsc.ID, ee.ID, type, tag = Definition, distance, ID)]
+  
+  mTags %>% .[!is.na(ID) & distance < 1, expand.grid(aggregate(.SD[, tag], by = list(.SD[, ID]), FUN = list)[[-1]]) %>%
+                apply(1, paste0, collapse = '; ') %>% unique, .(rsc.ID, ee.ID, type)] %>%
+    .[, expand.grid(cf.BaseLongUri = .SD[type == 'cf.BaseLongUri', V1],
+                    cf.ValLongUri = .SD[type == 'cf.ValLongUri', V1]), .(rsc.ID, ee.ID)] %>% unique %>%
+    rbind(
+      mTags[is.na(ID), expand.grid(cf.BaseLongUri = .SD[type == 'cf.BaseLongUri', tag],
+                                   cf.ValLongUri = .SD[type == 'cf.ValLongUri', tag]), .(rsc.ID, ee.ID)] %>% unique
+    ) %>%
+    merge(mTags[type == 'cf.BaseLongUri', .(rsc.ID, ee.ID, tag, distance)],
+          by.x = c('rsc.ID', 'ee.ID', 'cf.BaseLongUri'), by.y = c('rsc.ID', 'ee.ID', 'tag'), sort = F, allow.cartesian = T) %>%
+    merge(mTags[type == 'cf.ValLongUri', .(rsc.ID, ee.ID, tag, distance)],
+          by.x = c('rsc.ID', 'ee.ID', 'cf.ValLongUri'), by.y = c('rsc.ID', 'ee.ID', 'tag'), sort = F, allow.cartesian = T) %>%
+    .[, c('distance', 'distance.x', 'distance.y') := list(Rfast::rowmeans(cbind(distance.x, distance.y)), NULL, NULL)] %>%
+    merge(DATA.HOLDER[[taxa]]@experiment.meta[, .(rsc.ID, ee.ID, cf.Cat)], by = c('rsc.ID', 'ee.ID'), all.x = T, sort = F, allow.cartesian = T) %>%
+    reorderTags
+}
+
+#' Reorder Tags
+#' 
+#' Reorders the baseline and contrast so that the most common one is in the baseline.
+#'
+#' @param cache The cache entry
+#'
+#' @return A reordered cache entry
+reorderTags <- function(cache) {
+  vals <- cache[, .N, cf.BaseLongUri] %>%
+    merge(cache[, .N, cf.ValLongUri],
+          by.x = 'cf.BaseLongUri', by.y = 'cf.ValLongUri', all = T, sort = F, allow.cartesian = T) %>%
+    .[is.na(N.x), N.x := 0] %>% .[is.na(N.y), N.y := 0] %>%
+    .[, N := N.x + N.y, cf.BaseLongUri] %>%
+    .[, .(tag = cf.BaseLongUri, N)]
+  
+  cache[, .(rsc.ID, ee.ID, cf.Cat, b = cf.BaseLongUri, v = cf.ValLongUri, distance)] %>%
+    merge(vals, by.x = 'b', by.y = 'tag', sort = F, allow.cartesian = T) %>%
+    merge(vals, by.x = 'v', by.y = 'tag', sort = F, allow.cartesian = T) %>%
+    .[, reverse := (N.y > N.x) | (N.y == N.x & b < v)] %>%
+    .[reverse == T, c('b', 'v') := list(v, b)] %>%
+    .[, .(rsc.ID = as.factor(rsc.ID), ee.ID,
+          cf.Cat = as.factor(cf.Cat), cf.BaseLongUri = as.factor(b), cf.ValLongUri = as.factor(v),
+          reverse, distance)]
 }
 
 #' Enrich
@@ -218,36 +276,25 @@ enrich <- function(cache, rankings, taxa = getOption('app.taxa'), scope = getOpt
   
   advanceProgress(session, 'Looking up ontology terms')
   
-  # mMaps[[1]] is the background tags, mMaps[[2]] is the foreground tags.
-  mMaps <- list(getTags(cache, taxa, scope, NULL, session), getTags(cache, taxa, scope, rankings[, rsc.ID], session))
+  mMaps <- list(getTags(cache, taxa, scope, NULL, options$distance),
+                getTags(cache, taxa, scope, rankings[, rsc.ID], options$distance))
   
   mMaps[[2]] <- mMaps[[2]] %>% merge(rankings, by = 'rsc.ID', sort = F, allow.cartesian = T)
   
   aprior <- function() {
-    mMaps[[2]][distance <= options$distance,
-               .(A = sum(rank) / (1 + sum(distance))), .(cf.BaseLongUri, cf.ValLongUri)][, B := sum(A)] %>%
-      merge(mMaps[[1]][distance <= options$distance & !(rsc.ID %in% rankings[, rsc.ID]),
+    mMaps[[2]][, .(A = sum(rank) / (1 + sum(distance))), .(cf.BaseLongUri, cf.ValLongUri)][, B := sum(A)] %>%
+      merge(mMaps[[1]][!(rsc.ID %in% rankings[, rsc.ID]),
                        .(C = .N / (1 + sum(distance))), .(cf.BaseLongUri, cf.ValLongUri)][, D := sum(C)],
             by = c('cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T)
   }
   
-  chisq <- function(input) {
-    advanceProgress(session, 'Running tests (1/2)')
-    
-    input[, c('pv.chisq', 'chisq') :=
-            ifelse((A * (D - C)) / ((B - A) * C) <= 1, list(1, 1),
-                   suppressWarnings(chisq.test(matrix(c(A, B - A, C, D - C), nrow = 2)))[c('p.value', 'statistic')]),
-          .(cf.BaseLongUri, cf.ValLongUri)]
-  }
-  
   fisher <- function(input) {
-    advanceProgress(session, 'Running tests (2/2)')
+    advanceProgress(session, 'Running tests')
     
     input[, c('pv.fisher', 'OR') :=
-            suppressWarnings(fisher.test(matrix(c(A, B - A, C, D - C), nrow = 2),
-                                         alternative = 'greater', conf.int = F))[c('p.value', 'estimate')],
+            suppressWarnings(phyper(A - 1, B, D, C + A, F)),
           .(cf.BaseLongUri, cf.ValLongUri)]
   }
 
-  aprior() %>% chisq %>% fisher %>% setorder(pv.chisq)
+  aprior() %>% fisher %>% setorder(pv.fisher)
 }

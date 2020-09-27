@@ -49,10 +49,9 @@ function validate() {
   $('#search').prop('disabled', !accept);
 }
 
+// TODO it would be nice if this was aware of the p-value column
 function asScientificNotation(row, data) {
-  for(var i of [2, 3]) {
-    $('td:eq(' + i + ')', row).html(Math.round((data[i] + Number.EPSILON) * 1e3) / 1e3);
-  }
+  $('td:eq(4)', row).html(Math.round((data[4] + Number.EPSILON) * 1e3) / 1e3);
 }
 
 function onTableCreated() {
@@ -75,17 +74,21 @@ function onTableDraw() {
     $(this).popover('toggle');
   });
   
-  $('.spark:not(:has(canvas))').sparkline('html', {
-    type: 'bar',
-    barColor: '#002145',
-    zeroColor: '#002145',
-    chartRangeMin: 0,
-    chartRangeMax: 1
+  console.log($('.spark:not(:has(canvas))').attr('type'));
+  
+  $('.spark:not(:has(canvas))').each(function(index) {
+      $(this).sparkline('html', {
+        type: $(this).attr('type'),
+        sliceColors: ['#4DAC26', '#D7191C'],
+        barColor: '#002145',
+        zeroColor: '#002145',
+        chartRangeMin: 0,
+        chartRangeMax: 1
+      });
   });
 }
 
 function histogram(data) {
-  data = data.split(',').map(x => +x);
   var bins = [];
   
   for(i = 0.1; i <= 1; i += 0.1) {
@@ -97,10 +100,21 @@ function histogram(data) {
 
 const mean = arr => arr.reduce((sume, el) => sume + el, 0) / arr.length;
 
-function asSparkline(data, type, row, meta) {
+function asSparkline2(data, type, row, meta) {
+  data = data.split(',').map(x => +x);
+  
   return type === 'display' ?
-    '<span class="spark" style="display: inline-block; width: 100%;" mean="' +
-      mean(data.split(',').map(x => +x)) + '">' + histogram(data) + '</span>' :
+    '<span class="spark" type="pie" style="display: inline-block; width: 100%;" mean="' +
+      mean(data) + '">' + data + '</span>' :
+    data;
+}
+
+function asSparkline(data, type, row, meta) {
+  data = data.split(',').map(x => +x);
+  
+  return type === 'display' ?
+    '<span class="spark" type="bar" style="display: inline-block; width: 100%;" mean="' +
+      mean(data) + '">' + histogram(data) + '</span>' :
     data;
 }
 
