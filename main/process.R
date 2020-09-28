@@ -169,22 +169,22 @@ precomputeTags <- function(taxa = getOption('app.taxa')) {
   mGraph <- simplify(igraph::graph_from_data_frame(ONTOLOGIES[, .(ChildNode_Long, ParentNode_Long)]))
   graphTerms <- unique(ONTOLOGIES[, as.character(ChildNode_Long, ParentNode_Long)])
   
-  mSimpleTags <- DATA.HOLDER[[taxa]]@experiment.meta[, .(tag = unique(cf.BaseLongUri), type = 'cf.BaseLongUri'), .(rsc.ID, ee.ID)] %>%
+  mSimpleTags <<- DATA.HOLDER[[taxa]]@experiment.meta[, .(tag = unique(cf.BaseLongUri), type = 'cf.BaseLongUri'), .(rsc.ID, ee.ID)] %>%
     .[tag %in% graphTerms] %>%
     rbind(DATA.HOLDER[[taxa]]@experiment.meta[, .(tag = unique(cf.ValLongUri), type = 'cf.ValLongUri'), .(rsc.ID, ee.ID)] %>%
             .[tag %in% graphTerms])
   
-  bagged <- DATA.HOLDER[[taxa]]@experiment.meta[, grepl('; ', cf.BaseLongUri, fixed = T) |
+  bagged <<- DATA.HOLDER[[taxa]]@experiment.meta[, grepl('; ', cf.BaseLongUri, fixed = T) |
                                                   grepl('; ', cf.ValLongUri, fixed = T)]
   
-  mStructuredTags <- DATA.HOLDER[[taxa]]@experiment.meta[!bagged, .(tag = unique(cf.BaseLongUri),
+  mStructuredTags <<- DATA.HOLDER[[taxa]]@experiment.meta[!bagged, .(tag = unique(cf.BaseLongUri),
                                                              type = 'cf.BaseLongUri'), .(rsc.ID, ee.ID)] %>%
     .[!(tag %in% graphTerms)] %>%
     rbind(DATA.HOLDER[[taxa]]@experiment.meta[!bagged, .(tag = unique(cf.ValLongUri),
                                                   type = 'cf.ValLongUri'), .(rsc.ID, ee.ID)] %>%
             .[!(tag %in% graphTerms)]) %>% na.omit %>% .[, distance := 0]
   
-  mBagOfWords <- DATA.HOLDER[[taxa]]@experiment.meta[bagged, .(tag = unique(cf.BaseLongUri),
+  mBagOfWords <<- DATA.HOLDER[[taxa]]@experiment.meta[bagged, .(tag = unique(cf.BaseLongUri),
                                                                 type = 'cf.BaseLongUri'), .(rsc.ID, ee.ID)] %>%
     .[!(tag %in% graphTerms)] %>%
     rbind(DATA.HOLDER[[taxa]]@experiment.meta[bagged, .(tag = unique(cf.ValLongUri),
@@ -193,13 +193,13 @@ precomputeTags <- function(taxa = getOption('app.taxa')) {
     .[, lapply(.SD, function(x) parseListEntry(as.character(x))), .(rsc.ID, ee.ID, type)] %>%
     .[, ID := 1:length(tag), .(rsc.ID, ee.ID, type)]
   
-  mComputedTags <- rbindlist(lapply(union(mSimpleTags[, unique(tag)], mBagOfWords[tag %in% graphTerms, tag]), function(uri) {
+  mComputedTags <<- rbindlist(lapply(union(mSimpleTags[, unique(tag)], mBagOfWords[tag %in% graphTerms, tag]), function(uri) {
     tag <- igraph::subcomponent(mGraph, uri, 'out')
     distance <- igraph::distances(mGraph, uri, tag)
     data.table(startTag = uri, tag = names(tag), distance = c(distance))
   }))
   
-  mTags <- mSimpleTags %>% merge(mComputedTags[startTag %in% mSimpleTags[, unique(tag)]],
+  mTags <<- mSimpleTags %>% merge(mComputedTags[startTag %in% mSimpleTags[, unique(tag)]],
                                  by.x = 'tag', by.y = 'startTag', sort = F, allow.cartesian = T) %>%
     .[, c('tag', 'tag.y') := list(tag.y, NULL)] %>% .[, ID := NA] %>%
     rbind(mStructuredTags[, ID := NA] %>% .[, .(tag, rsc.ID, ee.ID, type, distance, ID)]) %>%
@@ -211,20 +211,17 @@ precomputeTags <- function(taxa = getOption('app.taxa')) {
         .[, c('tag', 'tag.y') := list(tag.y, NULL)]
     )
   
-  mTags <- mTags %>%
+  mTags <<- mTags %>%
     merge(unique(ONTOLOGIES.DEFS[, .(Node_Long, Definition)]),
           by.x = 'tag', by.y = 'Node_Long', sort = F, allow.cartesian = T, all.x = T) %>%
     .[is.na(Definition), Definition := tag] %>%
-    .[, .(rsc.ID, ee.ID, type, tag = Definition, distance, ID)]
+    .[, .(rsc.ID, ee.ID, type, tag = as.character(Definition), distance, ID)]
   
   mTags %>% .[!is.na(ID) & distance < 1, expand.grid(aggregate(.SD[, tag], by = list(.SD[, ID]), FUN = list)[[-1]]) %>%
                 apply(1, paste0, collapse = '; ') %>% unique, .(rsc.ID, ee.ID, type)] %>%
-    .[, expand.grid(cf.BaseLongUri = .SD[type == 'cf.BaseLongUri', V1],
-                    cf.ValLongUri = .SD[type == 'cf.ValLongUri', V1]), .(rsc.ID, ee.ID)] %>% unique %>%
-    rbind(
-      mTags[is.na(ID), expand.grid(cf.BaseLongUri = .SD[type == 'cf.BaseLongUri', tag],
-                                   cf.ValLongUri = .SD[type == 'cf.ValLongUri', tag]), .(rsc.ID, ee.ID)] %>% unique
-    ) %>%
+    .[, c('tag', 'V1') := list(V1, NULL)] %>% rbind(mTags[is.na(ID), .(rsc.ID, ee.ID, type, tag)]) %>%
+    .[, expand.grid(cf.BaseLongUri = .SD[type == 'cf.BaseLongUri', tag],
+                    cf.ValLongUri = .SD[type == 'cf.ValLongUri', tag]), .(rsc.ID, ee.ID)] %>% unique %>%
     merge(mTags[type == 'cf.BaseLongUri', .(rsc.ID, ee.ID, tag, distance)],
           by.x = c('rsc.ID', 'ee.ID', 'cf.BaseLongUri'), by.y = c('rsc.ID', 'ee.ID', 'tag'), sort = F, allow.cartesian = T) %>%
     merge(mTags[type == 'cf.ValLongUri', .(rsc.ID, ee.ID, tag, distance)],

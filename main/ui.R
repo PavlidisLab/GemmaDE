@@ -35,8 +35,6 @@ generateResultsPlot <- function(taxa = getOption('app.taxa'), scope = getOption(
 }
 
 generateResults <- function(data, taxa = getOption('app.taxa'), scope = getOption('app.ontology'), experiments, conditions, options = DEFAULT_OPTIONS) {
-  # outputColumns <- c('Evidence', 'E', 'P-value (χ2)', 'P-value (Fisher)', colnames(experiments)[1:(ncol(experiments) - 1)])
-  
   outputColumns <- c('Contrast', 'Direction', 'Evidence', 'P-value', colnames(experiments)[1:(ncol(experiments) - 2)])
   
   conditions[, Evidence := paste0('<span data-toggle="popover" title="Experiments" data-html="true" data-content="',
@@ -51,7 +49,7 @@ generateResults <- function(data, taxa = getOption('app.taxa'), scope = getOptio
   
   mTable <- datatable(conditions[, outputColumns, with = F] %>% as.data.frame,
                       extensions = c('FixedHeader', 'Buttons'),
-                      rownames = conditions[, Category],
+                      rownames = conditions[, cf.Cat],
                       escape = -(c(which(outputColumns == 'Contrast'), which(outputColumns == 'Evidence')) + 1),
                       filter = 'top',
                       options = list(pageLength = 10,
@@ -64,30 +62,29 @@ generateResults <- function(data, taxa = getOption('app.taxa'), scope = getOptio
                                                      info = 'Showing _START_ to _END_ of _TOTAL_ condition-comparisons',
                                                      infoFiltered = '(filtered from over _MAX_)'),
                                      fixedHeader = T,
-                                     rowCallback = JS('asScientificNotation'),
                                      initComplete = JS('onTableCreated'),
                                      drawCallback = JS('onTableDraw'),
                                      dom = 'lBfrtip',
-                                     searchCols = as.list(
-                                       c(rep(list(NULL), which(outputColumns == 'P-value')),
-                                         list(search = '0 ... 0.05'))
-                                     ),
                                      autoWidth = T,
                                      columnDefs = list(
                                        list(targets = 0,
-                                            width = '25%'),
+                                            width = '10%', className = 'cf-cat'),
+                                       list(targets = which(outputColumns == 'Contrast'),
+                                            width = '25%',
+                                            searchable = F, orderable = F),
                                        list(targets = which(outputColumns == 'Evidence'),
                                             className = 'dt-right',
                                             searchable = F, orderable = F),
                                        list(targets = which(outputColumns == 'P-value'),
-                                            width = '8%'),
+                                            render = JS('asPval'), width = '12.5%'),
                                        list(targets = which(outputColumns == 'Direction'),
                                             render = JS('asSparkline2'), width = '1px', className = 'dt-center', searchable = F, orderable = F),
                                        list(targets = (which(outputColumns == 'P-value') + 1):length(outputColumns),
                                             render = JS('asSparkline'), width = '1px', className = 'dt-center', searchable = F, orderable = F)
                                      ),
-                                     search = as.list(
-                                       rep(list(regex = T), 2)
+                                     search = list(
+                                       list(regex = T),
+                                       list(regex = T)
                                      ),
                                      buttons = list(
                                        list(extend = 'collection',
@@ -120,6 +117,7 @@ ui <- fluidPage(style = 'height: 100%;',
   withTags(head(
     script(src = 'js/initialize.js'),
     script(src = 'https://kit.fontawesome.com/33dcd9d8f9.js', crossorigin = 'anonymous'),
+    script(src = 'https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML'),
     link(rel = 'stylesheet', type = 'text/css', href = 'css/style.css'),
     
     title(getOption('app.name')),

@@ -149,7 +149,7 @@ server <- function(input, output, session) {
                                             ifelse(ncol(experiments) == 2, colnames(experiments)[1],
                                                    paste0('<span data-toggle="tooltip" data-placement="top" title="',
                                                           paste0(colnames(experiments)[1:(ncol(experiments) - 2)], collapse = ', '), '">',
-                                                          ncol(experiments) - 2, ' genes', '</span>')),
+                                                          ncol(experiments) - 2, ' gene', ifelse(ncol(experiments) > 3, 's', ''), '</span>')),
                                             '</h2><span class="timestamp">in ',
                                             format(difftime(Sys.time(), session$userData$startTime), digits = 3), '.</span></span>')))
         })
@@ -267,7 +267,7 @@ server <- function(input, output, session) {
     # If anything is left, try to match it to gene aliases.
     if(length(genes) > 0) {
       aliases <- DATA.HOLDER[[taxa]]@gene.meta[, parseListEntry(alias.Name), entrez.ID] %>%
-        .[V1 %in% genes]
+        .[V1 %in% genes] # TODO may have multiple aliases for one entry
       if(nrow(aliases) > 0)
         cleanGenes <- c(cleanGenes, aliases[, entrez.ID])
     }

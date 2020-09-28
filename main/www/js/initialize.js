@@ -49,11 +49,6 @@ function validate() {
   $('#search').prop('disabled', !accept);
 }
 
-// TODO it would be nice if this was aware of the p-value column
-function asScientificNotation(row, data) {
-  $('td:eq(4)', row).html(Math.round((data[4] + Number.EPSILON) * 1e3) / 1e3);
-}
-
 function onTableCreated() {
   $('[data-toggle="tooltip"]').tooltip();
 }
@@ -61,20 +56,21 @@ function onTableCreated() {
 $(document).click(function (e) {
   if($(e.target).parent().find('[data-toggle="popover"]').length > 0) {
     $('[data-toggle="popover"]').popover('hide');
+    e.preventDefault();
   }
 });
 
 function onTableDraw() {
   $('[data-toggle="popover"]').popover();
   
-  $('[data-toggle="popover"]').click(function(event) {
-    event.preventDefault();
+  $('[data-toggle="popover"]').click(function(e) {
+    e.preventDefault();
     
     $('[data-toggle="popover"]').not(this).popover('hide');
     $(this).popover('toggle');
   });
   
-  console.log($('.spark:not(:has(canvas))').attr('type'));
+  if(window.MathJax) MathJax.Hub.Queue(['Typeset', MathJax.Hub]);
   
   $('.spark:not(:has(canvas))').each(function(index) {
       $(this).sparkline('html', {
@@ -118,9 +114,22 @@ function asSparkline(data, type, row, meta) {
     data;
 }
 
+function asPval(data, type, row, meta) {
+  if(data === null) return data;
+  
+  if(Math.floor(Math.log10(data)) >= -2) pval = Number(Math.round(data + 'e3') + 'e-3');
+  else pval = data.toExponential(3).replace('e', ' * 10^{') + '}';
+  
+  return type === 'display' ?
+    '<span class="pvalue" pval="' + data + '">$$' + pval + '$$</span>' :
+  data;
+}
+
 function unformatSpark(html, row, column, node) {
   if($(node).children().hasClass('spark'))
     return $(html).attr('mean');
+  else if($(node).children().hasClass('pvalue'))
+    return $(html).attr('pval');
   return html;
 }
 

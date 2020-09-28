@@ -168,9 +168,9 @@ if(!exists('DATA.HOLDER')) {
   if(file.exists('/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND.rds'))
     CACHE.BACKGROUND <- readRDS('/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND.rds')
   else {
-    CACHE.BACKGROUND <- lapply(Filter(function(x) x != 'artificial', getOption('app.all_taxa')), precomputeTags)
+    CACHE.BACKGROUND <- lapply(Filter(function(x) x %in% names(DATA.HOLDER), getOption('app.all_taxa')), precomputeTags)
     
-    names(CACHE.BACKGROUND) <- Filter(function(x) x != 'artificial', getOption('app.all_taxa'))
+    names(CACHE.BACKGROUND) <- Filter(function(x) x %in% names(DATA.HOLDER), getOption('app.all_taxa'))
     
     saveRDS(CACHE.BACKGROUND, '/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND.rds')
   }

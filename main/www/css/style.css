@@ -53,9 +53,18 @@ a:hover {
   margin-top: -15px;
 }
 
+table.dataTable.no-footer {
+  width: 100% !important;
+}
+
 .timestamp {
   font-size: 1.3rem;
   margin-left: 1rem;
+}
+
+.cf-cat {
+  font-variant: small-caps;
+  text-align: right;
 }
 
 .modal-lg {
