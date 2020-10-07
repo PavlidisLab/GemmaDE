@@ -1,11 +1,3 @@
-library(data.table)
-library(jsonlite)
-library(dplyr)
-library(matrixStats)
-library(igraph)
-library(gemmaAPI)
-library(parallel)
-
 #' JSONify
 #' 
 #' Assuming the input string is entirely unquoted, make it suitable for JSON.

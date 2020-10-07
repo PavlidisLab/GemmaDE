@@ -1,23 +1,16 @@
-library(igraph)
-library(data.table)
-library(dplyr)
-library(matrixStats)
-library(Rfast)
-
 #' Search
 #' 
 #' Uses the M-VSM to sort experiments that show at least one of the genes as DE.
 #'
 #' @param data A subsetted version of DATA.HOLDER for the taxa scope.
 #' @param genes A list of Entrez Gene IDs (ie. 1, 22, 480) as characters
-#' @param taxa A taxa scope. Can be one of [human, mouse, rat].
 #' @param options Optional extra parameters to pass, such as:
 #' * pv: An FDR cutoff (default: 0.05)
 #' * fc.lower / fc.upper: Upper and lower logFC thresholds (default: 0 / 10)
 #' * mfx: Whether or not to scale by gene multifunctionality
 #' * geeq: Whether or not to scale by GEEQ score
 #' @param session The Shiny session
-search <- function(data, genes, taxa = getOption('app.taxa'), options = getOption('app.all_options'), session = NULL) {
+search <- function(data, genes, options = getOption('app.all_options'), session = NULL) {
   advanceProgress(session, 'Loading experiments')
   
   P_THRESHOLD <- options$pv
@@ -139,11 +132,10 @@ search <- function(data, genes, taxa = getOption('app.taxa'), options = getOptio
 #' before and cached like this, but it seems to take up much more space in RAM.
 #'
 #' @param cache A subsetted version of CACHE.BACKGROUND for the taxa scope.
-#' @param taxa A taxa scope. Can be one of [human, mouse, rat].
 #' @param scope The ontology scope.
 #' @param rsc.IDs A list of experiment rsc IDs or NULL for everything
 #' @param max.distance The maximum tree traversal distance to include
-getTags <- function(cache, taxa = getOption('app.taxa'), scope = getOption('app.ontology'),
+getTags <- function(cache, scope = getOption('app.ontology'),
                     rsc.IDs = NULL, max.distance = Inf) {
   if(is.null(rsc.IDs))
     rsc.IDs <- cache[, unique(as.character(rsc.ID))]
@@ -169,22 +161,22 @@ precomputeTags <- function(taxa = getOption('app.taxa')) {
   mGraph <- simplify(igraph::graph_from_data_frame(ONTOLOGIES[, .(ChildNode_Long, ParentNode_Long)]))
   graphTerms <- unique(ONTOLOGIES[, as.character(ChildNode_Long, ParentNode_Long)])
   
-  mSimpleTags <<- DATA.HOLDER[[taxa]]@experiment.meta[, .(tag = unique(cf.BaseLongUri), type = 'cf.BaseLongUri'), .(rsc.ID, ee.ID)] %>%
+  mSimpleTags <- DATA.HOLDER[[taxa]]@experiment.meta[, .(tag = unique(cf.BaseLongUri), type = 'cf.BaseLongUri'), .(rsc.ID, ee.ID)] %>%
     .[tag %in% graphTerms] %>%
     rbind(DATA.HOLDER[[taxa]]@experiment.meta[, .(tag = unique(cf.ValLongUri), type = 'cf.ValLongUri'), .(rsc.ID, ee.ID)] %>%
             .[tag %in% graphTerms])
   
-  bagged <<- DATA.HOLDER[[taxa]]@experiment.meta[, grepl('; ', cf.BaseLongUri, fixed = T) |
+  bagged <- DATA.HOLDER[[taxa]]@experiment.meta[, grepl('; ', cf.BaseLongUri, fixed = T) |
                                                   grepl('; ', cf.ValLongUri, fixed = T)]
   
-  mStructuredTags <<- DATA.HOLDER[[taxa]]@experiment.meta[!bagged, .(tag = unique(cf.BaseLongUri),
+  mStructuredTags <- DATA.HOLDER[[taxa]]@experiment.meta[!bagged, .(tag = unique(cf.BaseLongUri),
                                                              type = 'cf.BaseLongUri'), .(rsc.ID, ee.ID)] %>%
     .[!(tag %in% graphTerms)] %>%
     rbind(DATA.HOLDER[[taxa]]@experiment.meta[!bagged, .(tag = unique(cf.ValLongUri),
                                                   type = 'cf.ValLongUri'), .(rsc.ID, ee.ID)] %>%
             .[!(tag %in% graphTerms)]) %>% na.omit %>% .[, distance := 0]
   
-  mBagOfWords <<- DATA.HOLDER[[taxa]]@experiment.meta[bagged, .(tag = unique(cf.BaseLongUri),
+  mBagOfWords <- DATA.HOLDER[[taxa]]@experiment.meta[bagged, .(tag = unique(cf.BaseLongUri),
                                                                 type = 'cf.BaseLongUri'), .(rsc.ID, ee.ID)] %>%
     .[!(tag %in% graphTerms)] %>%
     rbind(DATA.HOLDER[[taxa]]@experiment.meta[bagged, .(tag = unique(cf.ValLongUri),
@@ -193,13 +185,13 @@ precomputeTags <- function(taxa = getOption('app.taxa')) {
     .[, lapply(.SD, function(x) parseListEntry(as.character(x))), .(rsc.ID, ee.ID, type)] %>%
     .[, ID := 1:length(tag), .(rsc.ID, ee.ID, type)]
   
-  mComputedTags <<- rbindlist(lapply(union(mSimpleTags[, unique(tag)], mBagOfWords[tag %in% graphTerms, tag]), function(uri) {
+  mComputedTags <- rbindlist(lapply(union(mSimpleTags[, unique(tag)], mBagOfWords[tag %in% graphTerms, tag]), function(uri) {
     tag <- igraph::subcomponent(mGraph, uri, 'out')
     distance <- igraph::distances(mGraph, uri, tag)
     data.table(startTag = uri, tag = names(tag), distance = c(distance))
   }))
   
-  mTags <<- mSimpleTags %>% merge(mComputedTags[startTag %in% mSimpleTags[, unique(tag)]],
+  mTags <- mSimpleTags %>% merge(mComputedTags[startTag %in% mSimpleTags[, unique(tag)]],
                                  by.x = 'tag', by.y = 'startTag', sort = F, allow.cartesian = T) %>%
     .[, c('tag', 'tag.y') := list(tag.y, NULL)] %>% .[, ID := NA] %>%
     rbind(mStructuredTags[, ID := NA] %>% .[, .(tag, rsc.ID, ee.ID, type, distance, ID)]) %>%
@@ -211,7 +203,7 @@ precomputeTags <- function(taxa = getOption('app.taxa')) {
         .[, c('tag', 'tag.y') := list(tag.y, NULL)]
     )
   
-  mTags <<- mTags %>%
+  mTags <- mTags %>%
     merge(unique(ONTOLOGIES.DEFS[, .(Node_Long, Definition)]),
           by.x = 'tag', by.y = 'Node_Long', sort = F, allow.cartesian = T, all.x = T) %>%
     .[is.na(Definition), Definition := tag] %>%
@@ -263,18 +255,17 @@ reorderTags <- function(cache) {
 #'
 #' @param cache A subsetted version of CACHE.BACKGROUND for the taxa scope.
 #' @param rankings A named numeric (@seealso search).
-#' @param taxa The taxon
 #' @param scope The ontology scope.
 #' @param options The options
 #' @param session The Shiny session.
-enrich <- function(cache, rankings, taxa = getOption('app.taxa'), scope = getOption('app.ontology'),
+enrich <- function(cache, rankings, scope = getOption('app.ontology'),
                    options = getOption('app.all_options'), session = NULL) {
   rankings <- data.table(rsc.ID = rownames(rankings), rank = rankings$score, direction = rankings$direction)
   
   advanceProgress(session, 'Looking up ontology terms')
   
-  mMaps <- list(getTags(cache, taxa, scope, NULL, options$distance),
-                getTags(cache, taxa, scope, rankings[, rsc.ID], options$distance))
+  mMaps <- list(getTags(cache, scope, NULL, options$distance),
+                getTags(cache, scope, rankings[, rsc.ID], options$distance))
   
   mMaps[[2]] <- mMaps[[2]] %>% merge(rankings, by = 'rsc.ID', sort = F, allow.cartesian = T)
   

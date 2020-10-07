@@ -132,3 +132,25 @@ footer {
 footer > a:focus, footer > a:hover {
   color: lightgrey;
 }
+
+.loading:after {
+  overflow: hidden;
+  display: inline-block;
+  vertical-align: bottom;
+  -webkit-animation: ellipsis steps(4,end) 1500ms infinite;      
+  animation: ellipsis steps(4,end) 1500ms infinite;
+  content: "...";
+  width: 0;
+}
+
+@keyframes ellipsis {
+  to {
+    width: 30px;    
+  }
+}
+
+@-webkit-keyframes ellipsis {
+  to {
+    width: 30px;    
+  }
+}

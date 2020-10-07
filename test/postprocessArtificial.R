@@ -25,6 +25,10 @@ pv <- pv[, -1]
 colnames(fc) <- artificial.exp.meta$rsc.ID
 colnames(pv) <- artificial.exp.meta$rsc.ID
 
+saveRDS(new('EData', taxon = 'artificial', data = list(fc = fc, adj.pv = pv),
+            experiment.meta = artificial.exp.meta, gene.meta = artificial.gene.meta),
+        paste0('/space/scratch/jsicherman/Thesis Work/data/', ifelse(USE_DESEQ, 'DESeq2', 'Limma'), '/artificial.rds'))
+
 source('main/load.R')
 
 DATA.HOLDER$artificial <- new('EData', taxon = 'artificial', data = list(fc = fc, adj.pv = pv),

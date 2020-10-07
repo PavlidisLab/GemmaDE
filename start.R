@@ -1,3 +1,24 @@
+library(shiny)
+library(shinyjs)
+library(shinyWidgets)
+library(shinycssloaders)
+library(htmlwidgets)
+library(sparkline)
+library(DT)
+library(heatmaply)
+library(shinyHeatmaply)
+
+library(jsonlite)
+library(async)
+
+library(matrixStats)
+library(Rfast)
+library(igraph)
+library(dplyr)
+library(data.table)
+
+library(gemmaAPI)
+
 source('dependencies.R')
 
 runApp('main', port = 18232, launch.browser = F)
