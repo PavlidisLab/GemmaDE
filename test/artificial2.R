@@ -12,7 +12,7 @@ library(limma)
 library(fitdistrplus)
 
 set.seed(18232)
-options(mc.cores = 10)
+options(mc.cores = 12)
 
 N_EXPERIMENTS <- 9568
 N_GENES <- 27151
@@ -355,24 +355,16 @@ experiment.data <- mclapply(1:N_EXPERIMENTS, function(experiment) {
   contrast <- data.table::first(gene.assoc[entrez.ID == sample(1:N_GENES, 1),
                                            .(cf.Cat = as.character(cf.Cat), cf.BaseLongUri = as.character(cf.BaseLongUri),
                                              cf.ValLongUri = as.character(cf.ValLongUri))])
-  probs <- gene.assoc[cf.BaseLongUri == contrast[, cf.BaseLongUri] & cf.ValLongUri == contrast[, cf.ValLongUri],
+  probs <- gene.assoc[cf.Cat == contrast[, cf.Cat] &
+                        cf.BaseLongUri == contrast[, cf.BaseLongUri] &
+                        cf.ValLongUri == contrast[, cf.ValLongUri],
              .(mProb, direction.up)]
   
-  lapply(1:2, function(i) {
-    contrast <- data.table::first(gene.assoc[entrez.ID == sample(1:N_GENES, 1),
-                                             .(cf.Cat = as.character(cf.Cat), cf.BaseLongUri = as.character(cf.BaseLongUri),
-                                               cf.ValLongUri = as.character(cf.ValLongUri))])
-    probs <- gene.assoc[cf.BaseLongUri == contrast[, cf.BaseLongUri] & cf.ValLongUri == contrast[, cf.ValLongUri],
-                        .(mProb, direction.up)]
-    
-    data.table(contrast, tmp = nrow(probs))
+  genes.dysregulated <- sapply(1:N_GENES, function(x) {
+    sample(c(T, F), 1, prob = c(probs[x, mProb], 1 - probs[x, mProb]))
   })
   
-  genes.dysregulated <- lapply(1:N_GENES, function(x) {
-    sample(c(T, F), 1, prob = c(probs[x, mProb], 1 - probs[x, mProb]))
-  }) %>% unlist
-  
-  effects <- 1.5 + rexp(N_GENES)
+  effects <- 1.5 + dqrexp(N_GENES)
   
   effects[!genes.dysregulated] <- 1
   effects[effects != 0 & probs[, !direction.up]] <- 1 / effects[effects != 0 & probs[, !direction.up]]
