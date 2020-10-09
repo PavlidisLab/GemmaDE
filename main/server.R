@@ -19,6 +19,7 @@ server <- function(input, output, session) {
     updatePickerInput(session, 'scope', selected = scope)
     updateCheckboxInput(session, 'mfx', value = ifelse(is.null(query$mfx), getOption('app.mfx'), query$mfx))
     updateNumericInput(session, 'distance', value = ifelse(is.null(query$distance), getOption('app.distance_cutoff'), query$distance))
+    updateNumericInput(session, 'max.rows', value = ifelse(is.null(query$rows), getOption('max.rows'), query$rows))
     updateNumericInput(session, 'pv', value = ifelse(is.null(query$pv), getOption('app.pv'), query$pv))
     updateSliderInput(session, 'fc', value = ifelse(is.null(query$fc), c(getOption('app.fc_lower'), getOption('app.fc_upper')), query$fc %>% jsonify %>% as.numeric))
     
@@ -46,6 +47,7 @@ server <- function(input, output, session) {
     updateCheckboxInput(session, 'mfx', value = getOption('app.mfx'))
     updateCheckboxInput(session, 'geeq', value = getOption('app.geeq'))
     updateNumericInput(session, 'distance', value = getOption('app.distance_cutoff'))
+    updateNumericInput(session, 'max.rows', value = getOption('max.rows'))
     updateNumericInput(session, 'pv', value = getOption('app.pv'))
     updateSliderInput(session, 'fc', value = c(getOption('app.fc_lower'), getOption('app.fc_upper')))
     session$sendCustomMessage('fileUpload', F)
@@ -245,7 +247,7 @@ server <- function(input, output, session) {
       if(is.null(conditions))
         endEmpty()
       else {
-        results <- endSuccess(genes, experiments, head(conditions, getOption('max.rows')), taxa, scope, options)
+        results <- endSuccess(genes, experiments, head(conditions, options$max.rows), taxa, scope, options)
         
         output$results <- generateResults(experiments, results$results, taxa, options)
         
@@ -289,7 +291,8 @@ server <- function(input, output, session) {
                     score.lower = input$score[1], score.upper = input$score[2],
                     mfx = input$mfx,
                     geeq = input$geeq,
-                    distance = input$distance)
+                    distance = input$distance,
+                    max.rows = input$max.rows)
     
     # Update the query string
     if(update) {
@@ -304,6 +307,7 @@ server <- function(input, output, session) {
                              paste0('&fc=[', paste0(input$fc, collapse = ','), ']'), ''),
                       switch((options$mfx == getOption('app.mfx')) + 1, paste0('&mfx=', options$mfx), ''),
                       switch((options$geeq == getOption('app.geeq')) + 1, paste0('&geeq=', options$geeq), ''),
+                      switch((options$max.rows == getOption('max.rows')) + 1, paste0('&rows=', options$max.rows), ''),
                       switch((options$distance == getOption('app.distance_cutoff')) + 1, paste0('&distance=', options$distance), ''))
       updateQueryString(query, 'push')
     }

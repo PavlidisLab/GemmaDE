@@ -23,6 +23,29 @@ html, body {
   text-transform: none !important;
 }
 
+.panel-header-dismiss > svg {
+  transition: transform 0.3s ease-in-out;
+}
+
+.panel-header-dismiss > svg:hover {
+  transform: scale(125%);
+}
+
+.irs-bar {
+  border-top: 1px solid #002145 !important;
+  border-bottom: 1px solid #002145 !important;
+  background: #002145 !important;
+}
+
+.irs-from, .irs-to {
+  background: #002145 !important;
+}
+
+.selectize-input.focus {
+  border-color: #002145 !important;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.075), 0, 0, 4px rgba(0, 33, 69, 0.6) !important;
+}
+
 .content {
   min-height: 100%;
   margin-bottom: -50px;
