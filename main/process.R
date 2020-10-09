@@ -2,7 +2,6 @@
 #' 
 #' Uses the M-VSM to sort experiments that show at least one of the genes as DE.
 #'
-#' @param data A subsetted version of DATA.HOLDER for the taxa scope.
 #' @param genes A list of Entrez Gene IDs (ie. 1, 22, 480) as characters
 #' @param options Optional extra parameters to pass, such as:
 #' * pv: An FDR cutoff (default: 0.05)
@@ -10,8 +9,8 @@
 #' * mfx: Whether or not to scale by gene multifunctionality
 #' * geeq: Whether or not to scale by GEEQ score
 #' @param session The Shiny session
-search <- function(data, genes, options = getOption('app.all_options'), session = NULL) {
-  advanceProgress(session, 'Loading experiments')
+search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app.all_options')) {
+  advanceProgress('Loading experiments')
   
   P_THRESHOLD <- options$pv
   FC_L_THRESHOLD <- options$fc.lower
@@ -22,12 +21,12 @@ search <- function(data, genes, options = getOption('app.all_options'), session 
   # Data Extraction ---------------------------------------------------------
 
   # Only retain GOI
-  rowFilter <- which(data@gene.meta$entrez.ID %in% genes)
+  rowFilter <- which(DATA.HOLDER[[taxa]]@gene.meta$entrez.ID %in% genes)
   n.genes <- length(rowFilter)
   if(n.genes == 0) return(NULL)
   
   # P-values for only the GOI
-  pv <- data@data$adj.pv[rowFilter, ]
+  pv <- DATA.HOLDER[[taxa]]@data$adj.pv[rowFilter, ]
   
   if(n.genes == 1)
     pv <- t(pv)
@@ -35,7 +34,7 @@ search <- function(data, genes, options = getOption('app.all_options'), session 
   # Only retain experiments that have at least one of the GOI as DE (pv < threshold)
   pv[is.na(pv)] <- 1
   colFilter <- Rfast::colsums(pv < P_THRESHOLD) > 0 &
-    data@experiment.meta[, !is.na(cf.BaseLongUri) | !is.na(cf.ValLongUri)]
+    DATA.HOLDER[[taxa]]@experiment.meta[, !is.na(cf.BaseLongUri) | !is.na(cf.ValLongUri)]
   pv <- pv[, colFilter]
   
   if(n.genes == 1)
@@ -44,12 +43,12 @@ search <- function(data, genes, options = getOption('app.all_options'), session 
   pv <- pv %>% as.data.table
   
   # Number of DEs for experiments that pass thresholds
-  geeq <- data@experiment.meta$ee.qScore[colFilter]
-  n.DE.exp <- data@experiment.meta$n.DE[colFilter]
-  n.DE.gen <- data@gene.meta$n.DE[rowFilter]
+  geeq <- DATA.HOLDER[[taxa]]@experiment.meta$ee.qScore[colFilter]
+  n.DE.exp <- DATA.HOLDER[[taxa]]@experiment.meta$n.DE[colFilter]
+  n.DE.gen <- DATA.HOLDER[[taxa]]@gene.meta$n.DE[rowFilter]
   
   # logFCs for only the GOI/EOI and maintain structure.
-  logFC <- data@data$fc[rowFilter, colFilter]
+  logFC <- DATA.HOLDER[[taxa]]@data$fc[rowFilter, colFilter]
   logFC[is.na(logFC)] <- 0
   
   if(n.genes == 1)
@@ -76,7 +75,7 @@ search <- function(data, genes, options = getOption('app.all_options'), session 
   }
   
   # Data Processing ---------------------------------------------------------
-  advanceProgress(session, 'Ranking')
+  advanceProgress('Ranking')
   
   # TODO Rfast::rowmeans but drop NAs?
   tf <- t(t(logFC) / (1 + rowMeans2(abs(logFC) %>% as.matrix, na.rm = T))) %>% as.data.table
@@ -99,7 +98,7 @@ search <- function(data, genes, options = getOption('app.all_options'), session 
   #   tf <- tf * (1 - data@gene.meta$mfx.Rank[rowFilter] / 5) # TODO Fine tune? Effect similar to idf?
   
   # TODO Should we do IDF on a corpus-level or subset level? Should it recompute n.DE for the p threshold?
-  idf <- log10(length(data@gene.meta$n.DE) / (1 + data@gene.meta$mfx.Rank[rowFilter])) + 1
+  idf <- log10(length(DATA.HOLDER[[taxa]]@gene.meta$n.DE) / (1 + DATA.HOLDER[[taxa]]@gene.meta$mfx.Rank[rowFilter])) + 1
   # idf <- log10(length(data@gene.meta$n.DE) / (1 + n.DE.gen)) + 1
   # idf <- log10(ncol(tf) / (1 + rowSums2(tf != 0))) + 1
   tf[, query := query]
@@ -121,7 +120,7 @@ search <- function(data, genes, options = getOption('app.all_options'), session 
   }
   
   rbind(tfidf, scores) %>% t %>% as.data.table %>%
-    `colnames<-`(c(data@gene.meta$gene.Name[rowFilter], 'score')) %>%
+    `colnames<-`(c(DATA.HOLDER[[taxa]]@gene.meta$gene.Name[rowFilter], 'score')) %>%
     .[, direction := directions] %>%
     `rownames<-`(colnames(tfidf)) %>% setorder(-score)
 }
@@ -131,18 +130,17 @@ search <- function(data, genes, options = getOption('app.all_options'), session 
 #' Expand the specified ontology for the specified experiments. This could theoretically be done
 #' before and cached like this, but it seems to take up much more space in RAM.
 #'
-#' @param cache A subsetted version of CACHE.BACKGROUND for the taxa scope.
 #' @param scope The ontology scope.
 #' @param rsc.IDs A list of experiment rsc IDs or NULL for everything
 #' @param max.distance The maximum tree traversal distance to include
-getTags <- function(cache, scope = getOption('app.ontology'),
+getTags <- function(taxa = getOption('app.taxa'), scope = getOption('app.ontology'),
                     rsc.IDs = NULL, max.distance = Inf) {
   if(is.null(rsc.IDs))
-    rsc.IDs <- cache[, unique(as.character(rsc.ID))]
+    rsc.IDs <- CACHE.BACKGROUND[[taxa]][, unique(as.character(rsc.ID))]
   
   graphTerms <- ONTOLOGIES.DEFS[!(OntologyScope %in% scope), as.character(Definition)]
     
-  cache %>%
+  CACHE.BACKGROUND[[taxa]] %>%
     .[distance <= max.distance] %>%
     .[, .(rsc.ID = as.character(rsc.ID), cf.Cat = as.character(cf.Cat), cf.BaseLongUri = as.character(cf.BaseLongUri),
           cf.ValLongUri = as.character(cf.ValLongUri), distance, reverse)] %>%
@@ -253,19 +251,17 @@ reorderTags <- function(cache) {
 #' Given rankings (@seealso search), generate a ranking-weighted count of all terms that can be
 #' derived from tags present in the experiment (both cf.ValLongUri and ee.TagLongUri).
 #'
-#' @param cache A subsetted version of CACHE.BACKGROUND for the taxa scope.
 #' @param rankings A named numeric (@seealso search).
 #' @param scope The ontology scope.
 #' @param options The options
-#' @param session The Shiny session.
-enrich <- function(cache, rankings, scope = getOption('app.ontology'),
-                   options = getOption('app.all_options'), session = NULL) {
+enrich <- function(rankings, taxa = getOption('app.taxa'), scope = getOption('app.ontology'),
+                   options = getOption('app.all_options')) {
   rankings <- data.table(rsc.ID = rownames(rankings), rank = rankings$score, direction = rankings$direction)
   
-  advanceProgress(session, 'Looking up ontology terms')
+  advanceProgress('Looking up ontology terms')
   
-  mMaps <- list(getTags(cache, scope, NULL, options$distance),
-                getTags(cache, scope, rankings[, rsc.ID], options$distance))
+  mMaps <- list(getTags(taxa, scope, NULL, options$distance),
+                getTags(taxa, scope, rankings[, rsc.ID], options$distance))
   
   mMaps[[2]] <- mMaps[[2]] %>% merge(rankings, by = 'rsc.ID', sort = F, allow.cartesian = T)
   
@@ -277,7 +273,7 @@ enrich <- function(cache, rankings, scope = getOption('app.ontology'),
   }
   
   fisher <- function(input) {
-    advanceProgress(session, 'Running tests')
+    advanceProgress('Running tests')
     
     input[, c('pv.fisher', 'OR') :=
             suppressWarnings(phyper(A - 1, B, D, C + A, F)),

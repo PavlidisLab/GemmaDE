@@ -6,6 +6,15 @@ html, body {
   height: 100%;
 }
 
+.app-container {
+  max-height: 49.5vh !important;
+}
+
+.panel-content div:not(:first-child) {
+  border-top: #b3b3b3 solid 1px;
+  padding-top: 10px;
+}
+
 .content {
   min-height: 100%;
   margin-bottom: -50px;

@@ -21,6 +21,7 @@ options(app.all_options = list(pv = getOption('app.pv'), fc.lower = getOption('a
                                geeq = getOption('app.geeq'), distance = getOption('app.distance_cutoff')))
 
 source('main/process.R')
-source('main/server.R')
+source('main/progress.R')
+source('main/renderTools.R')
+source('main/gemmaAPI.R')
 source('main/load.R')
-source('main/ui.R')

@@ -9,6 +9,16 @@ $(document).one('shiny:connected', function() {
   loadExamples();
 });
 
+$(document).on('shiny:value', function(event) {
+  if(event.name === 'results_genes') {
+    setTimeout(function() {
+      updatePanels();
+    }, 100);
+  } else if(event.name == 'results_header') {
+    Shiny.setInputValue('UPDATED', Math.random());
+  }
+});
+
 $(document).on('shiny:inputchanged', function(event) {
   if(event.name === 'genes')
     validate();

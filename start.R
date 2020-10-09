@@ -7,6 +7,8 @@ library(sparkline)
 library(DT)
 library(heatmaply)
 library(shinyHeatmaply)
+library(shinypanels)
+library(RColorBrewer)
 
 library(jsonlite)
 library(async)

@@ -381,7 +381,7 @@ experiment.data <- mclapply(1:N_EXPERIMENTS, function(experiment) {
                                             design = ~ condition) %>% DESeq(quiet = T) %>% results %>%
                        as.data.table(keep.rownames = T) %>% {
                          list(contrast = contrast,
-                              entrez.ID = .[, as.integer(substring(rn, 1))],
+                              entrez.ID = .[, as.integer(substring(rn, 2))],
                               fc = .[, log2FoldChange],
                               adj.pv = .[, padj])
                          })
@@ -397,7 +397,7 @@ experiment.data <- mclapply(1:N_EXPERIMENTS, function(experiment) {
     contrasts.fit(fit, contr) %>% eBayes %>% topTable(sort.by = 'P', number = Inf) %>%
       as.data.table(keep.rownames = T) %>% {
         list(contrast = contrast,
-             entrez.ID = .[, as.integer(substring(rn, 1))],
+             entrez.ID = .[, as.integer(substring(rn, 2))],
              fc = .[, logFC],
              adj.pv = .[, adj.P.Val])
       }
