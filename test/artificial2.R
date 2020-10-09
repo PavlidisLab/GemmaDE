@@ -305,26 +305,29 @@ experiments <- letterWrap(N_EXPERIMENTS)
 
 geneAssociations <- function(N) {
   # Divide all genes into discrete categories (age, behavior, biological process, biological sex, etc.)
-  de.cat <- sample(DATA.HOLDER$human@experiment.meta[, unique(cf.Cat)], N, T,
-                   DATA.HOLDER$human@experiment.meta[, .(sum(!is.na(cf.ValLongUri))), cf.Cat] %>%
-                     .[, V1 / sum(V1)])
+  dedup <- unique(DATA.HOLDER$human@experiment.meta[, .(cf.Cat, cf.CatLongUri)])
+  de.cat <- rbindlist(lapply(sample(1:nrow(dedup), N, T,
+                                    DATA.HOLDER$human@experiment.meta[, .(sum(!is.na(cf.ValLongUri))), .(cf.Cat, cf.CatLongUri)] %>%
+                                      .[, V1 / sum(V1)]), function(i) dedup[i]))
   
   # Draw a gene function from any of the possibilities within each category...
-  cbind(entrez.ID = 1:N, rbindlist(lapply(unique(de.cat), function(category) {
-    vals <- unique(DATA.HOLDER$human@experiment.meta[cf.Cat == category, .(cf.ValLongUri, cf.BaseLongUri)])
-    indices <- sample(1:nrow(vals), sum(de.cat == category), T)
+  cbind(entrez.ID = 1:N, rbindlist(apply(unique(de.cat), 1, function(category) {
+    vals <- unique(DATA.HOLDER$human@experiment.meta[cf.Cat == category['cf.Cat'] &
+                                                       cf.CatLongUri == category['cf.CatLongUri'], .(cf.ValLongUri, cf.BaseLongUri)])
+    indices <- sample(1:nrow(vals), de.cat[cf.Cat == category['cf.Cat'] &
+                                             cf.CatLongUri == category['cf.CatLongUri'], .N], T)
     
-    data.table(cf.Cat = category, vals[indices, ])
+    data.table(cf.Cat = category['cf.Cat'], cf.CatLongUri = category['cf.CatLongUri'], vals[indices, ])
   }))) %>% {
-    entries <- unique(.[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)])
+    entries <- unique(.[, .(cf.Cat, cf.CatLongUri, cf.BaseLongUri, cf.ValLongUri)])
     
-    .[, rbind(.SD[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)],
-              fsetdiff(entries, .SD[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)])), entrez.ID] %>%
+    .[, rbind(.SD[, .(cf.Cat, cf.CatLongUri, cf.BaseLongUri, cf.ValLongUri)],
+              fsetdiff(entries, .SD[, .(cf.Cat, cf.CatLongUri, cf.BaseLongUri, cf.ValLongUri)])), entrez.ID] %>%
       .[, c('mProb', 'direction.up') :=
           list(rgamma(nrow(.SD), 4/9) %>% `/`(runif(1, 257, 400)/256 * max(.)) %>%
                  .[c(which.max(.), (1:length(.))[-which.max(.)])],
                sample(c(T, F), nrow(.SD), T)), entrez.ID]
-  } %>% .[, .(entrez.ID, cf.Cat, cf.BaseLongUri, cf.ValLongUri, mProb, direction.up)]
+  } %>% .[, .(entrez.ID, cf.Cat, cf.CatLongUri, cf.BaseLongUri, cf.ValLongUri, mProb, direction.up)]
 }
 
 source('/home/jsicherman/Thesis Work/main/load.R')
@@ -348,14 +351,20 @@ saveRDS(gene.meta, paste0('/space/scratch/jsicherman/Thesis Work/data/',
 experiment.samples <- 2 + (readRDS('/space/scratch/jsicherman/Thesis Work/data/sample_dist.rds') - 2) %>%
   fitdist('gamma') %>% .[['estimate']] %>% { rgamma(N_EXPERIMENTS, .[1], .[2]) } %>% round
 
+saveRDS(experiment.samples, paste0('/space/scratch/jsicherman/Thesis Work/data/',
+                                   ifelse(USE_DESEQ, 'DESeq2', 'Limma'), '/samples.rds'))
+
 experiment.data <- mclapply(1:N_EXPERIMENTS, function(experiment) {
   cat(paste0(Sys.time(), ' ..... ', round(100 * experiment / N_EXPERIMENTS), '%\n'))
   
   # Select a gene as a driver. That gene's major contrast will be used in choosing prior probabilities of DE.
   contrast <- data.table::first(gene.assoc[entrez.ID == sample(1:N_GENES, 1),
-                                           .(cf.Cat = as.character(cf.Cat), cf.BaseLongUri = as.character(cf.BaseLongUri),
+                                           .(cf.Cat = as.character(cf.Cat),
+                                             cf.CatLongUri = as.character(cf.CatLongUri),
+                                             cf.BaseLongUri = as.character(cf.BaseLongUri),
                                              cf.ValLongUri = as.character(cf.ValLongUri))])
   probs <- gene.assoc[cf.Cat == contrast[, cf.Cat] &
+                        cf.CatLongUri == contrast[, cf.CatLongUri] &
                         cf.BaseLongUri == contrast[, cf.BaseLongUri] &
                         cf.ValLongUri == contrast[, cf.ValLongUri],
              .(mProb, direction.up)]
