@@ -60,7 +60,7 @@ generateResultsPlot <- function(genes, conditions, expr, options = getOption('ap
 }
 
 generateResults <- function(experiments, conditions, taxa = getOption('app.taxa'), options = getOption('app.all_options')) {
-  outputColumns <- c('Contrast', 'Direction', 'Evidence', 'P-value', colnames(experiments)[1:(ncol(experiments) - 2)])
+  outputColumns <- c('Contrast', 'Direction', 'Evidence', 'P-value')#, colnames(experiments)[1:(ncol(experiments) - 2)])
   
   conditions[, Evidence := paste0('<span data-toggle="popover" title="Experiments" data-html="true" data-content="',
                                   lapply(unlist(strsplit(Evidence, ',')), function(experiment) {
@@ -95,17 +95,19 @@ generateResults <- function(experiments, conditions, taxa = getOption('app.taxa'
                                        list(targets = 0,
                                             width = '10%', className = 'cf-cat'),
                                        list(targets = which(outputColumns == 'Contrast'),
-                                            width = '25%',
+                                            width = '60%',
                                             searchable = F, orderable = F),
                                        list(targets = which(outputColumns == 'Evidence'),
+                                            width = '15%',
                                             className = 'dt-right',
                                             searchable = F, orderable = F),
                                        list(targets = which(outputColumns == 'P-value'),
-                                            render = JS('asPval'), width = '12.5%'),
+                                            render = JS('asPval'), width = '10%'),
                                        list(targets = which(outputColumns == 'Direction'),
-                                            render = JS('asSparkline2'), width = '1px', className = 'dt-center', searchable = F, orderable = F),
-                                       list(targets = (which(outputColumns == 'P-value') + 1):length(outputColumns),
-                                            render = JS('asSparkline'), width = '1px', className = 'dt-center', searchable = F, orderable = F)
+                                            width = '5%',
+                                            render = JS('asSparkline2'), width = '1px', className = 'dt-center', searchable = F, orderable = F)#,
+                                       #list(targets = (which(outputColumns == 'P-value') + 1):length(outputColumns),
+                                      #      render = JS('asSparkline'), width = '1px', className = 'dt-center', searchable = F, orderable = F)
                                      ),
                                      search = list(
                                        list(regex = T),
