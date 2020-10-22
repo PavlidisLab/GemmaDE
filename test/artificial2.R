@@ -359,7 +359,8 @@ experiment.data <- mclapply(1:N_EXPERIMENTS, function(experiment) {
   
   # Select a gene as a driver. That gene's major contrast will be used in choosing prior probabilities of DE.
   contrast <- data.table::first(gene.assoc[entrez.ID == sample(1:N_GENES, 1),
-                                           .(cf.Cat = as.character(cf.Cat),
+                                           .(entrez.ID,
+                                             cf.Cat = as.character(cf.Cat),
                                              cf.CatLongUri = as.character(cf.CatLongUri),
                                              cf.BaseLongUri = as.character(cf.BaseLongUri),
                                              cf.ValLongUri = as.character(cf.ValLongUri))])

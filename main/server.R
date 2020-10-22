@@ -109,7 +109,7 @@ server <- function(input, output, session) {
                column(2, style = 'padding-top: 15px; padding-right: 30px;',
                       fluidRow(style = 'display: flex; flex-direction: row; justify-content: space-evenly; margin-bottom: 15px;',
                                downloadButton('plot_save_jpg', 'Save JPG'), downloadButton('plot_save_pdf', 'Save PDF')),
-                      selectInput('plot_type', 'Type', list('Heatmap', 'Scatterplot', 'Boxplot')),
+                      selectInput('plot_type', 'Type', list('Heatmap', 'Scatterplot', 'Boxplot', 'Stripchart')),
                       selectInput('plot_data', 'Data', list('Gene Expression')),
                       pickerInput('plot_genes', 'Genes', list('Loading...'), multiple = T),
                       pickerInput('plot_conditions', 'Contrasts', list('Loading...'), multiple = T))
@@ -142,14 +142,16 @@ server <- function(input, output, session) {
     }
     
     if(is.null(session$userData$plotData$processed)) {
-      shinyjs::delay(1, {
-        synchronise(session$userData$plotData$queued %>% {
-          geneExpression(.[, unique(ee.ID)],
-                         .[, unique(rsc.ID)],
-                         session$userData$plotData$taxa,
-                         session$userData$plotData$gene.ID)$then(generatePlot)
+      if(!is.null(session$userData$plotData$queued)) {
+        shinyjs::delay(1, {
+          synchronise(session$userData$plotData$queued %>% {
+            geneExpression(.[, unique(ee.ID)],
+                           .[, unique(rsc.ID)],
+                           session$userData$plotData$taxa,
+                           session$userData$plotData$gene.ID)$then(generatePlot)
+          })
         })
-      })
+      }
     } else {
       output$plot <- renderPlotly({
         generateResultsPlot(session$userData$plotData$gene.Name,
@@ -261,6 +263,8 @@ server <- function(input, output, session) {
           queued = results$expression %>%
             merge(DATA.HOLDER[[taxa]]@experiment.meta[, .(rsc.ID, ee.ID, ee.NumSamples)],
                   by = c('rsc.ID', 'ee.ID'), all.x = T, sort = F) %>% {
+                    if(nrow(.) == 0) return(NULL)
+                    
                     while((tmp <- .[sample(1:nrow(.))])[1, ee.NumSamples] > getOption('max.gemma')) {
                     }
                     tmp[cumsum(ee.NumSamples) <= getOption('max.gemma')]

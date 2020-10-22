@@ -4,3 +4,4 @@
 .Ruserdata
 data/bootstrap/*
 data/*
+slurm*.out

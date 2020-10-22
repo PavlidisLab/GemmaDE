@@ -9,8 +9,9 @@
 #' * mfx: Whether or not to scale by gene multifunctionality
 #' * geeq: Whether or not to scale by GEEQ score
 #' @param session The Shiny session
-search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app.all_options')) {
-  advanceProgress('Loading experiments')
+search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app.all_options'), verbose = T) {
+  if(verbose)
+    advanceProgress('Loading experiments')
   
   P_THRESHOLD <- options$pv
   FC_L_THRESHOLD <- options$fc.lower
@@ -75,7 +76,8 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
   }
   
   # Data Processing ---------------------------------------------------------
-  advanceProgress('Ranking')
+  if(verbose)
+    advanceProgress('Ranking')
   
   # TODO Rfast::rowmeans but drop NAs?
   tf <- t(t(logFC) / (1 + rowMeans2(abs(logFC) %>% as.matrix, na.rm = T))) %>% as.data.table
@@ -255,10 +257,11 @@ reorderTags <- function(cache) {
 #' @param scope The ontology scope.
 #' @param options The options
 enrich <- function(rankings, taxa = getOption('app.taxa'), scope = getOption('app.ontology'),
-                   options = getOption('app.all_options')) {
+                   options = getOption('app.all_options'), verbose = T) {
   rankings <- data.table(rsc.ID = rownames(rankings), rank = rankings$score, direction = rankings$direction)
   
-  advanceProgress('Looking up ontology terms')
+  if(verbose)
+    advanceProgress('Looking up ontology terms')
   
   mMaps <- list(getTags(taxa, scope, NULL, options$distance),
                 getTags(taxa, scope, rankings[, rsc.ID], options$distance))
@@ -273,7 +276,8 @@ enrich <- function(rankings, taxa = getOption('app.taxa'), scope = getOption('ap
   }
   
   fisher <- function(input) {
-    advanceProgress('Running tests')
+    if(verbose)
+      advanceProgress('Running tests')
     
     input[, c('pv.fisher', 'OR') :=
             suppressWarnings(phyper(A - 1, B, D, C + A, F)),

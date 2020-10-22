@@ -55,6 +55,12 @@ generateResultsPlot <- function(genes, conditions, expr, options = getOption('ap
                           scale_fill_brewer(palette = 'Dark2') +
                           theme_classic()) %>%
                          ggplotly %>% layout(boxmode = 'group'))
+    } else if(plot_type == 'Stripchart') {
+      suppressMessages((data %>% ggplot(aes(Gene, Expression, fill = Contrast)) +
+                          geom_jitter() +
+                          scale_fill_brewer(palette = 'Dark2') +
+                          theme_classic()) %>%
+                         ggplotly %>% layout(boxmode = 'group'))
     }
   }
 }

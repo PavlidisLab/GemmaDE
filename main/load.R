@@ -25,7 +25,7 @@ parseListEntry <- function(entry, withKey = NULL) {
 }
 
 isDataLoaded <- function() {
-  exists('ONTOLOGIES') & exists('ONTOLOGIES.DEFS')# & exists('BLACKLIST')
+  exists('ONTOLOGIES') & exists('ONTOLOGIES.DEFS')
 }
 
 setClass('EData', representation(taxon = 'character', data = 'list',

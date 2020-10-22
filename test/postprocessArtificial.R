@@ -9,6 +9,7 @@ fc <- dcast(tmp[, .(entrez.ID, experiment, fc)], entrez.ID ~ experiment, value.v
 pv <- dcast(tmp[, .(entrez.ID, experiment, adj.pv)], entrez.ID ~ experiment, value.var = 'adj.pv')
 
 contrasts <- rbindlist(lapply(artificial, '[[', 'contrast'))
+saveRDS('/space/scratch/jsicherman/Thesis Work/data/Limma/experiment.contrasts.rds')
 
 rm(tmp, artificial)
 
@@ -43,18 +44,21 @@ experiment.meta <- data.table(rsc.ID = EXPERIMENTS,
                               sf.Cat = 'TODO' %>% as.factor,
                               sf.CatLongUri = 'TODO' %>% as.factor,
                               sf.ValLongUri = 'TODO' %>% as.factor,
+                              cf.GeneDrive = contrasts[, entrez.ID],
                               cf.Cat = contrasts[, cf.Cat] %>% as.factor,
-                              cf.CatLongUri = contrast[, cf.CatLongUri] %>% as.factor,
+                              cf.CatLongUri = contrasts[, cf.CatLongUri] %>% as.factor,
                               cf.ValLongUri = contrasts[, cf.ValLongUri] %>% as.factor,
                               cf.BaseLongUri = contrasts[, cf.BaseLongUri] %>% as.factor,
-                              n.DE = colSums2(pv < 0.05, na.rm = T),
-                              mean.fc = colMeans2(fc, na.rm = T))
+                              n.DE = colSums2(pv %>% as.matrix < 0.05, na.rm = T),
+                              mean.fc = colMeans2(fc %>% as.matrix, na.rm = T))
 
 saveRDS(new('EData', taxon = 'artificial', data = list(fc = fc, adj.pv = pv),
             experiment.meta = experiment.meta, gene.meta = artificial.gene.meta),
-        paste0('/space/scratch/jsicherman/Thesis Work/data/', ifelse(USE_DESEQ, 'DESeq2', 'Limma'), '/artificial.rds'))
+        '/space/scratch/jsicherman/Thesis Work/data/Limma/artificial.rds')
 
 DATA.HOLDER$artificial <- new('EData', taxon = 'artificial', data = list(fc = fc, adj.pv = pv),
                               experiment.meta = experiment.meta, gene.meta = artificial.gene.meta)
-DATA.HOLDER$artificial@gene.meta$n.DE <- rowSums2(DATA.HOLDER$artificial@data$adj.pv < 0.05, na.rm = T)
 rm(fc, pv, artificial.gene.meta, experiment.meta)
+
+DATA.HOLDER$artificial@gene.meta$n.DE <- rowSums2(DATA.HOLDER$artificial@data$adj.pv < 0.05, na.rm = T)
+CACHE.BACKGROUND$artificial <- precomputeTags('artificial')
