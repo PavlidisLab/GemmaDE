@@ -15,7 +15,7 @@ jsonify <- function(str) {
 #' @param entry NA or a character of semicolon delimited (; ) values.
 #'
 #' @return A character vector of values in the input character.
-parseListEntry <- function(entry, withKey = NULL) {
+parseListEntry <- function(entry) {
   if(length(entry) == 0) return(NA)
   
   if(is.na(entry) || !grepl('; ', entry, fixed = T)) return(entry)

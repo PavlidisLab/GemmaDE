@@ -11,6 +11,9 @@ library(parallel)
 library(limma)
 library(fitdistrplus)
 
+SIMTYPE <- 'normalized'
+SUFFIX <- paste0('_', SIMTYPE)
+
 set.seed(18232)
 options(mc.cores = 12)
 
@@ -303,22 +306,48 @@ letterWrap <- function(n, depth = 1) {
 
 experiments <- letterWrap(N_EXPERIMENTS)
 
-geneAssociations <- function(N) {
-  # Divide all genes into discrete categories (age, behavior, biological process, biological sex, etc.)
-  dedup <- unique(DATA.HOLDER$human@experiment.meta[, .(cf.Cat, cf.CatLongUri)])
-  de.cat <- rbindlist(lapply(sample(1:nrow(dedup), N, T,
-                                    DATA.HOLDER$human@experiment.meta[, .(sum(!is.na(cf.ValLongUri))), .(cf.Cat, cf.CatLongUri)] %>%
-                                      .[, V1 / sum(V1)]), function(i) dedup[i]))
-  
-  # Draw a gene function from any of the possibilities within each category...
-  cbind(entrez.ID = 1:N, rbindlist(apply(unique(de.cat), 1, function(category) {
-    vals <- unique(DATA.HOLDER$human@experiment.meta[cf.Cat == category['cf.Cat'] &
-                                                       cf.CatLongUri == category['cf.CatLongUri'], .(cf.ValLongUri, cf.BaseLongUri)])
-    indices <- sample(1:nrow(vals), de.cat[cf.Cat == category['cf.Cat'] &
-                                             cf.CatLongUri == category['cf.CatLongUri'], .N], T)
+geneAssociations <- function(N, simType = 'empirical') {
+  if(simType == 'uniform') {
+    message('Simulating associations uniformly.')
     
-    data.table(cf.Cat = category['cf.Cat'], cf.CatLongUri = category['cf.CatLongUri'], vals[indices, ])
-  }))) %>% {
+    indices <- sample(1:nrow(DATA.HOLDER$human@experiment.meta), replace = T)
+    ret <- DATA.HOLDER$human@experiment.meta[indices, .(cf.Cat, cf.CatLongUri, cf.ValLongUri, cf.BaseLongUri)]
+  } else if(simType == 'uniform') {
+    message('Simulating associations uniformly')
+    
+    vals <- unique(DATA.HOLDER$human@experiment.meta[, .(cf.Cat, cf.CatLongUri, cf.ValLongUri, cf.BaseLongUri)])
+    ret <- cbind(entrez.ID = 1:N,
+                 vals[c(rep(1:nrow(vals), floor(N / nrow(vals))), 1:(N %% nrow(vals)))])
+  } else {
+    # Divide all genes into discrete categories (age, behavior, biological process, biological sex, etc.)
+    dedup <- unique(DATA.HOLDER$human@experiment.meta[, .(cf.Cat, cf.CatLongUri)])
+    
+    if(simType == 'empirical') {
+      message('Simulating associations according to empirical probabilities.')
+      de.cat <- dedup[sample(1:nrow(dedup), N, T,
+                             DATA.HOLDER$human@experiment.meta[, .(sum(!is.na(cf.ValLongUri))), .(cf.Cat, cf.CatLongUri)] %>%
+                               .[, V1 / sum(V1)])]
+    } else {
+      message('Simulating associations according to normalized distributions.')
+      
+      de.cat <- dedup[sample(1:nrow(dedup), N, T,
+                             DATA.HOLDER$human@experiment.meta[, nrow(unique(.SD[, .(cf.BaseLongUri, cf.ValLongUri)])) / .N,
+                                                               .(cf.Cat, cf.CatLongUri)] %>%
+                               .[, V1 / sum(V1)])]
+    }
+    
+    # Draw a gene function from any of the possibilities within each category...
+    ret <- cbind(entrez.ID = 1:N, rbindlist(apply(unique(de.cat), 1, function(category) {
+      vals <- unique(DATA.HOLDER$human@experiment.meta[cf.Cat == category['cf.Cat'] &
+                                                         cf.CatLongUri == category['cf.CatLongUri'], .(cf.ValLongUri, cf.BaseLongUri)])
+      indices <- sample(1:nrow(vals), de.cat[cf.Cat == category['cf.Cat'] &
+                                               cf.CatLongUri == category['cf.CatLongUri'], .N], T)
+      
+      data.table(cf.Cat = category['cf.Cat'], cf.CatLongUri = category['cf.CatLongUri'], vals[indices, ])
+    })))
+  }
+  
+  ret %>% {
     entries <- unique(.[, .(cf.Cat, cf.CatLongUri, cf.BaseLongUri, cf.ValLongUri)])
     
     .[, rbind(.SD[, .(cf.Cat, cf.CatLongUri, cf.BaseLongUri, cf.ValLongUri)],
@@ -331,11 +360,11 @@ geneAssociations <- function(N) {
 }
 
 source('/home/jsicherman/Thesis Work/main/load.R')
-gene.assoc <- geneAssociations(N_GENES)
+gene.assoc <- geneAssociations(N_GENES, SIMTYPE)
 rm(DATA.HOLDER, ONTOLOGIES, ONTOLOGIES.DEFS)
 
 saveRDS(gene.assoc, paste0('/space/scratch/jsicherman/Thesis Work/data/',
-                           ifelse(USE_DESEQ, 'DESeq2', 'Limma'), '/gene.associations.rds'))
+                           ifelse(USE_DESEQ, 'DESeq2', 'Limma'), '/gene.associations', SUFFIX, '.rds'))
 
 gene.meta <- data.table(entrez.ID = paste0('g', 1:N_GENES),
                         gene.ID = 1:N_GENES,
@@ -346,13 +375,13 @@ gene.meta <- data.table(entrez.ID = paste0('g', 1:N_GENES),
                         mfx.Rank = runif(N_GENES, 0.01, 0.99)) # TODO This could be made more meaningful
 
 saveRDS(gene.meta, paste0('/space/scratch/jsicherman/Thesis Work/data/',
-                          ifelse(USE_DESEQ, 'DESeq2', 'Limma'), '/artificial.gene.meta.rds'))
+                          ifelse(USE_DESEQ, 'DESeq2', 'Limma'), '/artificial.gene.meta', SUFFIX, '.rds'))
 
 experiment.samples <- 2 + (readRDS('/space/scratch/jsicherman/Thesis Work/data/sample_dist.rds') - 2) %>%
   fitdist('gamma') %>% .[['estimate']] %>% { rgamma(N_EXPERIMENTS, .[1], .[2]) } %>% round
 
 saveRDS(experiment.samples, paste0('/space/scratch/jsicherman/Thesis Work/data/',
-                                   ifelse(USE_DESEQ, 'DESeq2', 'Limma'), '/samples.rds'))
+                                   ifelse(USE_DESEQ, 'DESeq2', 'Limma'), '/samples', SUFFIX, '.rds'))
 
 experiment.data <- mclapply(1:N_EXPERIMENTS, function(experiment) {
   cat(paste0(Sys.time(), ' ..... ', round(100 * experiment / N_EXPERIMENTS), '%\n'))
@@ -415,4 +444,4 @@ experiment.data <- mclapply(1:N_EXPERIMENTS, function(experiment) {
 })
 
 saveRDS(experiment.data, paste0('/space/scratch/jsicherman/Thesis Work/data/',
-                                ifelse(USE_DESEQ, 'DESeq2', 'Limma'), '/artificial.rds'))
+                                ifelse(USE_DESEQ, 'DESeq2', 'Limma'), '/artificial', SUFFIX, '.rds'))

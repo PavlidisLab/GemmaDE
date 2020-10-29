@@ -1,3 +1,12 @@
+#' Gene Evidence
+#'
+#' @param genes 
+#' @param taxa 
+#'
+#' @return
+#' @export
+#'
+#' @examples
 geneEvidence <- async(function(genes, taxa = getOption('app.taxa')) {
   prettyPrint <- function(evidence) {
     list(cf.ValLongUri = evidence$phenotypes[[1]]$valueUri,
@@ -33,9 +42,9 @@ geneEvidence <- async(function(genes, taxa = getOption('app.taxa')) {
 #' 2. Request sample information for each sample
 #'   --> Subset only samples that have the baseline/contrasting factor
 #'
-#' @param data 
 #' @param ee.IDs 
 #' @param rsc.IDs 
+#' @param taxa 
 #' @param genes 
 #' @param keepNonSpecific 
 #' @param consolidate 

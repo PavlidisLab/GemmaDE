@@ -1,3 +1,11 @@
+#' Generate Results Header
+#'
+#' @param title 
+#'
+#' @return
+#' @export
+#'
+#' @examples
 generateResultsHeader <- function(title) {
   if('html' %in% class(title))
     fluidRow(class = 'info-text', column(12, title))
@@ -5,6 +13,20 @@ generateResultsHeader <- function(title) {
     fluidRow(class = 'info-text', column(12, h2(title)))
 }
 
+#' Generate Results Plot
+#'
+#' @param genes 
+#' @param conditions 
+#' @param expr 
+#' @param options 
+#' @param plot_genes 
+#' @param plot_type 
+#' @param plot_data 
+#'
+#' @return
+#' @export
+#'
+#' @examples
 generateResultsPlot <- function(genes, conditions, expr, options = getOption('app.all_options'),
                                 plot_genes, plot_type, plot_data) {
   expr$expr <- expr$expr[plot_genes, ]
@@ -65,8 +87,19 @@ generateResultsPlot <- function(genes, conditions, expr, options = getOption('ap
   }
 }
 
+#' Generate Results
+#'
+#' @param experiments 
+#' @param conditions 
+#' @param taxa 
+#' @param options 
+#'
+#' @return
+#' @export
+#'
+#' @examples
 generateResults <- function(experiments, conditions, taxa = getOption('app.taxa'), options = getOption('app.all_options')) {
-  outputColumns <- c('Contrast', 'Direction', 'Evidence', 'P-value')#, colnames(experiments)[1:(ncol(experiments) - 2)])
+  outputColumns <- c('Contrast', 'Direction', 'Evidence', 'P-value', 'FDR')#, colnames(experiments)[1:(ncol(experiments) - 2)])
   
   conditions[, Evidence := paste0('<span data-toggle="popover" title="Experiments" data-html="true" data-content="',
                                   lapply(unlist(strsplit(Evidence, ',')), function(experiment) {
@@ -85,7 +118,7 @@ generateResults <- function(experiments, conditions, taxa = getOption('app.taxa'
                       filter = 'top',
                       options = list(pageLength = 10,
                                      order = list(
-                                       list(which(outputColumns == 'P-value'), 'asc')),
+                                       list(which(outputColumns == 'FDR'), 'asc')),
                                      language = list(lengthMenu = 'Show _MENU_ conditions per page',
                                                      processing = '',
                                                      emptyTable = 'No matching conditions found.',
@@ -107,7 +140,7 @@ generateResults <- function(experiments, conditions, taxa = getOption('app.taxa'
                                             width = '15%',
                                             className = 'dt-right',
                                             searchable = F, orderable = F),
-                                       list(targets = which(outputColumns == 'P-value'),
+                                       list(targets = which(outputColumns %in% c('P-value', 'FDR')),
                                             render = JS('asPval'), width = '10%'),
                                        list(targets = which(outputColumns == 'Direction'),
                                             width = '5%',
@@ -143,6 +176,14 @@ generateResults <- function(experiments, conditions, taxa = getOption('app.taxa'
   renderDT(mTable)
 }
 
+#' Generate Gene Page
+#'
+#' @param evidence 
+#'
+#' @return
+#' @export
+#'
+#' @examples
 generateGenePage <- function(evidence) {
   evidence <- evidence[sapply(evidence, Negate(is.null))]
   

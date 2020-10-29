@@ -73,7 +73,7 @@ ui <- fluidPage(style = 'height: 100%;',
                       mainPanel(
                         tabsetPanel(id = 'tabs',
                           tabPanel('Conditions', column(12, style = 'margin-top: 16px', dataTableOutput('results') %>% withSpinner)),
-                          tabPanel('Genes', column(12, style = 'margin-top: 16px', htmlOutput('results_genes') %>% withSpinner))
+                          tabPanel('Gene Info', column(12, style = 'margin-top: 16px', htmlOutput('results_genes') %>% withSpinner))
                         ),
                         width = 12
                       )

@@ -25,4 +25,6 @@ source('dependencies.R')
 
 runApp('main', port = 18232, launch.browser = F)
 
+# TODO consider memoise::memoise -ing things
+
 # ssh -L 12345:localhost:18232 jsicherman@nelson.msl.ubc.ca -p 22000

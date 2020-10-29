@@ -3,12 +3,13 @@
 #' Uses the M-VSM to sort experiments that show at least one of the genes as DE.
 #'
 #' @param genes A list of Entrez Gene IDs (ie. 1, 22, 480) as characters
+#' @param taxa
 #' @param options Optional extra parameters to pass, such as:
 #' * pv: An FDR cutoff (default: 0.05)
 #' * fc.lower / fc.upper: Upper and lower logFC thresholds (default: 0 / 10)
 #' * mfx: Whether or not to scale by gene multifunctionality
 #' * geeq: Whether or not to scale by GEEQ score
-#' @param session The Shiny session
+#' @param verbose
 search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app.all_options'), verbose = T) {
   if(verbose)
     advanceProgress('Loading experiments')
@@ -99,10 +100,7 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
   # if(MFX)
   #   tf <- tf * (1 - data@gene.meta$mfx.Rank[rowFilter] / 5) # TODO Fine tune? Effect similar to idf?
   
-  # TODO Should we do IDF on a corpus-level or subset level? Should it recompute n.DE for the p threshold?
   idf <- log10(length(DATA.HOLDER[[taxa]]@gene.meta$n.DE) / (1 + DATA.HOLDER[[taxa]]@gene.meta$mfx.Rank[rowFilter])) + 1
-  # idf <- log10(length(data@gene.meta$n.DE) / (1 + n.DE.gen)) + 1
-  # idf <- log10(ncol(tf) / (1 + rowSums2(tf != 0))) + 1
   tf[, query := query]
   tfidf <- tf * idf
   
@@ -121,10 +119,27 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
     scores <- scores / max(scores)
   }
   
-  rbind(tfidf, scores) %>% t %>% as.data.table %>%
+  ret <- rbind(tfidf, scores) %>% t %>% as.data.table %>%
     `colnames<-`(c(DATA.HOLDER[[taxa]]@gene.meta$gene.Name[rowFilter], 'score')) %>%
     .[, direction := directions] %>%
-    `rownames<-`(colnames(tfidf)) %>% setorder(-score)
+    .[, rsc.ID := colnames(tfidf)]
+
+  if(exists('EXP.STATS')) {
+    ret <- ret %>%
+      merge(EXP.STATS[[taxa]], by = 'rsc.ID', sort = F) %>%
+      .[, score := abs(score - mean)]
+  }
+  
+  if(exists('GENE.STATS')) {
+    ret <- ret[, !c('score', 'direction')] %>%
+      melt(value.name = 'score', variable.name = 'gene.Name') %>%
+      merge(GENE.STATS[[taxa]], by = 'gene.Name', sort = F) %>% .[, p := 1 - exp(-rate * score), gene.Name] %>%
+      dcast(rsc.ID ~ gene.Name, value.var = 'p') %>%
+      merge(ret[, .(rsc.ID, score, direction)], by = 'rsc.ID', sort = F)
+  }
+  
+  mNames <- ret[, rsc.ID]
+  ret[, !'rsc.ID'] %>% `rownames<-`(mNames) %>% setorder(-score)
 }
 
 #' getTags
@@ -132,6 +147,7 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
 #' Expand the specified ontology for the specified experiments. This could theoretically be done
 #' before and cached like this, but it seems to take up much more space in RAM.
 #'
+#' @param taxa
 #' @param scope The ontology scope.
 #' @param rsc.IDs A list of experiment rsc IDs or NULL for everything
 #' @param max.distance The maximum tree traversal distance to include
@@ -256,6 +272,7 @@ reorderTags <- function(cache) {
 #' @param rankings A named numeric (@seealso search).
 #' @param scope The ontology scope.
 #' @param options The options
+#' @param verbose
 enrich <- function(rankings, taxa = getOption('app.taxa'), scope = getOption('app.ontology'),
                    options = getOption('app.all_options'), verbose = T) {
   rankings <- data.table(rsc.ID = rownames(rankings), rank = rankings$score, direction = rankings$direction)
@@ -283,6 +300,15 @@ enrich <- function(rankings, taxa = getOption('app.taxa'), scope = getOption('ap
             suppressWarnings(phyper(A - 1, B, D, C + A, F)),
           .(cf.BaseLongUri, cf.ValLongUri)]
   }
+  
+  ret <- aprior() %>% fisher
+  
+  if(exists('TERM.STATS')) {
+    # Not sure how to do stats on this...
+    
+    ret %>% merge(TERM.STATS, by = c('cf.BaseLongUri', 'cf.ValLongUri')) %>%
+      .[, pv.scaled := (1 - pi)]
+  }
 
-  aprior() %>% fisher %>% setorder(pv.fisher)
+  ret %>% .[, pv.fisher.adj := p.adjust(pv.fisher, 'BH')] %>% setorder(pv.fisher)
 }

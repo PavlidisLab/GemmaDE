@@ -1,4 +1,4 @@
-artificial <- readRDS('/space/scratch/jsicherman/Thesis Work/data/Limma/artificial.rds')
+artificial <- readRDS('/space/scratch/jsicherman/Thesis Work/data/Limma/normalized/artificial_normalized.rds')
 
 tmp <- rbindlist(lapply(1:length(artificial), function(i) {
   data.table(experiment = i, entrez.ID = artificial[[i]]$entrez.ID,
@@ -9,7 +9,7 @@ fc <- dcast(tmp[, .(entrez.ID, experiment, fc)], entrez.ID ~ experiment, value.v
 pv <- dcast(tmp[, .(entrez.ID, experiment, adj.pv)], entrez.ID ~ experiment, value.var = 'adj.pv')
 
 contrasts <- rbindlist(lapply(artificial, '[[', 'contrast'))
-saveRDS('/space/scratch/jsicherman/Thesis Work/data/Limma/experiment.contrasts.rds')
+saveRDS(contrasts, '/space/scratch/jsicherman/Thesis Work/data/Limma/normalized/experiment.contrasts_normalized.rds')
 
 rm(tmp, artificial)
 
@@ -22,10 +22,21 @@ rownames(pv) <- paste0('g', pv[, 1])
 fc <- fc[, -1]
 pv <- pv[, -1]
 
-artificial.gene.associations <- readRDS('/space/scratch/jsicherman/Thesis Work/data/Limma/gene.associations.rds')
-artificial.gene.meta <- readRDS('/space/scratch/jsicherman/Thesis Work/data/Limma/artificial.gene.meta.rds')
+artificial.gene.associations <- readRDS('/space/scratch/jsicherman/Thesis Work/data/Limma/normalized/gene.associations_normalized.rds')
+artificial.gene.meta <- readRDS('/space/scratch/jsicherman/Thesis Work/data/Limma/normalized/artificial.gene.meta_normalized.rds')
 
 N <- ncol(fc)
+
+letterWrap <- function(n, depth = 1) {
+  x <- do.call(paste0,
+               do.call(expand.grid, args = list(lapply(1:depth, function(x) return(LETTERS)), stringsAsFactors = F)) %>%
+                 .[, rev(names(.[])), drop = F])
+  
+  if(n <= length(x)) return(x[1:n])
+  
+  return(c(x, letterWrap(n - length(x), depth = depth + 1)))
+}
+
 EXPERIMENTS <- letterWrap(N)
 colnames(fc) <- EXPERIMENTS
 colnames(pv) <- EXPERIMENTS
@@ -54,11 +65,11 @@ experiment.meta <- data.table(rsc.ID = EXPERIMENTS,
 
 saveRDS(new('EData', taxon = 'artificial', data = list(fc = fc, adj.pv = pv),
             experiment.meta = experiment.meta, gene.meta = artificial.gene.meta),
-        '/space/scratch/jsicherman/Thesis Work/data/Limma/artificial.rds')
+        '/space/scratch/jsicherman/Thesis Work/data/Limma/normalized/artificial_normalized.rds')
 
 DATA.HOLDER$artificial <- new('EData', taxon = 'artificial', data = list(fc = fc, adj.pv = pv),
                               experiment.meta = experiment.meta, gene.meta = artificial.gene.meta)
-rm(fc, pv, artificial.gene.meta, experiment.meta)
+rm(fc, pv, artificial.gene.meta, experiment.meta, N, EXPERIMENTS)
 
 DATA.HOLDER$artificial@gene.meta$n.DE <- rowSums2(DATA.HOLDER$artificial@data$adj.pv < 0.05, na.rm = T)
 CACHE.BACKGROUND$artificial <- precomputeTags('artificial')

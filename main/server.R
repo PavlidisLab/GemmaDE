@@ -202,13 +202,16 @@ server <- function(input, output, session) {
       .[, N := length(unique(ee.ID)), .(cf.BaseLongUri, cf.ValLongUri)] %>%
       merge(data.table(rsc.ID = rownames(experiments), experiments[, !'score']), by = 'rsc.ID')
     
-    geneExpr <- mCache[paste0(cf.BaseLongUri, cf.ValLongUri) %in% conditions[pv.fisher < options$pv, paste0(cf.BaseLongUri, cf.ValLongUri)]]
+    geneExpr <- mCache[paste0(cf.BaseLongUri, cf.ValLongUri) %in% conditions[pv.fisher.adj < options$pv, paste0(cf.BaseLongUri, cf.ValLongUri)]]
     
     advanceProgress('Adding cross references')
     
     geneScores <- data.table(conditions[, .(cf.BaseLongUri, cf.ValLongUri)]) %>%
       merge(mCache[, !'rsc.ID'], by = c('cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T) %>%
       .[, Evidence := paste0(unique(ee.ID), collapse = ','), .(cf.BaseLongUri, cf.ValLongUri)]
+    
+    #topGenes <- experiments[, !c('score', 'direction')] * experiments[, score]
+    #conditions[, `Top Gene(s)` := ]
     
     geneScores <- geneScores[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, N, Evidence)] %>%
       merge(
@@ -222,8 +225,8 @@ server <- function(input, output, session) {
         by = c('cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T) %>% unique
     
     # Rename things and add the ES
-    conditions <- merge(conditions, geneScores, by = c('cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T) %>% setorder(pv.fisher) %>%
-      setnames(c('pv.fisher', 'direction'), c('P-value', 'Direction'))
+    conditions <- merge(conditions, geneScores, by = c('cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T) %>% setorder(pv.fisher.adj) %>%
+      setnames(c('pv.fisher', 'pv.fisher.adj', 'direction'), c('P-value', 'FDR', 'Direction'))
     
     advanceProgress('Finishing up')
     
@@ -239,12 +242,12 @@ server <- function(input, output, session) {
   #' @param scope The ontology scope.
   #' @param options The search options
   handleSearch <- function(genes, taxa = getOption('app.taxa'), scope = getOption('app.ontology'), options = getOption('app.all_options')) {
-    experiments <- search(genes, taxa, options)
+    experiments <<- search(genes, taxa, options)
     
     if(is.null(experiments))
       endFailure()
     else {
-      conditions <- enrich(experiments, taxa, scope, options)
+      conditions <<- enrich(experiments, taxa, scope, options)
       
       if(is.null(conditions))
         endEmpty()
@@ -258,7 +261,7 @@ server <- function(input, output, session) {
           taxa = taxa,
           gene.ID = genes,
           gene.Name = DATA.HOLDER[[taxa]]@gene.meta[entrez.ID %in% genes, gene.Name],
-          conditions = conditions[pv.fisher < options$pv, paste(cf.BaseLongUri, 'vs.', cf.ValLongUri)],
+          conditions = conditions[pv.fisher.adj < options$pv, paste(cf.BaseLongUri, 'vs.', cf.ValLongUri)],
           options = options,
           queued = results$expression %>%
             merge(DATA.HOLDER[[taxa]]@experiment.meta[, .(rsc.ID, ee.ID, ee.NumSamples)],

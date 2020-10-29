@@ -1,6 +1,17 @@
 library(pbapply)
 source('dependencies.R')
 
+#' Reverse Search
+#'
+#' @param contrasts 
+#' @param taxa 
+#' @param scope 
+#' @param options 
+#'
+#' @return
+#' @export
+#'
+#' @examples
 revSearch <- function(contrasts,
                       taxa = getOption('app.taxa'), scope = getOption('app.ontology'),
                       options = getOption('app.all_options')) {
