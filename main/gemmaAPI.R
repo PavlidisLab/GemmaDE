@@ -1,12 +1,9 @@
 #' Gene Evidence
 #'
-#' @param genes 
-#' @param taxa 
-#'
-#' @return
-#' @export
-#'
-#' @examples
+#' Gets a set of gene evidence from Gemma
+#' 
+#' @param genes The genes to query
+#' @param taxa The taxa to query
 geneEvidence <- async(function(genes, taxa = getOption('app.taxa')) {
   prettyPrint <- function(evidence) {
     list(cf.ValLongUri = evidence$phenotypes[[1]]$valueUri,
@@ -42,17 +39,11 @@ geneEvidence <- async(function(genes, taxa = getOption('app.taxa')) {
 #' 2. Request sample information for each sample
 #'   --> Subset only samples that have the baseline/contrasting factor
 #'
-#' @param ee.IDs 
-#' @param rsc.IDs 
-#' @param taxa 
-#' @param genes 
-#' @param keepNonSpecific 
-#' @param consolidate 
-#'
-#' @return
-#' @export
-#'
-#' @examples
+#' @param ee.IDs Experiment IDs to search in
+#' @param rsc.IDs The sub IDs to search for too
+#' @param taxa The taxa scope
+#' @param genes Genes to search for
+#' @param keepNonSpecific, consolidate Options passed on to Gemma
 geneExpression <- async(function(ee.IDs, rsc.IDs, taxa = getOption('app.taxa'), genes, keepNonSpecific = F, consolidate = 'average') {
   extractSampleInfo <- function(sample, meta) {
     vals <- sapply(sample$sample$factorValueObjects, function(fv) fv$fvSummary)

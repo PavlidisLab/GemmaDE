@@ -3,13 +3,13 @@
 #' Uses the M-VSM to sort experiments that show at least one of the genes as DE.
 #'
 #' @param genes A list of Entrez Gene IDs (ie. 1, 22, 480) as characters
-#' @param taxa
+#' @param taxa A taxa scope. Can be one of [human, mouse, rat].
 #' @param options Optional extra parameters to pass, such as:
 #' * pv: An FDR cutoff (default: 0.05)
 #' * fc.lower / fc.upper: Upper and lower logFC thresholds (default: 0 / 10)
 #' * mfx: Whether or not to scale by gene multifunctionality
 #' * geeq: Whether or not to scale by GEEQ score
-#' @param verbose
+#' @param verbose Whether or not to print messages to the progress bar (if it can be found)
 search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app.all_options'), verbose = T) {
   if(verbose)
     advanceProgress('Loading experiments')
@@ -18,7 +18,8 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
   FC_L_THRESHOLD <- options$fc.lower
   FC_U_THRESHOLD <- options$fc.upper
   MFX <- options$mfx
-  GEEQ <- options$geeq
+  # GEEQ <- options$geeq
+  METHOD <- options$method
   
   # Data Extraction ---------------------------------------------------------
 
@@ -35,111 +36,97 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
   
   # Only retain experiments that have at least one of the GOI as DE (pv < threshold)
   pv[is.na(pv)] <- 1
-  colFilter <- Rfast::colsums(pv < P_THRESHOLD) > 0 &
-    DATA.HOLDER[[taxa]]@experiment.meta[, !is.na(cf.BaseLongUri) | !is.na(cf.ValLongUri)]
-  pv <- pv[, colFilter]
+  colFilter <- Rfast::colsums(pv < P_THRESHOLD) > 0
   
-  if(n.genes == 1)
-    pv <- t(pv)
-  
-  pv <- pv %>% as.data.table
-  
-  # Number of DEs for experiments that pass thresholds
-  geeq <- DATA.HOLDER[[taxa]]@experiment.meta$ee.qScore[colFilter]
-  n.DE.exp <- DATA.HOLDER[[taxa]]@experiment.meta$n.DE[colFilter]
-  n.DE.gen <- DATA.HOLDER[[taxa]]@gene.meta$n.DE[rowFilter]
+  # Number of DEGs for experiments that pass thresholds
+  # geeq <- DATA.HOLDER[[taxa]]@experiment.meta$ee.qScore[colFilter]
+  # n.DE.exp <- DATA.HOLDER[[taxa]]@experiment.meta$n.DE[colFilter]
   
   # logFCs for only the GOI/EOI and maintain structure.
   logFC <- DATA.HOLDER[[taxa]]@data$fc[rowFilter, colFilter]
   logFC[is.na(logFC)] <- 0
   
-  if(n.genes == 1)
+  zscore <- DATA.HOLDER[[taxa]]@data$pvz[rowFilter, colFilter]
+  zscore[is.na(zscore)] <- 0
+  
+  if(n.genes == 1) {
     logFC <- t(logFC)
+    zscore <- t(zscore)
+  }
   
   logFC <- logFC %>% as.data.table
-  
-  directions <- ifelse(Rfast::colmeans(logFC %>% as.matrix) < 0, F, T)
-  logFC <- abs(logFC)
+  zscore <- zscore %>% as.data.table
   
   # Only retain experiments that have at least one of the GOI with threshold_u > abs(logFC) > threshold_l
   if(FC_L_THRESHOLD != 0 || FC_U_THRESHOLD != 0) {
-    exFilter <- logFC > FC_L_THRESHOLD
+    exFilter <- abs(logFC) > FC_L_THRESHOLD
     
     if(FC_U_THRESHOLD != FC_L_THRESHOLD)
-      exFilter <- exFilter & (logFC < FC_U_THRESHOLD)
+      exFilter <- exFilter & (abs(logFC) < FC_U_THRESHOLD)
     
     colFilter <- Rfast::colsums(exFilter) > 0
     logFC <- logFC %>% .[, colFilter, with = F]
-    directions <- directions[colFilter]
-    pv <- pv[, colFilter, with = F]
-    n.DE.exp <- n.DE.exp[colFilter]
-    geeq <- geeq[colFilter]
+    # n.DE.exp <- n.DE.exp[colFilter]
+    # geeq <- geeq[colFilter]
   }
   
   # Data Processing ---------------------------------------------------------
   if(verbose)
     advanceProgress('Ranking')
-  
-  # TODO Rfast::rowmeans but drop NAs?
-  tf <- t(t(logFC) / (1 + rowMeans2(abs(logFC) %>% as.matrix, na.rm = T))) %>% as.data.table
-  
-  n.DE.exp[is.na(n.DE.exp)] <- 0
-  tf <- t(t(tf) / c(Rfast::Log(2 + n.DE.exp))) %>% as.data.table # Weight by number of DEGs in this experiment
-  
-  geeq[is.na(geeq)] <- 0
-  if(GEEQ)
-    tf <- t(t(tf) * (1 + Rfast::Pmax(geeq, 0))) %>% as.data.table # Weight by experiment quality score
-  
-  pv[is.na(pv)] <- 1
-  tf <- tf * -log10(pv + 1e-50) # TODO
 
-  query <- matrixStats::rowQuantiles(tf %>% as.matrix, probs = 0.8)
+  tf <- zscore
+  directions <- ifelse(Rfast::colmeans(logFC %>% as.matrix) < 0, F, T)
+  
+  #n.DE.exp[is.na(n.DE.exp)] <- 0
+  #tf <- t(t(tf) / c(Rfast::Log(2 + n.DE.exp))) %>% as.data.table # Weight by number of DEGs in this experiment
+  
+  #geeq[is.na(geeq)] <- 0
+  #if(GEEQ)
+  #  tf <- t(t(tf) * (1 + Rfast::Pmax(geeq, 0))) %>% as.data.table # Weight by experiment quality score
+  
+  query <- Rfast::rowMaxs(tf %>% as.matrix, value = T)
 
-  # Shrink by MFX /after/ extracting the query
+  if(METHOD == 'zscore') {
+    if(MFX)
+      MFX_WEIGHT <- 1 - DATA.HOLDER[[taxa]]@gene.meta$mfx.Rank[rowFilter]
+    else
+      MFX_WEIGHT <- rep(1, n.genes)
+    
+    (tf / query) %>% pmin(1) %>% t %>% as.data.table %>%
+      .[, score := Rfast::rowsums(as.matrix(.) * MFX_WEIGHT) / sum(MFX_WEIGHT)] %>%
+      setnames(c(DATA.HOLDER[[taxa]]@gene.meta$gene.Name[rowFilter], 'score')) %>%
+      .[, direction := directions] %>%
+      .[, rn := colnames(tf)] %>%
+      .[, score := scale(score, F)] %>%
+      setorder(-score)
+  } else if(METHOD == 'mvsm') {
+    idf <- log10(n.genes / (1 + DATA.HOLDER[[taxa]]@gene.meta$mfx.Rank[rowFilter])) + 1
+    tf[, query := query]
+    tfidf <- tf * idf
+    
+    if(n.genes > 1)
+      tfidf <- scale(tfidf, center = F, scale = Rfast::colsums(as.matrix(tfidf))) %>% as.data.table
+    
+    query <- tfidf[, query]
+    tfidf[, query := NULL]
+    
+    tfidf <- as.matrix(tfidf)
+    scores <- query %*% tfidf
+    
+    # Gene scores are meaningless for single gene queries and scores need scaling.
+    # TODO examine this
+    if(n.genes == 1) {
+      tfidf <- tfidf / tfidf
+      scores <- scores / max(scores)
+    }
+    
+    ret <- rbind(tfidf, scores) %>% t %>% as.data.table %>%
+      setnames(c(DATA.HOLDER[[taxa]]@gene.meta$gene.Name[rowFilter], 'score')) %>%
+      .[, direction := directions] %>%
+      .[, rsc.ID := colnames(tfidf)]
   
-  # if(MFX)
-  #   tf <- tf * (1 - data@gene.meta$mfx.Rank[rowFilter] / 5) # TODO Fine tune? Effect similar to idf?
-  
-  idf <- log10(length(DATA.HOLDER[[taxa]]@gene.meta$n.DE) / (1 + DATA.HOLDER[[taxa]]@gene.meta$mfx.Rank[rowFilter])) + 1
-  tf[, query := query]
-  tfidf <- tf * idf
-  
-  if(n.genes > 1)
-    tfidf <- scale(tfidf, center = F, scale = Rfast::colsums(as.matrix(tfidf))) %>% as.data.table
-  
-  query <- tfidf[, query]
-  tfidf[, query := NULL]
-  
-  tfidf <- as.matrix(tfidf)
-  scores <- query %*% tfidf
-  
-  # Gene scores are meaningless for single gene queries and scores need scaling.
-  if(n.genes == 1) {
-    tfidf <- tfidf / tfidf
-    scores <- scores / max(scores)
+    ret %>% setnames('rsc.ID', 'rn') %>% setorder(-score)
   }
-  
-  ret <- rbind(tfidf, scores) %>% t %>% as.data.table %>%
-    `colnames<-`(c(DATA.HOLDER[[taxa]]@gene.meta$gene.Name[rowFilter], 'score')) %>%
-    .[, direction := directions] %>%
-    .[, rsc.ID := colnames(tfidf)]
-
-  if(exists('EXP.STATS')) {
-    ret <- ret %>%
-      merge(EXP.STATS[[taxa]], by = 'rsc.ID', sort = F) %>%
-      .[, score := abs(score - mean)]
-  }
-  
-  if(exists('GENE.STATS')) {
-    ret <- ret[, !c('score', 'direction')] %>%
-      melt(value.name = 'score', variable.name = 'gene.Name') %>%
-      merge(GENE.STATS[[taxa]], by = 'gene.Name', sort = F) %>% .[, p := 1 - exp(-rate * score), gene.Name] %>%
-      dcast(rsc.ID ~ gene.Name, value.var = 'p') %>%
-      merge(ret[, .(rsc.ID, score, direction)], by = 'rsc.ID', sort = F)
-  }
-  
-  mNames <- ret[, rsc.ID]
-  ret[, !'rsc.ID'] %>% `rownames<-`(mNames) %>% setorder(-score)
 }
 
 #' getTags
@@ -147,7 +134,7 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
 #' Expand the specified ontology for the specified experiments. This could theoretically be done
 #' before and cached like this, but it seems to take up much more space in RAM.
 #'
-#' @param taxa
+#' @param taxa A taxa scope. Can be one of [human, mouse, rat].
 #' @param scope The ontology scope.
 #' @param rsc.IDs A list of experiment rsc IDs or NULL for everything
 #' @param max.distance The maximum tree traversal distance to include
@@ -174,6 +161,31 @@ getTags <- function(taxa = getOption('app.taxa'), scope = getOption('app.ontolog
 #'
 #' @param taxa A taxa scope. Can be one of [human, mouse, rat].
 precomputeTags <- function(taxa = getOption('app.taxa')) {
+  #' Reorder Tags
+  #' 
+  #' Reorders the baseline and contrast so that the most common one is in the baseline.
+  #'
+  #' @param cache The cache entry
+  #'
+  #' @return A reordered cache entry
+  reorderTags <- function(cache) {
+    vals <- cache[, .N, cf.BaseLongUri] %>%
+      merge(cache[, .N, cf.ValLongUri],
+            by.x = 'cf.BaseLongUri', by.y = 'cf.ValLongUri', all = T, sort = F, allow.cartesian = T) %>%
+      .[is.na(N.x), N.x := 0] %>% .[is.na(N.y), N.y := 0] %>%
+      .[, N := N.x + N.y, cf.BaseLongUri] %>%
+      .[, .(tag = cf.BaseLongUri, N)]
+    
+    cache[, .(rsc.ID, ee.ID, cf.Cat, b = cf.BaseLongUri, v = cf.ValLongUri, distance)] %>%
+      merge(vals, by.x = 'b', by.y = 'tag', sort = F, allow.cartesian = T) %>%
+      merge(vals, by.x = 'v', by.y = 'tag', sort = F, allow.cartesian = T) %>%
+      .[, reverse := (N.y > N.x) | (N.y == N.x & b < v)] %>%
+      .[reverse == T, c('b', 'v') := list(v, b)] %>%
+      .[, .(rsc.ID = as.factor(rsc.ID), ee.ID,
+            cf.Cat = as.factor(cf.Cat), cf.BaseLongUri = as.factor(b), cf.ValLongUri = as.factor(v),
+            reverse, distance)]
+  }
+  
   mGraph <- simplify(igraph::graph_from_data_frame(ONTOLOGIES[, .(ChildNode_Long, ParentNode_Long)]))
   graphTerms <- unique(ONTOLOGIES[, as.character(ChildNode_Long, ParentNode_Long)])
   
@@ -239,31 +251,6 @@ precomputeTags <- function(taxa = getOption('app.taxa')) {
     reorderTags
 }
 
-#' Reorder Tags
-#' 
-#' Reorders the baseline and contrast so that the most common one is in the baseline.
-#'
-#' @param cache The cache entry
-#'
-#' @return A reordered cache entry
-reorderTags <- function(cache) {
-  vals <- cache[, .N, cf.BaseLongUri] %>%
-    merge(cache[, .N, cf.ValLongUri],
-          by.x = 'cf.BaseLongUri', by.y = 'cf.ValLongUri', all = T, sort = F, allow.cartesian = T) %>%
-    .[is.na(N.x), N.x := 0] %>% .[is.na(N.y), N.y := 0] %>%
-    .[, N := N.x + N.y, cf.BaseLongUri] %>%
-    .[, .(tag = cf.BaseLongUri, N)]
-  
-  cache[, .(rsc.ID, ee.ID, cf.Cat, b = cf.BaseLongUri, v = cf.ValLongUri, distance)] %>%
-    merge(vals, by.x = 'b', by.y = 'tag', sort = F, allow.cartesian = T) %>%
-    merge(vals, by.x = 'v', by.y = 'tag', sort = F, allow.cartesian = T) %>%
-    .[, reverse := (N.y > N.x) | (N.y == N.x & b < v)] %>%
-    .[reverse == T, c('b', 'v') := list(v, b)] %>%
-    .[, .(rsc.ID = as.factor(rsc.ID), ee.ID,
-          cf.Cat = as.factor(cf.Cat), cf.BaseLongUri = as.factor(b), cf.ValLongUri = as.factor(v),
-          reverse, distance)]
-}
-
 #' Enrich
 #' 
 #' Given rankings (@seealso search), generate a ranking-weighted count of all terms that can be
@@ -272,22 +259,21 @@ reorderTags <- function(cache) {
 #' @param rankings A named numeric (@seealso search).
 #' @param scope The ontology scope.
 #' @param options The options
-#' @param verbose
+#' @param verbose Whether or not to print messages to the progress bar (if it can be found)
 enrich <- function(rankings, taxa = getOption('app.taxa'), scope = getOption('app.ontology'),
                    options = getOption('app.all_options'), verbose = T) {
-  rankings <- data.table(rsc.ID = rownames(rankings), rank = rankings$score, direction = rankings$direction)
-  
   if(verbose)
     advanceProgress('Looking up ontology terms')
   
   mMaps <- list(getTags(taxa, scope, NULL, options$distance),
-                getTags(taxa, scope, rankings[, rsc.ID], options$distance))
+                getTags(taxa, scope, rankings$rn, options$distance))
   
-  mMaps[[2]] <- mMaps[[2]] %>% merge(rankings, by = 'rsc.ID', sort = F, allow.cartesian = T)
+  mMaps[[2]] <- mMaps[[2]] %>% merge(rankings[, .(rsc.ID = rn, rank = score, direction)], by = 'rsc.ID',
+                                     sort = F, allow.cartesian = T)
   
   aprior <- function() {
     mMaps[[2]][, .(A = sum(rank) / (1 + sum(distance))), .(cf.BaseLongUri, cf.ValLongUri)][, B := sum(A)] %>%
-      merge(mMaps[[1]][!(rsc.ID %in% rankings[, rsc.ID]),
+      merge(mMaps[[1]][!(rsc.ID %in% rankings$rn),
                        .(C = .N / (1 + sum(distance))), .(cf.BaseLongUri, cf.ValLongUri)][, D := sum(C)],
             by = c('cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T)
   }
@@ -296,19 +282,12 @@ enrich <- function(rankings, taxa = getOption('app.taxa'), scope = getOption('ap
     if(verbose)
       advanceProgress('Running tests')
     
-    input[, c('pv.fisher', 'OR') :=
+    input[, pv.fisher :=
             suppressWarnings(phyper(A - 1, B, D, C + A, F)),
           .(cf.BaseLongUri, cf.ValLongUri)]
   }
   
   ret <- aprior() %>% fisher
-  
-  if(exists('TERM.STATS')) {
-    # Not sure how to do stats on this...
-    
-    ret %>% merge(TERM.STATS, by = c('cf.BaseLongUri', 'cf.ValLongUri')) %>%
-      .[, pv.scaled := (1 - pi)]
-  }
 
   ret %>% .[, pv.fisher.adj := p.adjust(pv.fisher, 'BH')] %>% setorder(pv.fisher)
 }

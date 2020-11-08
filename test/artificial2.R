@@ -11,8 +11,9 @@ library(parallel)
 library(limma)
 library(fitdistrplus)
 
-SIMTYPE <- 'normalized'
-SUFFIX <- paste0('_', SIMTYPE)
+SIMTYPE <- 'superuniform'
+SUFFIX <- paste0('_', SIMTYPE, '-binary')
+SMOOTHING <- 1/9 # 4/9
 
 set.seed(18232)
 options(mc.cores = 12)
@@ -306,14 +307,15 @@ letterWrap <- function(n, depth = 1) {
 
 experiments <- letterWrap(N_EXPERIMENTS)
 
+# Can be one of [empirical, normalized, uniform, superuniform]
 geneAssociations <- function(N, simType = 'empirical') {
   if(simType == 'uniform') {
     message('Simulating associations uniformly.')
     
     indices <- sample(1:nrow(DATA.HOLDER$human@experiment.meta), replace = T)
     ret <- DATA.HOLDER$human@experiment.meta[indices, .(cf.Cat, cf.CatLongUri, cf.ValLongUri, cf.BaseLongUri)]
-  } else if(simType == 'uniform') {
-    message('Simulating associations uniformly')
+  } else if(simType == 'superuniform') {
+    message('Simulating associations super-uniformly')
     
     vals <- unique(DATA.HOLDER$human@experiment.meta[, .(cf.Cat, cf.CatLongUri, cf.ValLongUri, cf.BaseLongUri)])
     ret <- cbind(entrez.ID = 1:N,
@@ -353,7 +355,7 @@ geneAssociations <- function(N, simType = 'empirical') {
     .[, rbind(.SD[, .(cf.Cat, cf.CatLongUri, cf.BaseLongUri, cf.ValLongUri)],
               fsetdiff(entries, .SD[, .(cf.Cat, cf.CatLongUri, cf.BaseLongUri, cf.ValLongUri)])), entrez.ID] %>%
       .[, c('mProb', 'direction.up') :=
-          list(rgamma(nrow(.SD), 4/9) %>% `/`(runif(1, 257, 400)/256 * max(.)) %>%
+          list(rgamma(nrow(.SD), SMOOTHING) %>% `/`(runif(1, 257, 400)/256 * max(.)) %>%
                  .[c(which.max(.), (1:length(.))[-which.max(.)])],
                sample(c(T, F), nrow(.SD), T)), entrez.ID]
   } %>% .[, .(entrez.ID, cf.Cat, cf.CatLongUri, cf.BaseLongUri, cf.ValLongUri, mProb, direction.up)]

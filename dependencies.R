@@ -19,7 +19,7 @@ options(app.all_taxa = list(`H. sapiens` = 'human', `M. musculus` = 'mouse', `R.
 options(app.all_options = list(pv = getOption('app.pv'), fc.lower = getOption('app.fc_lower'),
                                fc.upper = getOption('app.fc_upper'), mfx = getOption('app.mfx'),
                                geeq = getOption('app.geeq'), distance = getOption('app.distance_cutoff'),
-                               max.rows = getOption('max.rows')))
+                               max.rows = getOption('max.rows'), method = 'zscore'))
 
 source('main/process.R')
 source('main/progress.R')

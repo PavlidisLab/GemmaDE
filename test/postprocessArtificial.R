@@ -1,4 +1,4 @@
-artificial <- readRDS('/space/scratch/jsicherman/Thesis Work/data/Limma/normalized/artificial_normalized.rds')
+artificial <- readRDS('/space/scratch/jsicherman/Thesis Work/data/Limma/superuniform/artificial_superuniform.rds')
 
 tmp <- rbindlist(lapply(1:length(artificial), function(i) {
   data.table(experiment = i, entrez.ID = artificial[[i]]$entrez.ID,
@@ -9,7 +9,7 @@ fc <- dcast(tmp[, .(entrez.ID, experiment, fc)], entrez.ID ~ experiment, value.v
 pv <- dcast(tmp[, .(entrez.ID, experiment, adj.pv)], entrez.ID ~ experiment, value.var = 'adj.pv')
 
 contrasts <- rbindlist(lapply(artificial, '[[', 'contrast'))
-saveRDS(contrasts, '/space/scratch/jsicherman/Thesis Work/data/Limma/normalized/experiment.contrasts_normalized.rds')
+saveRDS(contrasts, '/space/scratch/jsicherman/Thesis Work/data/Limma/superuniform/experiment.contrasts_superuniform.rds')
 
 rm(tmp, artificial)
 
@@ -19,11 +19,11 @@ pv <- as.data.frame(pv)
 rownames(fc) <- paste0('g', fc[, 1])
 rownames(pv) <- paste0('g', pv[, 1])
 
-fc <- fc[, -1]
-pv <- pv[, -1]
+fc <- fc[, -1] %>% as.matrix
+pv <- pv[, -1] %>% as.matrix
 
-artificial.gene.associations <- readRDS('/space/scratch/jsicherman/Thesis Work/data/Limma/normalized/gene.associations_normalized.rds')
-artificial.gene.meta <- readRDS('/space/scratch/jsicherman/Thesis Work/data/Limma/normalized/artificial.gene.meta_normalized.rds')
+artificial.gene.associations <- readRDS('/space/scratch/jsicherman/Thesis Work/data/Limma/superuniform/gene.associations_superuniform.rds')
+artificial.gene.meta <- readRDS('/space/scratch/jsicherman/Thesis Work/data/Limma/superuniform/artificial.gene.meta_superuniform.rds')
 
 N <- ncol(fc)
 
@@ -45,7 +45,7 @@ experiment.meta <- data.table(rsc.ID = EXPERIMENTS,
                               ee.ID = 1:N,
                               ee.Name = EXPERIMENTS,
                               ee.Source = 'Artificial' %>% as.factor,
-                              ee.NumSamples = readRDS('/space/scratch/jsicherman/Thesis Work/data/Limma/samples.rds'),
+                              ee.NumSamples = readRDS('/space/scratch/jsicherman/Thesis Work/data/Limma/superuniform/samples_superuniform.rds'),
                               # TODO ee.TagLongUri = exp.assoc[, ee.TagLongUri] %>% as.factor,
                               ee.qScore = rnorm(N, 0.2, 0.3) %>% pmin(1), # TODO This should be more meaningful
                               ad.Name = 'TODO' %>% as.factor,
@@ -65,11 +65,23 @@ experiment.meta <- data.table(rsc.ID = EXPERIMENTS,
 
 saveRDS(new('EData', taxon = 'artificial', data = list(fc = fc, adj.pv = pv),
             experiment.meta = experiment.meta, gene.meta = artificial.gene.meta),
-        '/space/scratch/jsicherman/Thesis Work/data/Limma/normalized/artificial_normalized.rds')
+        '/space/scratch/jsicherman/Thesis Work/data/Limma/superuniform/artificial_superuniform.rds')
 
 DATA.HOLDER$artificial <- new('EData', taxon = 'artificial', data = list(fc = fc, adj.pv = pv),
                               experiment.meta = experiment.meta, gene.meta = artificial.gene.meta)
 rm(fc, pv, artificial.gene.meta, experiment.meta, N, EXPERIMENTS)
 
-DATA.HOLDER$artificial@gene.meta$n.DE <- rowSums2(DATA.HOLDER$artificial@data$adj.pv < 0.05, na.rm = T)
+DATA.HOLDER$artificial@gene.meta <- DATA.HOLDER$artificial@gene.meta[, c('n.DE', 'dist.Mean', 'dist.SD') :=
+                                                                       list(rowSums2(DATA.HOLDER$artificial@data$adj.pv < 0.05, na.rm = T),
+                                                                            rowMeans2(DATA.HOLDER$artificial@data$fc, na.rm = T),
+                                                                            Rfast::rowVars(DATA.HOLDER$artificial@data$fc, std = T, na.rm = T))]
+
 CACHE.BACKGROUND$artificial <- precomputeTags('artificial')
+
+DATA.HOLDER$artificial@data$zscore <- (DATA.HOLDER$artificial@data$fc - DATA.HOLDER$artificial@gene.meta$dist.Mean) / DATA.HOLDER$artificial@gene.meta$dist.SD
+DATA.HOLDER$artificial@data$pvz <- DATA.HOLDER$artificial@data$zscore %>% {
+  tmp <- DATA.HOLDER$artificial@data$adj.pv
+  tmp[is.na(tmp)] <- 1
+  tmp[tmp < 1e-20] <- 1e-20
+  abs(.) * -log(tmp, 100)
+}

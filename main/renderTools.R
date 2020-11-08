@@ -1,11 +1,6 @@
 #' Generate Results Header
 #'
-#' @param title 
-#'
-#' @return
-#' @export
-#'
-#' @examples
+#' @param title The text or HTML to render
 generateResultsHeader <- function(title) {
   if('html' %in% class(title))
     fluidRow(class = 'info-text', column(12, title))
@@ -15,18 +10,13 @@ generateResultsHeader <- function(title) {
 
 #' Generate Results Plot
 #'
-#' @param genes 
-#' @param conditions 
-#' @param expr 
-#' @param options 
-#' @param plot_genes 
-#' @param plot_type 
-#' @param plot_data 
-#'
-#' @return
-#' @export
-#'
-#' @examples
+#' @param genes Genes that can be visualized
+#' @param conditions Conditions that can be visualized
+#' @param expr Expression information to plot
+#' @param options Any additional options 
+#' @param plot_genes Genes to visualize
+#' @param plot_type The plot type (heatmap, boxplot, etc.)
+#' @param plot_data The data to plot (gene expression data, etc.)
 generateResultsPlot <- function(genes, conditions, expr, options = getOption('app.all_options'),
                                 plot_genes, plot_type, plot_data) {
   expr$expr <- expr$expr[plot_genes, ]
@@ -88,18 +78,14 @@ generateResultsPlot <- function(genes, conditions, expr, options = getOption('ap
 }
 
 #' Generate Results
+#' 
+#' Make a pretty results table and render it
 #'
-#' @param experiments 
-#' @param conditions 
-#' @param taxa 
-#' @param options 
-#'
-#' @return
-#' @export
-#'
-#' @examples
-generateResults <- function(experiments, conditions, taxa = getOption('app.taxa'), options = getOption('app.all_options')) {
-  outputColumns <- c('Contrast', 'Direction', 'Evidence', 'P-value', 'FDR')#, colnames(experiments)[1:(ncol(experiments) - 2)])
+#' @param conditions The condition rankings
+#' @param taxa The taxa that was searched
+#' @param options Any additional options that were used
+generateResults <- function(onditions, taxa = getOption('app.taxa'), options = getOption('app.all_options')) {
+  outputColumns <- c('Contrast', 'Direction', 'Evidence', 'P-value', 'FDR')
   
   conditions[, Evidence := paste0('<span data-toggle="popover" title="Experiments" data-html="true" data-content="',
                                   lapply(unlist(strsplit(Evidence, ',')), function(experiment) {
@@ -161,9 +147,8 @@ generateResults <- function(experiments, conditions, taxa = getOption('app.taxa'
                                             title = 'data',
                                             exportOptions = list(
                                               format = list(
-                                                #format.header = JS('function(html, col, node) { return html; }'),
-                                                #format.footer = JS('function(html, col, node) { return html; }'),
                                                 body = JS('unformatSpark')
+                                                # TODO Will eventually need to fix this so html data is fixed
                                                 #customizeData = JS('function(data) { console.log(data); }')
                                               )
                                             )
@@ -178,12 +163,7 @@ generateResults <- function(experiments, conditions, taxa = getOption('app.taxa'
 
 #' Generate Gene Page
 #'
-#' @param evidence 
-#'
-#' @return
-#' @export
-#'
-#' @examples
+#' @param evidence The evience that was fetched from Gemma (@seealso geneEvidence)
 generateGenePage <- function(evidence) {
   evidence <- evidence[sapply(evidence, Negate(is.null))]
   
@@ -207,7 +187,7 @@ generateGenePage <- function(evidence) {
            IKR = c('Inferred from Key Residues', 'http://wiki.geneontology.org/index.php/Inferred_from_Key_Residues_(IKR)'),
            IRD = c('Inferred from Rapid Divergence', 'http://wiki.geneontology.org/index.php/Inferred_from_Rapid_Divergence(IRD)'),
            
-           ISS = c('Inferred from Sequence of structural Similarity', 'http://wiki.geneontology.org/index.php/Inferred_from_Sequence_or_structural_Similarity_(ISS)'),
+           ISS = c('Inferred from Sequence or structural Similarity', 'http://wiki.geneontology.org/index.php/Inferred_from_Sequence_or_structural_Similarity_(ISS)'),
            ISO = c('Inferred from Sequence Orthology', 'http://wiki.geneontology.org/index.php/Inferred_from_Sequence_Orthology_(ISO)'),
            ISA = c('Inferred from Sequence Alignment', 'http://wiki.geneontology.org/index.php/Inferred_from_Sequence_Alignment_(ISA)'),
            ISM = c('Inferred from Sequence Model', 'http://wiki.geneontology.org/index.php/Inferred_from_Sequence_Model_(ISM)'),

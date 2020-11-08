@@ -163,6 +163,9 @@ server <- function(input, output, session) {
     }
   })
   
+  #' Display a failure message
+  #'
+  #' Ends the search protocol with a failure message
   endFailure <- function() {
     setProgress(environment())
     output$results_header <- renderUI({
@@ -171,12 +174,25 @@ server <- function(input, output, session) {
     output$results <- NULL
   }
   
+  #' Display an empty message
+  #'
+  #' Ends the search protocol with no results
   endEmpty <- function() {
     setProgress(environment())
     output$results_header <- renderUI({ generateResultsHeader('No conditions found in scope.') })
     output$results <- NULL
   }
   
+  #' Display a success message
+  #'
+  #' Ends the search protocol successfully
+  #' 
+  #' @param genes The genes that were searched
+  #' @param experiments The experiment rankings that were obtained
+  #' @param conditions The condition rankings that were obtained
+  #' @param taxa The taxa scope that was queried
+  #' @param scope The ontology scope that was queried
+  #' @param options Any additional options that were passed
   endSuccess <- function(genes, experiments, conditions,
                          taxa = getOption('app.taxa'), scope = getOption('app.ontology'),
                          options = getOption('app.all_options')) {
@@ -187,8 +203,8 @@ server <- function(input, output, session) {
                                           nrow(experiments), ' experiment', ifelse(nrow(experiments) > 1, 's', ''), ' differentially expressing ',
                                           ifelse(ncol(experiments) == 2, colnames(experiments)[1],
                                                  paste0('<span data-toggle="tooltip" data-placement="top" title="',
-                                                        paste0(colnames(experiments)[1:(ncol(experiments) - 2)], collapse = ', '), '">',
-                                                        ncol(experiments) - 2, ' gene', ifelse(ncol(experiments) > 3, 's', ''), '</span>')),
+                                                        paste0(colnames(experiments)[1:(ncol(experiments) - 3)], collapse = ', '), '">',
+                                                        ncol(experiments) - 3, ' gene', ifelse(ncol(experiments) > 4, 's', ''), '</span>')),
                                           '</h2><span class="timestamp">in ',
                                           format(difftime(Sys.time(), session$userData$startTime), digits = 3), '.</span></span>')))
       })
@@ -196,11 +212,11 @@ server <- function(input, output, session) {
     advanceProgress('Fetching Gemma data')
     
     # Compute experiments in scope
-    mCache <- getTags(taxa, scope, rownames(experiments), options$distance) %>%
+    mCache <- getTags(taxa, scope, experiments$rn, options$distance) %>%
       .[cf.BaseLongUri %in% conditions[, unique(cf.BaseLongUri)] & cf.ValLongUri %in% conditions[, unique(cf.ValLongUri)]] %>%
-      unique %>% merge(DATA.HOLDER[[taxa]]@experiment.meta[rsc.ID %in% rownames(experiments), .(rsc.ID, ee.ID)], by = 'rsc.ID', sort = F, allow.cartesian = T) %>%
+      unique %>% merge(DATA.HOLDER[[taxa]]@experiment.meta[rsc.ID %in% experiments$rn, .(rsc.ID, ee.ID)], by = 'rsc.ID', sort = F, allow.cartesian = T) %>%
       .[, N := length(unique(ee.ID)), .(cf.BaseLongUri, cf.ValLongUri)] %>%
-      merge(data.table(rsc.ID = rownames(experiments), experiments[, !'score']), by = 'rsc.ID')
+      merge(data.table(rsc.ID = experiments$rn, experiments[, !c('score', 'rn')]), by = 'rsc.ID')
     
     geneExpr <- mCache[paste0(cf.BaseLongUri, cf.ValLongUri) %in% conditions[pv.fisher.adj < options$pv, paste0(cf.BaseLongUri, cf.ValLongUri)]]
     
@@ -209,9 +225,6 @@ server <- function(input, output, session) {
     geneScores <- data.table(conditions[, .(cf.BaseLongUri, cf.ValLongUri)]) %>%
       merge(mCache[, !'rsc.ID'], by = c('cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T) %>%
       .[, Evidence := paste0(unique(ee.ID), collapse = ','), .(cf.BaseLongUri, cf.ValLongUri)]
-    
-    #topGenes <- experiments[, !c('score', 'direction')] * experiments[, score]
-    #conditions[, `Top Gene(s)` := ]
     
     geneScores <- geneScores[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, N, Evidence)] %>%
       merge(
@@ -242,19 +255,19 @@ server <- function(input, output, session) {
   #' @param scope The ontology scope.
   #' @param options The search options
   handleSearch <- function(genes, taxa = getOption('app.taxa'), scope = getOption('app.ontology'), options = getOption('app.all_options')) {
-    experiments <<- search(genes, taxa, options)
+    experiments <- search(genes, taxa, options)
     
     if(is.null(experiments))
       endFailure()
     else {
-      conditions <<- enrich(experiments, taxa, scope, options)
+      conditions <- enrich(experiments, taxa, scope, options)
       
       if(is.null(conditions))
         endEmpty()
       else {
         results <- endSuccess(genes, experiments, head(conditions, options$max.rows), taxa, scope, options)
         
-        output$results <- generateResults(experiments, results$results, taxa, options)
+        output$results <- generateResults(results$results, taxa, options)
         
         # Prepare some plotting information.
         session$userData$plotData <- list(
@@ -268,6 +281,7 @@ server <- function(input, output, session) {
                   by = c('rsc.ID', 'ee.ID'), all.x = T, sort = F) %>% {
                     if(nrow(.) == 0) return(NULL)
                     
+                    # Select some samples to queue for gene expression visualization
                     while((tmp <- .[sample(1:nrow(.))])[1, ee.NumSamples] > getOption('max.gemma')) {
                     }
                     tmp[cumsum(ee.NumSamples) <= getOption('max.gemma')]

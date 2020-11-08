@@ -33,8 +33,6 @@ setClass('EData', representation(taxon = 'character', data = 'list',
 
 # Load the data into the global environment
 if(!isDataLoaded()) {
-  #BLACKLIST <- read.csv('data/blacklist.csv', header = F)$V1
-  
   ONTOLOGIES <- fread('/space/grp/nlim/CronGemmaDump/Ontology/Ontology_Dump_MERGED.TSV')
   ONTOLOGIES.DEFS <- fread('/space/grp/nlim/CronGemmaDump/Ontology/Ontology_Dump_MERGED_DEF.TSV')
   
@@ -96,11 +94,9 @@ if(!exists('DATA.HOLDER')) {
       
       # We don't want:
       # Troubled or private experiments
-      # Timecourse or dose-dependent contrasts
       # Experiments where one/both contrasts is/are unknown
-      # Experiments when the contrasts are identical (seemingly dose-dependent)
+      # Experiments when the contrasts are identical (seemingly dose-dependent?)
       bad.rscs <- metaData[ee.Troubled | !ee.Public |
-                             cf.Cat %in% c('timepoint', 'generation', 'dose') |
                              is.na(cf.BaseLongUri) |
                              is.na(cf.ValLongUri) |
                              cf.BaseLongUri == cf.ValLongUri, rsc.ID]
@@ -122,9 +118,22 @@ if(!exists('DATA.HOLDER')) {
       metaGene <- metaGene %>% as.data.table %>% .[, .(entrez.ID, gene.ID, ensembl.ID, gene.Name, alias.Name,
                                                        gene.Desc, mfx.Rank)]
       
-      metaGene$n.DE <- rowSums2(dataHolder$adj.pv < 0.05, na.rm = T)
+      metaGene[, n.DE := rowSums2(dataHolder$adj.pv < 0.05, na.rm = T)]
+      metaGene[, dist.Mean := rowMeans2(dataHolder$fc, na.rm = T)]
+      metaGene[, dist.SD := Rfast::rowVars(dataHolder$fc, na.rm = T, std = T)]
       
-      # Split into 500 ee.ID chunks (so the URI doesn't get too long) and fetch quality scores from Gemma for all experiments.
+      # Precompute z-scores and p-weighted z-scores. Need to maintain logFC and adj.pv for user-selected filtering
+      dataHolder$zscore <- (dataHolder$fc - metaGene$dist.Mean) / metaGene$dist.SD
+      
+      dataHolder$pvz <- dataHolder$zscore %>% {
+        tmp <- dataHolder$adj.pv
+        tmp[is.na(tmp)] <- 1
+        tmp[tmp < 1e-20] <- 1e-20
+        abs(.) * -log(tmp, 100)
+      }
+      
+      # Split into 500 ee.ID chunks (so the URI doesn't get too long) and fetch quality scores 
+      # from Gemma for all experiments.
       metaData <- rbindlist(lapply(lapply(metaData$ee.ID %>% unique %>% split(ceiling(seq_along(.[]) / 500)),
                                                datasetInfo, memoized = T) %>% unlist(recursive = F), function(ee.ID) {
                                                  data.table(ee.ID = ee.ID$id,
@@ -167,3 +176,5 @@ if(!exists('DATA.HOLDER')) {
     saveRDS(CACHE.BACKGROUND, '/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND.rds')
   }
 }
+
+rm(isDataLoaded, parseListEntry)
