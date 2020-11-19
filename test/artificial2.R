@@ -411,7 +411,7 @@ experiment.data <- mclapply(1:N_EXPERIMENTS, function(experiment) {
   effects[effects != 0 & probs[, !direction.up]] <- 1 / effects[effects != 0 & probs[, !direction.up]]
   
   tmp <- generateSyntheticData(experiments[experiment],
-                               n.vars = N_GENES, samples.per.cond = experiment.samples[experiment],
+                               n.vars = N_GENES, samples.per.cond = floor(experiment.samples[experiment] / 2),
                                effect.size = effects)
   
   tmp@sample.annotations$condition <- factor(tmp@sample.annotations$condition, labels = LETTERS[1:2])
@@ -430,7 +430,7 @@ experiment.data <- mclapply(1:N_EXPERIMENTS, function(experiment) {
     d0 <- DGEList(tmp@count.matrix) %>% calcNormFactors()
     cutoff <- 1
     drop <- which(apply(cpm(d0), 1, max) < cutoff)
-    d <- d0[-drop,]
+    d <- d0[-drop, ]
     mm <- model.matrix(~0 + condition, tmp@sample.annotations)
     y <- voom(d0, mm, plot = F)
     fit <- lmFit(y, mm)

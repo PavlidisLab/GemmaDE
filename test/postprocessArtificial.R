@@ -1,4 +1,8 @@
-artificial <- readRDS('/space/scratch/jsicherman/Thesis Work/data/Limma/superuniform/artificial_superuniform.rds')
+VERSION <- '_superuniform-binary'
+VERSION2 <- substring(VERSION, 2)
+
+artificial <- readRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/Limma/', VERSION2, '/',
+                             VERSION, '.rds'))
 
 tmp <- rbindlist(lapply(1:length(artificial), function(i) {
   data.table(experiment = i, entrez.ID = artificial[[i]]$entrez.ID,
@@ -9,7 +13,8 @@ fc <- dcast(tmp[, .(entrez.ID, experiment, fc)], entrez.ID ~ experiment, value.v
 pv <- dcast(tmp[, .(entrez.ID, experiment, adj.pv)], entrez.ID ~ experiment, value.var = 'adj.pv')
 
 contrasts <- rbindlist(lapply(artificial, '[[', 'contrast'))
-saveRDS(contrasts, '/space/scratch/jsicherman/Thesis Work/data/Limma/superuniform/experiment.contrasts_superuniform.rds')
+saveRDS(contrasts, paste0('/space/scratch/jsicherman/Thesis Work/data/Limma/', VERSION2, '/experiment.contrasts',
+                          VERSION, '.rds'))
 
 rm(tmp, artificial)
 
@@ -22,8 +27,10 @@ rownames(pv) <- paste0('g', pv[, 1])
 fc <- fc[, -1] %>% as.matrix
 pv <- pv[, -1] %>% as.matrix
 
-artificial.gene.associations <- readRDS('/space/scratch/jsicherman/Thesis Work/data/Limma/superuniform/gene.associations_superuniform.rds')
-artificial.gene.meta <- readRDS('/space/scratch/jsicherman/Thesis Work/data/Limma/superuniform/artificial.gene.meta_superuniform.rds')
+artificial.gene.associations <- readRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/Limma/', VERSION2, '/gene.associations',
+                                               VERSION, '.rds'))
+artificial.gene.meta <- readRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/Limma/', VERSION2, '/artificial.gene.meta',
+VERSION, '.rds'))
 
 N <- ncol(fc)
 
@@ -45,7 +52,8 @@ experiment.meta <- data.table(rsc.ID = EXPERIMENTS,
                               ee.ID = 1:N,
                               ee.Name = EXPERIMENTS,
                               ee.Source = 'Artificial' %>% as.factor,
-                              ee.NumSamples = readRDS('/space/scratch/jsicherman/Thesis Work/data/Limma/superuniform/samples_superuniform.rds'),
+                              ee.NumSamples = readRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/Limma/', VERSION2,
+                                                             '/samples', VERSION, '.rds')),
                               # TODO ee.TagLongUri = exp.assoc[, ee.TagLongUri] %>% as.factor,
                               ee.qScore = rnorm(N, 0.2, 0.3) %>% pmin(1), # TODO This should be more meaningful
                               ad.Name = 'TODO' %>% as.factor,
@@ -65,7 +73,7 @@ experiment.meta <- data.table(rsc.ID = EXPERIMENTS,
 
 saveRDS(new('EData', taxon = 'artificial', data = list(fc = fc, adj.pv = pv),
             experiment.meta = experiment.meta, gene.meta = artificial.gene.meta),
-        '/space/scratch/jsicherman/Thesis Work/data/Limma/superuniform/artificial_superuniform.rds')
+        paste0('/space/scratch/jsicherman/Thesis Work/data/Limma/', VERSION2, '/artificial', VERSION, '.rds'))
 
 DATA.HOLDER$artificial <- new('EData', taxon = 'artificial', data = list(fc = fc, adj.pv = pv),
                               experiment.meta = experiment.meta, gene.meta = artificial.gene.meta)
@@ -76,8 +84,6 @@ DATA.HOLDER$artificial@gene.meta <- DATA.HOLDER$artificial@gene.meta[, c('n.DE',
                                                                             rowMeans2(DATA.HOLDER$artificial@data$fc, na.rm = T),
                                                                             Rfast::rowVars(DATA.HOLDER$artificial@data$fc, std = T, na.rm = T))]
 
-CACHE.BACKGROUND$artificial <- precomputeTags('artificial')
-
 DATA.HOLDER$artificial@data$zscore <- (DATA.HOLDER$artificial@data$fc - DATA.HOLDER$artificial@gene.meta$dist.Mean) / DATA.HOLDER$artificial@gene.meta$dist.SD
 DATA.HOLDER$artificial@data$pvz <- DATA.HOLDER$artificial@data$zscore %>% {
   tmp <- DATA.HOLDER$artificial@data$adj.pv
@@ -85,3 +91,7 @@ DATA.HOLDER$artificial@data$pvz <- DATA.HOLDER$artificial@data$zscore %>% {
   tmp[tmp < 1e-20] <- 1e-20
   abs(.) * -log(tmp, 100)
 }
+DATA.HOLDER$artificial@experiment.meta$version <- VERSION
+
+CACHE.BACKGROUND$artificial <- precomputeTags('artificial')
+CACHE.BACKGROUND$artificial$version <- VERSION

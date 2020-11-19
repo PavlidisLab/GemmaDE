@@ -84,7 +84,7 @@ generateResultsPlot <- function(genes, conditions, expr, options = getOption('ap
 #' @param conditions The condition rankings
 #' @param taxa The taxa that was searched
 #' @param options Any additional options that were used
-generateResults <- function(onditions, taxa = getOption('app.taxa'), options = getOption('app.all_options')) {
+generateResults <- function(conditions, taxa = getOption('app.taxa'), options = getOption('app.all_options')) {
   outputColumns <- c('Contrast', 'Direction', 'Evidence', 'P-value', 'FDR')
   
   conditions[, Evidence := paste0('<span data-toggle="popover" title="Experiments" data-html="true" data-content="',

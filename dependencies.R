@@ -12,14 +12,16 @@ options(app.pv = 0.05)
 options(app.fc_lower = 0, app.fc_upper = 10)
 options(app.distance_cutoff = 2.25)
 options(app.mfx = T, app.geeq = T)
+options(app.search_method = 'mvsm')
 options(app.taxa = 'human',
         app.ontology = c('GO', 'CLO', 'CL', 'CHEBI', 'DO', 'EFO', 'TGEMO', 'HP', 'MP', 'OBI', 'UBERON'))
 options(app.all_taxa = list(`H. sapiens` = 'human', `M. musculus` = 'mouse', `R. norvegicus` = 'rat', artificial = 'artificial'))
+options(app.all_search_methods = list(`M-VSM` = 'mvsm', `Weighted Average` = 'zscore'))
 
 options(app.all_options = list(pv = getOption('app.pv'), fc.lower = getOption('app.fc_lower'),
                                fc.upper = getOption('app.fc_upper'), mfx = getOption('app.mfx'),
                                geeq = getOption('app.geeq'), distance = getOption('app.distance_cutoff'),
-                               max.rows = getOption('max.rows'), method = 'zscore'))
+                               max.rows = getOption('max.rows'), method = getOption('app.search_method')))
 
 source('main/process.R')
 source('main/progress.R')

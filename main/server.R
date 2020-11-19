@@ -16,6 +16,7 @@ server <- function(input, output, session) {
     updateSelectizeInput(session, 'genes', options = list(persist = F, create = T, createOnBlur = T))
     session$sendCustomMessage('querySet', genes)
     updateSelectizeInput(session, 'taxa', selected = ifelse(is.null(query$taxa), getOption('app.taxa'), query$taxa))
+    updateSelectizeInput(session, 'method', selected = ifelse(is.null(query$method), getOption('app.search_method'), query$method))
     updatePickerInput(session, 'scope', selected = scope)
     updateCheckboxInput(session, 'mfx', value = ifelse(is.null(query$mfx), getOption('app.mfx'), query$mfx))
     updateNumericInput(session, 'distance', value = ifelse(is.null(query$distance), getOption('app.distance_cutoff'), query$distance))
@@ -43,6 +44,7 @@ server <- function(input, output, session) {
   observeEvent(input$reset, {
     updateTextInput(session, 'genes', value = '')
     updateSelectizeInput(session, 'taxa', selected = NULL)
+    updateSelectizeInput(session, 'method', selected = NULL)
     updatePickerInput(session, 'scope', selected = getOption('app.ontology'))
     updateCheckboxInput(session, 'mfx', value = getOption('app.mfx'))
     updateCheckboxInput(session, 'geeq', value = getOption('app.geeq'))
@@ -238,7 +240,7 @@ server <- function(input, output, session) {
         by = c('cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T) %>% unique
     
     # Rename things and add the ES
-    conditions <- merge(conditions, geneScores, by = c('cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T) %>% setorder(pv.fisher.adj) %>%
+    conditions <- merge(conditions, geneScores, by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T) %>% setorder(pv.fisher.adj) %>%
       setnames(c('pv.fisher', 'pv.fisher.adj', 'direction'), c('P-value', 'FDR', 'Direction'))
     
     advanceProgress('Finishing up')
@@ -313,7 +315,8 @@ server <- function(input, output, session) {
                     mfx = input$mfx,
                     geeq = input$geeq,
                     distance = input$distance,
-                    max.rows = input$max.rows)
+                    max.rows = input$max.rows,
+                    method = input$method)
     
     # Update the query string
     if(update) {
@@ -329,7 +332,8 @@ server <- function(input, output, session) {
                       switch((options$mfx == getOption('app.mfx')) + 1, paste0('&mfx=', options$mfx), ''),
                       switch((options$geeq == getOption('app.geeq')) + 1, paste0('&geeq=', options$geeq), ''),
                       switch((options$max.rows == getOption('max.rows')) + 1, paste0('&rows=', options$max.rows), ''),
-                      switch((options$distance == getOption('app.distance_cutoff')) + 1, paste0('&distance=', options$distance), ''))
+                      switch((options$distance == getOption('app.distance_cutoff')) + 1, paste0('&distance=', options$distance), ''),
+                      switch((options$method == getOption('app.search_method')) + 1, paste0('&method=', options$method), ''))
       updateQueryString(query, 'push')
     }
     

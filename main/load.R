@@ -177,4 +177,4 @@ if(!exists('DATA.HOLDER')) {
   }
 }
 
-rm(isDataLoaded, parseListEntry)
+rm(isDataLoaded)
