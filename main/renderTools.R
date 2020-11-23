@@ -67,7 +67,7 @@ generateResultsPlot <- function(genes, conditions, expr, options = getOption('ap
                           scale_fill_brewer(palette = 'Dark2') +
                           theme_classic()) %>%
                          ggplotly %>% layout(boxmode = 'group'))
-    } else if(plot_type == 'Stripchart') {
+    } else if(plot_type == 'Jitterplot') {
       suppressMessages((data %>% ggplot(aes(Gene, Expression, fill = Contrast)) +
                           geom_jitter() +
                           scale_fill_brewer(palette = 'Dark2') +
@@ -85,7 +85,7 @@ generateResultsPlot <- function(genes, conditions, expr, options = getOption('ap
 #' @param taxa The taxa that was searched
 #' @param options Any additional options that were used
 generateResults <- function(conditions, taxa = getOption('app.taxa'), options = getOption('app.all_options')) {
-  outputColumns <- c('Contrast', 'Direction', 'Evidence', 'P-value', 'FDR')
+  outputColumns <- c('Contrast', 'Direction', 'Evidence', 'Augmented Count', 'P-value')
   
   conditions[, Evidence := paste0('<span data-toggle="popover" title="Experiments" data-html="true" data-content="',
                                   lapply(unlist(strsplit(Evidence, ',')), function(experiment) {
@@ -104,7 +104,7 @@ generateResults <- function(conditions, taxa = getOption('app.taxa'), options = 
                       filter = 'top',
                       options = list(pageLength = 10,
                                      order = list(
-                                       list(which(outputColumns == 'FDR'), 'asc')),
+                                       list(which(outputColumns == 'P-value'), 'asc')),
                                      language = list(lengthMenu = 'Show _MENU_ conditions per page',
                                                      processing = '',
                                                      emptyTable = 'No matching conditions found.',
@@ -126,7 +126,7 @@ generateResults <- function(conditions, taxa = getOption('app.taxa'), options = 
                                             width = '15%',
                                             className = 'dt-right',
                                             searchable = F, orderable = F),
-                                       list(targets = which(outputColumns %in% c('P-value', 'FDR')),
+                                       list(targets = which(outputColumns == 'P-value'),
                                             render = JS('asPval'), width = '10%'),
                                        list(targets = which(outputColumns == 'Direction'),
                                             width = '5%',
@@ -161,9 +161,36 @@ generateResults <- function(conditions, taxa = getOption('app.taxa'), options = 
   renderDT(mTable)
 }
 
+#' Generate GO Page
+#'
+#' @param ora The result of an ermineR::ora
+generateGOPage <- function(ora) {
+  ora$results <- ora$results %>% rename(c('Pval' = 'P-value'))
+  mTable <- datatable(ora$results[, c('Name', 'P-value')],
+                      rownames = ora$results$ID,
+                      filter = 'top',
+                      options = list(pageLength = 10,
+                                     order = list(
+                                       list(2, 'asc')),
+                                     language = list(lengthMenu = 'Show _MENU_ enrichments per page',
+                                                     processing = '',
+                                                     emptyTable = 'No matching enrichments found.',
+                                                     infoEmpty = 'Showing 0 to 0 of 0 over enrichments',
+                                                     info = 'Showing _START_ to _END_ of _TOTAL_ enrichments',
+                                                     infoFiltered = '(filtered from over _MAX_)'),
+                                     fixedHeader = T,
+                                     autoWidth = T,
+                                     drawCallback = JS('addMathJax'),
+                                     columnDefs = list(
+                                       list(targets = 2,
+                                            render = JS('asPval'), width = '10%')
+                                     )))
+  renderDT(mTable)
+}
+
 #' Generate Gene Page
 #'
-#' @param evidence The evience that was fetched from Gemma (@seealso geneEvidence)
+#' @param evidence The evidence that was fetched from Gemma (@seealso geneEvidence)
 generateGenePage <- function(evidence) {
   evidence <- evidence[sapply(evidence, Negate(is.null))]
   

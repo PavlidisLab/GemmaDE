@@ -20,10 +20,15 @@ library(dplyr)
 library(data.table)
 
 library(gemmaAPI)
+library(ermineR)
+library(mygene)
 
 source('dependencies.R')
 
 runApp('main', port = 18232, launch.browser = F)
+
+# Check metadata for log transformation
+# Internal weighting by baseline expression level
 
 # TODO consider memoise::memoise -ing things
 

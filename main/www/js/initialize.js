@@ -2,6 +2,7 @@ var fileValidated = false;
 
 $(document).one('shiny:connected', function() {
   Shiny.addCustomMessageHandler('querySet', querySet);
+  Shiny.addCustomMessageHandler('queryReset', queryReset);
   Shiny.addCustomMessageHandler('fileUpload', message => fileValidated = message);
   Shiny.setInputValue('LOAD', true);
   
@@ -30,18 +31,30 @@ function loadExamples() {
     var sz = $('#genes').selectize()[0].selectize;
     
     sz.clear(true);
-    addGenes(JSON.parse($(this).attr('genes')));
+    
+    if(JSON.parse($(this).attr('genes')) == 'random()') {
+      Shiny.setInputValue('RANDOM_GENES', Math.random());
+    } else {
+      addGenes(JSON.parse($(this).attr('genes')));
+    }
   });
 }
 
+function queryReset(genes) {
+  querySet(genes, true);
+}
+
 // Forcibly input genes from a list.
-function querySet(genes) { // TODO This is hacky. Might not work
-  setTimeout(function() { addGenes(genes); }, 100);
+function querySet(genes, clear = false) { // TODO This is hacky. Might not work
+  setTimeout(function() { addGenes(genes, clear); }, 100);
 }
 
 // Add genes to the genes bar
-function addGenes(genes) {
+function addGenes(genes, clear = false) {
   var sz = $('#genes').selectize()[0].selectize;
+  
+  if(clear)
+    sz.clear(true);
   
   if(genes instanceof Array)
     genes.forEach(gene => sz.createItem(gene, false));
@@ -70,6 +83,10 @@ $(document).click(function (e) {
   }
 });
 
+function addMathJax() {
+  if(window.MathJax) MathJax.Hub.Queue(['Typeset', MathJax.Hub]);
+}
+
 function onTableDraw() {
   $('[data-toggle="popover"]').popover();
   
@@ -80,7 +97,7 @@ function onTableDraw() {
     $(this).popover('toggle');
   });
   
-  if(window.MathJax) MathJax.Hub.Queue(['Typeset', MathJax.Hub]);
+  addMathJax();
   
   $('.spark:not(:has(canvas))').each(function(index) {
       $(this).sparkline('html', {

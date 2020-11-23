@@ -20,7 +20,8 @@ server <- function(input, output, session) {
     updatePickerInput(session, 'scope', selected = scope)
     updateCheckboxInput(session, 'mfx', value = ifelse(is.null(query$mfx), getOption('app.mfx'), query$mfx))
     updateNumericInput(session, 'distance', value = ifelse(is.null(query$distance), getOption('app.distance_cutoff'), query$distance))
-    updateNumericInput(session, 'max.rows', value = ifelse(is.null(query$rows), getOption('max.rows'), query$rows))
+    updateNumericInput(session, 'min.tags', value = ifelse(is.null(query$min), getOption('app.min.tags'), query$min))
+    updateNumericInput(session, 'max.rows', value = ifelse(is.null(query$rows), getOption('app.max.rows'), query$rows))
     updateNumericInput(session, 'pv', value = ifelse(is.null(query$pv), getOption('app.pv'), query$pv))
     updateSliderInput(session, 'fc', value = ifelse(is.null(query$fc), c(getOption('app.fc_lower'), getOption('app.fc_upper')), query$fc %>% jsonify %>% as.numeric))
     
@@ -48,8 +49,9 @@ server <- function(input, output, session) {
     updatePickerInput(session, 'scope', selected = getOption('app.ontology'))
     updateCheckboxInput(session, 'mfx', value = getOption('app.mfx'))
     updateCheckboxInput(session, 'geeq', value = getOption('app.geeq'))
+    updateNumericInput(session, 'min.tags', value = getOption('app.min.tags'))
     updateNumericInput(session, 'distance', value = getOption('app.distance_cutoff'))
-    updateNumericInput(session, 'max.rows', value = getOption('max.rows'))
+    updateNumericInput(session, 'max.rows', value = getOption('app.max.rows'))
     updateNumericInput(session, 'pv', value = getOption('app.pv'))
     updateSliderInput(session, 'fc', value = c(getOption('app.fc_lower'), getOption('app.fc_upper')))
     session$sendCustomMessage('fileUpload', F)
@@ -64,9 +66,9 @@ server <- function(input, output, session) {
     searchGenes(genes)
   })
   
-  # Open gene tab
+  # Open gene or GO tab
   observeEvent(input$tabs, {
-    if(input$tabs == 'Genes' && !is.null(session$userData$plotData) && is.null(session$userData$genesRendered)) {
+    if(input$tabs == 'Gene Info' && !is.null(session$userData$plotData) && is.null(session$userData$genesRendered)) {
       session$userData$genesRendered <- T
       
       synchronise({
@@ -76,16 +78,33 @@ server <- function(input, output, session) {
             output$results_genes <- generateGenePage(evidence)
           })
       })
+    } else if(input$tabs == 'GO Enrichment' && !is.null(session$userData$plotData) && is.null(session$userData$goRendered)) {
+      session$userData$goRendered <- T
+      
+      # We could precompute this but it seems to run rapidly and the other view is more convenient.
+      #annList <- DATA.HOLDER[[session$userData$plotData$taxa]]@go[, list(list(as.character(id))), as.character(entrez.ID)] %>%
+      #  lapply(c) %>% { `names<-`(.[[2]], .[[1]]) }
+      
+      #annotation <- makeAnnotation(
+      #  annList,
+      #  name = DATA.HOLDER[[session$userData$plotData$taxa]]@gene.meta[, .(entrez.ID, gene.Name)] %>%
+      #    as.data.frame %>% `rownames<-`(.[, 'entrez.ID']) %>%
+      #    .[names(annList), ]
+      #)
+      
+      output$results_go <- generateGOPage(ora(hitlist = session$userData$plotData$gene.Name,
+                                              annotation = paste0('Generic_', session$userData$plotData$taxa))) # annotation))
     }
   })
   
   # Force an updated of the gene view when we get new search results
   observeEvent(input$UPDATED, {
     session$userData$genesRendered <- NULL
+    session$userData$goRendered <- NULL
 
-    if(input$tabs == 'Genes') {
+    if(input$tabs == 'Gene Info') {
       shinyjs::delay(100, {
-        if(is.null(session$userData$genesRendered) && input$tabs == 'Genes') {
+        if(input$tabs == 'Gene Info' && !is.null(session$userData$plotData) && is.null(session$userData$genesRendered)) {
           session$userData$genesRendered <- T
           
           synchronise({
@@ -97,7 +116,37 @@ server <- function(input, output, session) {
           })
         }
       })
+    } else if(input$tabs == 'GO Enrichment') {
+      session$userData$goRendered <- T
+      
+      # We could precompute this but it seems to run rapidly and the other view is more convenient.
+      #annList <- DATA.HOLDER[[session$userData$plotData$taxa]]@go[, list(list(as.character(id))), as.character(entrez.ID)] %>%
+      #  lapply(c) %>% { `names<-`(.[[2]], .[[1]]) }
+      
+      #annotation <- makeAnnotation(
+      #  annList,
+      #  name = DATA.HOLDER[[session$userData$plotData$taxa]]@gene.meta[, .(entrez.ID, gene.Name)] %>%
+      #    as.data.frame %>% `rownames<-`(.[, 'entrez.ID']) %>%
+      #    .[names(annList), ]
+      #)
+      
+      output$results_go <- generateGOPage(ora(hitlist = session$userData$plotData$gene.Name,
+                                              annotation = paste0('Generic_', session$userData$plotData$taxa))) # annotation))
     }
+  })
+  
+  observeEvent(input$RANDOM_GENES, {
+    updateSelectizeInput(session, 'genes', options = list(persist = F, create = T, createOnBlur = T))
+    while(length(genes <- DATA.HOLDER[[input$taxa]]@gene.meta[sample(1:.N, sample(1:10, 1))] %>%
+      as.data.frame %>% .[, sample(c(1, 3, 4, 6), 1)] %>%
+      .[. != 'None']) == 0) {
+    }
+    
+    genes <- genes %>% {
+      paste0('[', paste0(., collapse = ','), ']')
+    } %>% jsonify
+    
+    session$sendCustomMessage('queryReset', genes)
   })
   
   # Open plot
@@ -111,7 +160,7 @@ server <- function(input, output, session) {
                column(2, style = 'padding-top: 15px; padding-right: 30px;',
                       fluidRow(style = 'display: flex; flex-direction: row; justify-content: space-evenly; margin-bottom: 15px;',
                                downloadButton('plot_save_jpg', 'Save JPG'), downloadButton('plot_save_pdf', 'Save PDF')),
-                      selectInput('plot_type', 'Type', list('Heatmap', 'Scatterplot', 'Boxplot', 'Stripchart')),
+                      selectInput('plot_type', 'Type', list('Heatmap', 'Scatterplot', 'Boxplot', 'Jitterplot')),
                       selectInput('plot_data', 'Data', list('Gene Expression')),
                       pickerInput('plot_genes', 'Genes', list('Loading...'), multiple = T),
                       pickerInput('plot_conditions', 'Contrasts', list('Loading...'), multiple = T))
@@ -220,7 +269,7 @@ server <- function(input, output, session) {
       .[, N := length(unique(ee.ID)), .(cf.BaseLongUri, cf.ValLongUri)] %>%
       merge(data.table(rsc.ID = experiments$rn, experiments[, !c('score', 'rn')]), by = 'rsc.ID')
     
-    geneExpr <- mCache[paste0(cf.BaseLongUri, cf.ValLongUri) %in% conditions[pv.fisher.adj < options$pv, paste0(cf.BaseLongUri, cf.ValLongUri)]]
+    geneExpr <- mCache[paste0(cf.BaseLongUri, cf.ValLongUri) %in% conditions[pv.fisher < options$pv, paste0(cf.BaseLongUri, cf.ValLongUri)]]
     
     advanceProgress('Adding cross references')
     
@@ -240,8 +289,9 @@ server <- function(input, output, session) {
         by = c('cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T) %>% unique
     
     # Rename things and add the ES
-    conditions <- merge(conditions, geneScores, by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T) %>% setorder(pv.fisher.adj) %>%
-      setnames(c('pv.fisher', 'pv.fisher.adj', 'direction'), c('P-value', 'FDR', 'Direction'))
+    conditions <- merge(conditions, geneScores, by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T) %>% setorder(pv.fisher) %>%
+      setnames(c('pv.fisher', 'C', 'direction'), c('P-value', 'Augmented Count', 'Direction')) %>%
+      .[, `Augmented Count` := round(`Augmented Count`, 2)]
     
     advanceProgress('Finishing up')
     
@@ -276,7 +326,7 @@ server <- function(input, output, session) {
           taxa = taxa,
           gene.ID = genes,
           gene.Name = DATA.HOLDER[[taxa]]@gene.meta[entrez.ID %in% genes, gene.Name],
-          conditions = conditions[pv.fisher.adj < options$pv, paste(cf.BaseLongUri, 'vs.', cf.ValLongUri)],
+          conditions = conditions[pv.fisher < options$pv, paste(cf.BaseLongUri, 'vs.', cf.ValLongUri)],
           options = options,
           queued = results$expression %>%
             merge(DATA.HOLDER[[taxa]]@experiment.meta[, .(rsc.ID, ee.ID, ee.NumSamples)],
@@ -315,6 +365,7 @@ server <- function(input, output, session) {
                     mfx = input$mfx,
                     geeq = input$geeq,
                     distance = input$distance,
+                    min.tags = input$min.tags,
                     max.rows = input$max.rows,
                     method = input$method)
     
@@ -331,7 +382,8 @@ server <- function(input, output, session) {
                              paste0('&fc=[', paste0(input$fc, collapse = ','), ']'), ''),
                       switch((options$mfx == getOption('app.mfx')) + 1, paste0('&mfx=', options$mfx), ''),
                       switch((options$geeq == getOption('app.geeq')) + 1, paste0('&geeq=', options$geeq), ''),
-                      switch((options$max.rows == getOption('max.rows')) + 1, paste0('&rows=', options$max.rows), ''),
+                      switch((options$min.tags == getOption('app.min.tags')) + 1, paste0('&min=', options$min.tags), ''),
+                      switch((options$max.rows == getOption('app.max.rows')) + 1, paste0('&rows=', options$max.rows), ''),
                       switch((options$distance == getOption('app.distance_cutoff')) + 1, paste0('&distance=', options$distance), ''),
                       switch((options$method == getOption('app.search_method')) + 1, paste0('&method=', options$method), ''))
       updateQueryString(query, 'push')
@@ -341,38 +393,54 @@ server <- function(input, output, session) {
     if(is.null(scope)) scope <- getOption('app.ontology')
     
     # Clean numerics (interpreted as entrez IDs) and remove them from further processing.
-    cleanGenes <- suppressWarnings(Filter(function(x) !is.na(as.integer(x)), genes))
-    genes <- genes[!(genes %in% cleanGenes)]
-    
-    # If it matches (ENSG|ENSMUS|ENSRNO)\d{11}, it's an Ensembl ID (for human, mouse or rat).
-    if(length(genes) > 0) {
-      ensembl <- grep('(ENSG|ENSMUS|ENSRNO)\\d{11}', genes, value = T)
+    tidyGenes <- function(genes, taxa) {
+      cleanGenes <- suppressWarnings(Filter(function(x) !is.na(as.integer(x)), genes))
+      genes <- genes[!(genes %in% cleanGenes)]
       
-      if(length(ensembl) != 0) {
-        # Extract genes with a matching Ensembl ID and clean them too.
-        ensembls <- DATA.HOLDER[[taxa]]@gene.meta[ensembl.ID %in% ensembl, .(entrez.ID, ensembl.ID)]
-        cleanGenes <- c(cleanGenes, ensembls[, entrez.ID])
-        genes <- genes[!(genes %in% ensembls[, ensembl.ID])]
+      # If it matches (ENSG|ENSMUS|ENSRNO)\d{11}, it's an Ensembl ID (for human, mouse or rat).
+      if(length(genes) > 0) {
+        ensembl <- grep('(ENSG|ENSMUS|ENSRNO)\\d{11}', genes, value = T)
+        
+        if(length(ensembl) != 0) {
+          # Extract genes with a matching Ensembl ID and clean them too.
+          ensembls <- DATA.HOLDER[[taxa]]@gene.meta[ensembl.ID %in% ensembl, .(entrez.ID, ensembl.ID)]
+          cleanGenes <- c(cleanGenes, ensembls[, entrez.ID])
+          genes <- genes[!(genes %in% ensembls[, ensembl.ID])]
+        }
       }
+      
+      if(length(genes > 0)) {
+        go <- grep('(GO:)\\d{7}', genes, value = T)
+        
+        if(length(go) != 0) {
+          gos <- DATA.HOLDER[[taxa]]@go[id %in% go, entrez.ID]
+          cleanGenes <- c(cleanGenes, gos)
+          genes <- genes[!(genes %in% go)]
+        }
+      }
+      
+      # Try to match to gene names and descriptions.
+      if(length(genes) > 0) {
+        descriptors <- DATA.HOLDER[[taxa]]@gene.meta[gene.Name %in% genes | gene.Desc %in% genes,
+                                                     .(entrez.ID, gene.Name, gene.Desc)]
+        if(nrow(descriptors) != 0) {
+          cleanGenes <- c(cleanGenes, descriptors[, entrez.ID])
+          genes <- genes[!(genes %in% descriptors[, c(gene.Name, gene.Desc)])]
+        }
+      }
+      
+      # If anything is left, try to match it to gene aliases.
+      if(length(genes) > 0) {
+        aliases <- DATA.HOLDER[[taxa]]@gene.meta[, parseListEntry(alias.Name), entrez.ID] %>%
+          .[V1 %in% genes] # TODO may have multiple aliases for one entry
+        if(nrow(aliases) > 0)
+          cleanGenes <- c(cleanGenes, aliases[, entrez.ID])
+      }
+      
+      cleanGenes
     }
     
-    # Try to match to gene names and descriptions.
-    if(length(genes) > 0) {
-      descriptors <- DATA.HOLDER[[taxa]]@gene.meta[gene.Name %in% genes | gene.Desc %in% genes,
-                                                   .(entrez.ID, gene.Name, gene.Desc)]
-      if(nrow(descriptors) != 0) {
-        cleanGenes <- c(cleanGenes, descriptors[, entrez.ID])
-        genes <- genes[!(genes %in% descriptors[, c(gene.Name, gene.Desc)])]
-      }
-    }
-    
-    # If anything is left, try to match it to gene aliases.
-    if(length(genes) > 0) {
-      aliases <- DATA.HOLDER[[taxa]]@gene.meta[, parseListEntry(alias.Name), entrez.ID] %>%
-        .[V1 %in% genes] # TODO may have multiple aliases for one entry
-      if(nrow(aliases) > 0)
-        cleanGenes <- c(cleanGenes, aliases[, entrez.ID])
-    }
+    cleanGenes <- tidyGenes(genes, taxa)
     
     # Done processing, handle the search.
     handleSearch(cleanGenes, taxa, scope, options)

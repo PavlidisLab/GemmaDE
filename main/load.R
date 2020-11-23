@@ -29,7 +29,8 @@ isDataLoaded <- function() {
 }
 
 setClass('EData', representation(taxon = 'character', data = 'list',
-                                 experiment.meta = 'data.table', gene.meta = 'data.table'))
+                                 experiment.meta = 'data.table', gene.meta = 'data.table',
+                                 go = 'data.table'))
 
 # Load the data into the global environment
 if(!isDataLoaded()) {
@@ -58,7 +59,7 @@ if(!exists('DATA.HOLDER')) {
       
       dataHolder$ts <- NULL
       dataHolder$meanrank <- NULL
-      dataHolder$meanval <- NULL
+      # dataHolder$meanval <- NULL
       dataHolder$baserank <- NULL
       dataHolder$baseval <- NULL
       
@@ -105,6 +106,9 @@ if(!exists('DATA.HOLDER')) {
       dataHolder$fc <- dataHolder$fc[, !(colnames(dataHolder$fc) %in% bad.rscs)]
       dataHolder$pv <- dataHolder$pv[, !(colnames(dataHolder$pv) %in% bad.rscs)]
       metaData <- metaData[!(rsc.ID %in% bad.rscs)]
+      
+      dataHolder$fc[is.nan(dataHolder$fc)] <- NA
+      dataHolder$pv[is.nan(dataHolder$pv)] <- NA
       
       dataHolder$adj.pv <- apply(dataHolder$pv, 2, function(pv)
         p.adjust(pv, method = 'BH', n = length(pv))) # Assuming NaN p-values should be 1.
@@ -156,8 +160,20 @@ if(!exists('DATA.HOLDER')) {
       metaData$cf.ValLongUri <- metaData$cf.ValLongUri %>% as.factor
       metaData$cf.BaseLongUri <- metaData$cf.BaseLongUri %>% as.factor
       
+      goTerms <- queryMany(metaGene$entrez.ID,
+                           scopes = 'entrezgene', fields = 'go', species = taxon)
+      
+      goTerms <- rbindlist(lapply(c('CC', 'BP', 'MF'), function(cat) {
+        gocat <- paste0('go.', cat)
+        rbindlist(lapply(1:nrow(goTerms), function(indx) {
+          row <- goTerms@listData[[gocat]][[indx]]
+          if(!is.null(row))
+            data.frame(entrez.ID = goTerms@listData$query[indx], category = cat, id = row$id, term = row$term)
+        }))
+      }))
+      
       new('EData', taxon = taxon, data = dataHolder,
-          experiment.meta = metaData, gene.meta = metaGene)
+          experiment.meta = metaData, gene.meta = metaGene, go = unique(goTerms))
     })
     
     names(DATA.HOLDER) <- unlist(Filter(function(x) x != 'artificial', getOption('app.all_taxa')))

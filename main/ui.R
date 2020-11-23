@@ -30,7 +30,7 @@ ui <- fluidPage(style = 'height: 100%;',
                         # Gene entry
                         column(5,
                                fluidRow(selectInput('genes', 'Input Gene(s) of Interest', list(`Enter query...` = ''), multiple = T)),
-                               fluidRow(helpText(HTML('Examples: <a genes=\'["RPS4Y1","XIST","KDM5D"]\'>RPS4Y1, XIST, KDM5D</a>, <a genes=\'"ENSG00000121410"\'>ENSG00000121410</a>')))),
+                               fluidRow(helpText(HTML('Examples: <a genes=\'["RPS4Y1","XIST","KDM5D"]\'>RPS4Y1, XIST, KDM5D</a>, <a genes=\'"ENSG00000121410"\'>ENSG00000121410</a>, <a style="color: #002145" genes=\'"random()"\'>I\'m feeling lucky</a>')))),
                         column(2, uiOutput('genes.csv.ui')),
                         
                         # Taxa entry
@@ -48,7 +48,8 @@ ui <- fluidPage(style = 'height: 100%;',
                                 fluidRow(style = 'display: flex; flex-direction: row;',
                                          column(6, wellPanel(`well-name` = 'Filtering',
                                                              numericInput('distance', 'Ontology expansion limit', value = getOption('app.distance_cutoff'), step = 0.25, min = 0, max = 10),
-                                                             numericInput('max.rows', 'Maximum contrasts to compute', value = getOption('max.rows'), step = 10, min = 10, max = 1000))),
+                                                             numericInput('min.tags', 'Minimum augmented tag count', value = getOption('app.min.tags'), step = 1, min = 1, max = 100000),
+                                                             numericInput('max.rows', 'Maximum contrasts to compute', value = getOption('app.max.rows'), step = 10, min = 10, max = 1000))),
                                          column(6, wellPanel(`well-name` = 'Scoring',
                                                              selectInput('method', 'Scoring function', getOption('app.all_search_methods')),
                                                              materialSwitch('mfx', 'Include multifunctionality', value = getOption('app.mfx'), right = T),
@@ -74,7 +75,8 @@ ui <- fluidPage(style = 'height: 100%;',
                       mainPanel(
                         tabsetPanel(id = 'tabs',
                           tabPanel('Conditions', column(12, style = 'margin-top: 16px', dataTableOutput('results') %>% withSpinner)),
-                          tabPanel('Gene Info', column(12, style = 'margin-top: 16px', htmlOutput('results_genes') %>% withSpinner))
+                          tabPanel('Gene Info', column(12, style = 'margin-top: 16px', htmlOutput('results_genes') %>% withSpinner)),
+                          tabPanel('GO Enrichment', column(12, style = 'margin-top: 16px', dataTableOutput('results_go') %>% withSpinner))
                         ),
                         width = 12
                       )

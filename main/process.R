@@ -18,7 +18,7 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
   FC_L_THRESHOLD <- options$fc.lower
   FC_U_THRESHOLD <- options$fc.upper
   MFX <- options$mfx
-  # GEEQ <- options$geeq
+  GEEQ <- options$geeq
   METHOD <- options$method
   
   # Data Extraction ---------------------------------------------------------
@@ -39,23 +39,23 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
   colFilter <- Rfast::colsums(pv < P_THRESHOLD) > 0
   
   # Number of DEGs for experiments that pass thresholds
-  # geeq <- DATA.HOLDER[[taxa]]@experiment.meta$ee.qScore[colFilter]
-  # n.DE.exp <- DATA.HOLDER[[taxa]]@experiment.meta$n.DE[colFilter]
+  geeq <- DATA.HOLDER[[taxa]]@experiment.meta$ee.qScore[colFilter]
+  n.DE.exp <- DATA.HOLDER[[taxa]]@experiment.meta$n.DE[colFilter]
   
   # logFCs for only the GOI/EOI and maintain structure.
   logFC <- DATA.HOLDER[[taxa]]@data$fc[rowFilter, colFilter]
-  logFC[is.na(logFC)] <- 0
-  
   zscore <- DATA.HOLDER[[taxa]]@data$pvz[rowFilter, colFilter]
-  zscore[is.na(zscore)] <- 0
+  mx <- DATA.HOLDER[[taxa]]@data$meanval[rowFilter, colFilter]
   
   if(n.genes == 1) {
     logFC <- t(logFC)
     zscore <- t(zscore)
+    mx <- t(mx)
   }
   
   logFC <- logFC %>% as.data.table
   zscore <- zscore %>% as.data.table
+  mx <- mx %>% as.data.table
   
   # Only retain experiments that have at least one of the GOI with threshold_u > abs(logFC) > threshold_l
   if(FC_L_THRESHOLD != 0 || FC_U_THRESHOLD != 0) {
@@ -65,24 +65,32 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
       exFilter <- exFilter & (abs(logFC) < FC_U_THRESHOLD)
     
     colFilter <- Rfast::colsums(exFilter) > 0
-    logFC <- logFC %>% .[, colFilter, with = F]
-    # n.DE.exp <- n.DE.exp[colFilter]
-    # geeq <- geeq[colFilter]
+    colFilter[is.na(colFilter)] <- F
+    logFC <- logFC[, colFilter, with = F]
+    zscore <- zscore[, colFilter, with = F]
+    mx <- mx[, colFilter, with = F]
+    n.DE.exp <- n.DE.exp[colFilter]
+    geeq <- geeq[colFilter]
   }
   
   # Data Processing ---------------------------------------------------------
   if(verbose)
     advanceProgress('Ranking')
   
-  #n.DE.exp[is.na(n.DE.exp)] <- 0
-  #tf <- t(t(tf) / c(Rfast::Log(2 + n.DE.exp))) %>% as.data.table # Weight by number of DEGs in this experiment
+  n.DE.exp[is.na(n.DE.exp)] <- 0
+  geeq[is.na(geeq)] <- 0
   
-  #geeq[is.na(geeq)] <- 0
-  #if(GEEQ)
-  #  tf <- t(t(tf) * (1 + Rfast::Pmax(geeq, 0))) %>% as.data.table # Weight by experiment quality score
+  if(!GEEQ)
+    geeq <- 1
+  else
+    geeq <- sqrt(pmax(geeq, 0)) / Rfast::Log(2 + n.DE.exp) # Weight by experiment quality score (augmented by number of DEGs)
+  
+  directions <- ifelse(Rfast::colmeans(zscore %>% as.matrix) < 0, F, T)
+  
+  if(taxa != 'artificial')
+    zscore <- zscore * data.table(Rfast::Log(1 + Rfast::Pmax(matrix(0, nrow(mx), ncol(mx)), as.matrix(mx))))
   
   query <- Rfast::rowMaxs(zscore %>% as.matrix, value = T)
-  directions <- ifelse(Rfast::colmeans(zscore %>% as.matrix) < 0, F, T)
   
   if(MFX)
     MFX_WEIGHT <- 1 - DATA.HOLDER[[taxa]]@gene.meta$mfx.Rank[rowFilter]
@@ -95,10 +103,11 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
       setnames(c(DATA.HOLDER[[taxa]]@gene.meta$gene.Name[rowFilter], 'score')) %>%
       .[, direction := directions] %>%
       .[, rn := colnames(zscore)] %>%
-      .[, score := scale(score, F)] %>%
+      .[is.nan(score), score := 0] %>%
+      .[, score := 1 + scale(c(geeq) * score, F)] %>%
       setorder(-score)
   } else if(METHOD == 'mvsm') {
-    idf <- log(1 / MFX_WEIGHT) + 1
+    idf <- Rfast::Log(1 / MFX_WEIGHT) + 1
     zscore[, query := query]
     tfidf <- zscore * idf
     
@@ -111,14 +120,17 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
     
     cross_x <- crossprod(query)
     scores <- sapply(1:ncol(tfidf), function(i) {
-      crossprod(query, tfidf[, i]) / sqrt(cross_x * crossprod(tfidf[, i]))
+      cross_q <- crossprod(query, tfidf[, i])
+      if(cross_q == 0) 0
+      else cross_q / sqrt(cross_x * crossprod(tfidf[, i]))
     })
+    scores[is.nan(scores)] <- 0
     
     ret <- rbind(tfidf, scores) %>% t %>% as.data.table %>%
       setnames(c(DATA.HOLDER[[taxa]]@gene.meta$gene.Name[rowFilter], 'score')) %>%
       .[, direction := directions] %>%
       .[, rsc.ID := colnames(tfidf)] %>%
-      .[, score := scale(score, F)]
+      .[, score := 1 + scale(c(geeq) * score, F)]
   
     ret %>% setnames('rsc.ID', 'rn') %>% setorder(-score)
   }
@@ -289,14 +301,12 @@ enrich <- function(rankings, taxa = getOption('app.taxa'), scope = getOption('ap
   mMaps <- list(getTags(taxa, scope, NULL, options$distance),
                 getTags(taxa, scope, rankings$rn, options$distance))
   
-  # TODO We're losing tags?
-  
   mMaps[[2]] <- mMaps[[2]] %>%
-    merge(rankings[, .(rsc.ID = rn, rank = ifelse(options$method == 'mvsm', score^2, score), direction)],
+    merge(rankings[, .(rsc.ID = rn, score, direction)],
           by = 'rsc.ID', sort = F, allow.cartesian = T)
   
   aprior <- function() {
-    tmp <- mMaps[[2]][, .(A = sum(rank) / (1 + sum(distance))),
+    tmp <- mMaps[[2]][, .(A = sum(score) / (1 + sum(distance))),
                       .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)][, B := sum(A)] %>%
       merge(mMaps[[1]][, .(C = .N / (1 + sum(distance))),
                        .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)][, D := sum(C)],
@@ -315,6 +325,5 @@ enrich <- function(rankings, taxa = getOption('app.taxa'), scope = getOption('ap
   
   ret <- aprior() %>% fisher
   
-  PATTERN <- 'http://purl.org/commons/record/ncbi_gene/(.*)'
-  ret %>% .[, pv.fisher.adj := p.adjust(pv.fisher, 'BH')] %>% setorder(pv.fisher)
+  ret %>% setorder(pv.fisher) %>% .[C >= max(0, options$min.tags)]
 }

@@ -11,9 +11,9 @@ library(parallel)
 library(limma)
 library(fitdistrplus)
 
-SIMTYPE <- 'superuniform'
-SUFFIX <- paste0('_', SIMTYPE, '-binary')
-SMOOTHING <- 1/9 # 4/9
+SIMTYPE <- 'normalized'
+SUFFIX <- paste0('_', SIMTYPE)
+SMOOTHING <- 4/9 # binary is 1/9
 
 set.seed(18232)
 options(mc.cores = 12)
