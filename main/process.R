@@ -26,7 +26,10 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
   # Only retain GOI
   rowFilter <- which(DATA.HOLDER[[taxa]]@gene.meta$entrez.ID %in% genes)
   n.genes <- length(rowFilter)
-  if(n.genes == 0) return(NULL)
+  if(n.genes == 0) {
+    setProgress(T)
+    return(NULL)
+  }
   
   # P-values for only the GOI
   pv <- DATA.HOLDER[[taxa]]@data$adj.pv[rowFilter, ]
@@ -41,6 +44,7 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
   # Number of DEGs for experiments that pass thresholds
   geeq <- DATA.HOLDER[[taxa]]@experiment.meta$ee.qScore[colFilter]
   n.DE.exp <- DATA.HOLDER[[taxa]]@experiment.meta$n.DE[colFilter]
+  scales <- DATA.HOLDER[[taxa]]@experiment.meta$n.DE[colFilter]
   
   # logFCs for only the GOI/EOI and maintain structure.
   logFC <- DATA.HOLDER[[taxa]]@data$fc[rowFilter, colFilter]
@@ -59,17 +63,26 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
   
   # Only retain experiments that have at least one of the GOI with threshold_u > abs(logFC) > threshold_l
   if(FC_L_THRESHOLD != 0 || FC_U_THRESHOLD != 0) {
-    exFilter <- abs(logFC) > FC_L_THRESHOLD
+    exFilter <- abs(logFC) >= FC_L_THRESHOLD
     
     if(FC_U_THRESHOLD != FC_L_THRESHOLD)
-      exFilter <- exFilter & (abs(logFC) < FC_U_THRESHOLD)
+      exFilter <- exFilter & (abs(logFC) <= FC_U_THRESHOLD)
     
     colFilter <- Rfast::colsums(exFilter) > 0
     colFilter[is.na(colFilter)] <- F
+    
+    print(paste0(sum(colFilter), '/', ncol(zscore), ' passed thresholds'))
+    
+    if(sum(colFilter) == 0) {
+      setProgress(T)
+      return(NULL)
+    }
+    
     logFC <- logFC[, colFilter, with = F]
     zscore <- zscore[, colFilter, with = F]
     mx <- mx[, colFilter, with = F]
     n.DE.exp <- n.DE.exp[colFilter]
+    scales <- scales[colFilter]
     geeq <- geeq[colFilter]
   }
   
@@ -80,6 +93,13 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
   n.DE.exp[is.na(n.DE.exp)] <- 0
   geeq[is.na(geeq)] <- 0
   
+  # Put everything on a linear scale
+  mx[, scales == 'LOG2'] <- 2^(mx[, scales == 'LOG2'])
+  mx[, scales == 'LOG10'] <- 10^mx[, scales == 'LOG10']
+  mx[, scales == 'LN'] <- exp(1)^mx[, scales == 'LN']
+  
+  mx[is.na(mx)] <- 0
+  
   if(!GEEQ)
     geeq <- 1
   else
@@ -87,8 +107,9 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
   
   directions <- ifelse(Rfast::colmeans(zscore %>% as.matrix) < 0, F, T)
   
+  # TODO This should have an equivalent in artificial.
   if(taxa != 'artificial')
-    zscore <- zscore * data.table(Rfast::Log(1 + Rfast::Pmax(matrix(0, nrow(mx), ncol(mx)), as.matrix(mx))))
+    zscore <- zscore * mx^(1/5)
   
   query <- Rfast::rowMaxs(zscore %>% as.matrix, value = T)
   
@@ -96,6 +117,9 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
     MFX_WEIGHT <- 1 - DATA.HOLDER[[taxa]]@gene.meta$mfx.Rank[rowFilter]
   else
     MFX_WEIGHT <- rep(1, n.genes)
+  
+  tmp <<- zscore
+  tmp2 <<- query
 
   if(METHOD == 'zscore') {
     (zscore / query) %>% t %>% as.data.table %>%
@@ -121,7 +145,7 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
     cross_x <- crossprod(query)
     scores <- sapply(1:ncol(tfidf), function(i) {
       cross_q <- crossprod(query, tfidf[, i])
-      if(cross_q == 0) 0
+      if(is.null(cross_q) || cross_q == 0) 0
       else cross_q / sqrt(cross_x * crossprod(tfidf[, i]))
     })
     scores[is.nan(scores)] <- 0

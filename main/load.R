@@ -63,7 +63,7 @@ if(!exists('DATA.HOLDER')) {
       dataHolder$baserank <- NULL
       dataHolder$baseval <- NULL
       
-      metaData <- metaData %>% as.data.table %>% .[, .(rsc.ID, ee.Troubled, ee.Public, ee.ID, ee.Name, ee.Source,
+      metaData <- metaData %>% as.data.table %>% .[, .(rsc.ID, ee.Troubled, ee.Public, ee.ID, ee.Name, ee.Source, ee.Scale,
                                                        ee.NumSamples, ee.TagLongUri, ad.Name, ad.Company,
                                                        ad.Sequencing, sf.Subset, sf.Cat, sf.CatLongUri, sf.ValLongUri,
                                                        cf.Cat, cf.CatLongUri, cf.Val, cf.ValLongUri, cf.Baseline, cf.BaseLongUri)]

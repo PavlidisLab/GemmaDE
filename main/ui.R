@@ -55,7 +55,7 @@ ui <- fluidPage(style = 'height: 100%;',
                                                              materialSwitch('mfx', 'Include multifunctionality', value = getOption('app.mfx'), right = T),
                                                              materialSwitch('geeq', 'Include experiment quality (GEEQ)', value = getOption('app.geeq'), right = T),
                                                              numericInput('pv', 'Significance threshold', value = getOption('app.pv'), step = 0.01, min = 0, max = 1),
-                                                             sliderInput('fc', 'FC threshold', value = c(getOption('app.fc_lower'), getOption('app.fc_upper')), step = 0.1, min = 0, max = 10, ticks = F)))
+                                                             sliderInput('fc', 'FC threshold', value = c(getOption('app.fc_lower'), getOption('app.fc_upper')), step = 0.1, min = 0, max = 100, ticks = F)))
                                 )),
                       
                       # Buttons

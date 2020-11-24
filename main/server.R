@@ -219,7 +219,7 @@ server <- function(input, output, session) {
   #' Ends the search protocol with a failure message
   endFailure <- function() {
     setProgress(environment())
-    output$results_header <- renderUI({
+    output$results_header <- renderUI({ # TODO Tooltips aren't beautiful
       generateResultsHeader(HTML('<h2 data-toggle="tooltip" data-placement="top" title="Relax thresholds or modify gene set.">Invalid search.</h2>'))
     })
     output$results <- NULL

@@ -9,6 +9,15 @@ advanceProgress <- function(detail) {
 }
 
 setProgress <- function(env, progress = NULL, detail = '', n.steps = NULL) {
+  if(isTRUE(env)) {
+    n <- 1
+    while((!exists('session', envir = parent.frame(n)) || is.null(parent.frame(n)$session)) && n < 10) { n <- n + 1 }
+    
+    env <- parent.frame(n)
+    if(!exists('session', envir = env))
+      warning('"session" didn\'t exist in calling chain.')
+  }
+  
   if(!exists('session', envir = env)) {
     warning('"session" didn\'t exist in specified environment.')
     return(NULL)
