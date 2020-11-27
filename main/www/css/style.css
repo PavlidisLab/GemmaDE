@@ -136,6 +136,10 @@ table.dataTable.no-footer {
   height: 100% !important;
 }
 
+thead > tr > td > div[style*="position: absolute"] {
+  z-index: 99999;
+}
+
 input.form-control[disabled] {
   display: none;
 }

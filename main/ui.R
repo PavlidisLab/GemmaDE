@@ -53,8 +53,10 @@ ui <- fluidPage(style = 'height: 100%;',
                                          column(6, wellPanel(`well-name` = 'Scoring',
                                                              selectInput('method', 'Scoring function', getOption('app.all_search_methods')),
                                                              materialSwitch('mfx', 'Include multifunctionality', value = getOption('app.mfx'), right = T),
+                                                             materialSwitch('meanval', 'Include mean expression level', value = getOption('app.meanval'), right = T),
                                                              materialSwitch('geeq', 'Include experiment quality (GEEQ)', value = getOption('app.geeq'), right = T),
                                                              numericInput('pv', 'Significance threshold', value = getOption('app.pv'), step = 0.01, min = 0, max = 1),
+                                                             numericInput('reqall', 'Required number of differentially expressed genes', value = getOption('app.req.all'), step = 1, min = 1),
                                                              sliderInput('fc', 'FC threshold', value = c(getOption('app.fc_lower'), getOption('app.fc_upper')), step = 0.1, min = 0, max = 100, ticks = F)))
                                 )),
                       

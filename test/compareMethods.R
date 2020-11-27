@@ -22,11 +22,11 @@ lapply(sample(1:nrow(DATA.HOLDER$artificial@experiment.meta), 2000), function(i)
          tmp1 <- tmp / length(searched$rn)
          enrich(searched, 'artificial', verbose = F) -> enriched
          
-         mA <- first(ONTOLOGIES.DEFS[Node_Long == contrast$cf.BaseLongUri, Definition]) %>% {
+         mA <- head(ONTOLOGIES.DEFS[Node_Long == contrast$cf.BaseLongUri, Definition], 1) %>% {
            switch((length(.) == 0) + 1, ., as.character(contrast$cf.BaseLongUri))
          }
          
-         mB <- first(ONTOLOGIES.DEFS[Node_Long == contrast$cf.ValLongUri, Definition]) %>% {
+         mB <- head(ONTOLOGIES.DEFS[Node_Long == contrast$cf.ValLongUri, Definition], 1) %>% {
            switch((length(.) == 0) + 1, ., as.character(contrast$cf.ValLongUri))
          }
          
@@ -57,12 +57,13 @@ rbindlist(lapply(1:length(bootstrap), function(x) {
 
 data.to.plot %>% melt(measure.vars = c('mvsm', 'zscore')) %>%
   .[, variable := ifelse(variable == 'mvsm', 'M-VSM', 'Weighted Score')] %>% as.data.frame() %>%
-  ggplot(aes(1, log10(as.double(value)), color = variable, fill = variable)) +
+  ggplot(aes(1, -log10(as.double(value)), color = variable, fill = variable)) +
   geom_violin(alpha = 0.1, position = 'identity', trim = F) + theme_cowplot(font_size = 19) +
-  xlab(element_blank()) + ylab(expression(log[10]~time~per~gene)) +
+  xlab(element_blank()) + ylab(expression(-log[10]~time~per~gene)) +
   scale_color_discrete(name = 'Method') +
   theme(axis.ticks.y = element_blank(), axis.text.y = element_blank(),
-        legend.position = c(0.82, 0.9)) +
+        legend.position = c(0.05, 0.85)) +
+  #scale_x_continuous(expand = c(0, 0), limits = c(1, 2)) +
   scale_fill_discrete(name = 'Method') + coord_flip() +
   ggtitle('Comparison of experiment ranking methods')
 
@@ -74,7 +75,7 @@ rbindlist(lapply(1:length(bootstrap), function(x) {
 
 data.to.plot %>% .[sample(1:nrow(data.to.plot), min(nrow(data.to.plot), 100000)), ] %>%
   melt(id.vars = 'run') %>%
-  ggplot(aes(value, fill = variable)) + geom_density()
+  ggplot(aes(value, fill = variable)) + geom_density(alpha = 0.6)
 
 data.to.plot %>% .[sample(1:nrow(data.to.plot), min(nrow(data.to.plot), 100000)), ] %>%
   ggplot(aes(mvsm, zscore)) + geom_point(alpha = 0.1) +
@@ -111,21 +112,23 @@ data.to.plot %>% melt(measure.vars = c('mvsm', 'zscore')) %>%
 
 rbindlist(lapply(1:length(bootstrap), function(x) {
   data.table(run = x,
-             mvsm = bootstrap[[x]]$results[[1]]$pv,
-             zscore = bootstrap[[x]]$results[[2]]$pv)
+             mvsm.yes = bootstrap[[x]]$results[[1]]$pv,
+             mvsm.no = bootstrap[[x]]$results[[1]]$otherpv,
+             zscore.yes = bootstrap[[x]]$results[[2]]$pv,
+             zscore.no = bootstrap[[x]]$results[[2]]$otherpv)
 })) -> data.to.plot
 
-data.to.plot %>% melt(measure.vars = c('mvsm', 'zscore')) %>% .[!is.na(value)] %>%
-  .[, variable := ifelse(variable == 'mvsm', 'M-VSM', 'Weighted Score')] %>% as.data.frame() %>%
-  ggplot(aes(1, -log10(value), fill = variable, color = variable)) +
-  geom_violin(alpha = 0.1, position = 'identity', trim = F) + theme_cowplot(font_size = 19) +
-  xlab(element_blank()) + stat_summary(fun = median, shape = 4, size = 2) +
-  theme(axis.ticks.x = element_blank(), axis.text.x = element_blank(),
-        legend.position = c(0.8, 0.9)) +
-  scale_y_continuous(expand = c(0, 0)) +
-  ylab(expression(-log[10]~'p-value')) +
-  scale_color_discrete(name = 'Method') +
-  scale_fill_discrete(name = 'Method') +
+data.to.plot %>% melt(measure.vars = c('mvsm.yes', 'zscore.yes', 'mvsm.no', 'zscore.no')) %>%
+  .[!is.na(value)] %>%
+  .[, isYes := ifelse(grepl('yes', variable), 'True contrast', 'Other contrast')] %>%
+  .[, variable := ifelse(grepl('mvsm', variable), 'M-VSM', 'Weighted Score')] %>%
+  ggplot(aes(isYes, -log10(value), color = isYes, fill = isYes)) +
+  geom_violin(alpha = 0.1, trim = F) + theme_cowplot(font_size = 19) +
+  stat_summary(fun = median, shape = 4, size = 2) +
+  theme(legend.position = 'none') +
+  scale_y_continuous(expand = c(0, 0), limits = c(0.5, 3)) +
+  facet_wrap(~variable, scales = 'free') +
+  xlab(element_blank()) + ylab(expression(-log[10]~'p-value')) +
   ggtitle('Comparison of experiment ranking methods')
 
 ###########
@@ -169,21 +172,21 @@ lapply(c('mvsm', 'zscore'), function(method) {
 }) -> mouse.plots
 
 rbindlist(mouse.plots) %>% .[, score, .(isProper, method)] %>%
-  .[, isProper := ifelse(isProper, 'Male/female', 'Other')] %>%
+  .[, isProper := ifelse(isProper, 'Male/female contrast', 'Other contrast')] %>%
   .[, method := ifelse(method == 'mvsm', 'M-VSM', 'Weighted Score')] %>%
   ggplot(aes(isProper, score, color = isProper)) + geom_jitter() +
-  coord_flip() + stat_summary(fun = median, shape = 3, size = 2) +
+  coord_flip() + stat_summary(fun = median, shape = 3, size = 2, color = 'black') +
   facet_wrap(~method, scales = 'free_x') + scale_y_continuous(expand = c(0, 0)) +
   theme_cowplot(font_size = 20) + theme(legend.position = 'none') +
   xlab(element_blank()) + ylab('Experiment Score')
 
-(rbindlist(human.plots) %>% .[, species := 'Human'] %>% .[, .(score, isProper, method, species)] %>% rbind(
+rbindlist(human.plots) %>% .[, species := 'Human'] %>% .[, .(score, isProper, method, species)] %>% rbind(
   rbindlist(mouse.plots) %>% .[, species := 'Mouse'] %>%  .[, .(score, isProper, method, species)] 
 ) %>% .[, method := ifelse(method == 'mvsm', 'M-VSM', 'Weighted Score')] %>%
   ggplot(aes(d = isProper, m = score, color = method)) + geom_roc(n.cuts = 0) + style_roc() +
   theme(text = element_text(size = 19)) +
   facet_wrap(~species) + scale_color_discrete(name = 'Method') +
-  ggtitle('Male/female contrasts based on KDM5D, XIST and RPS4Y1')) %>% calc_auc()
+  ggtitle('Male/female contrasts based on KDM5D, XIST and RPS4Y1')#) %>% calc_auc()
 
 lapply(c('mvsm', 'zscore'), function(method) {
   options(app.search_method = method)

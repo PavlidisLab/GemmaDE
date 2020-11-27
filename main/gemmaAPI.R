@@ -23,12 +23,8 @@ geneEvidence <- async(function(genes, taxa = getOption('app.taxa')) {
     lapply(json$data[[1]]$evidence, prettyPrint)
   }
   
-  parseInner <- function(response) {
-    parse(parse_json(rawToChar(response$content)))
-  }
-  
   lapply(genes, function(gene) {
-    http_get(paste0('https://gemma.msl.ubc.ca/rest/v2/taxa/', taxa, '/genes/', gene, '/evidence'))$then(parseInner)
+    http_get(paste0('https://gemma.msl.ubc.ca/rest/v2/taxa/', taxa, '/genes/', gene, '/evidence'))$then(function(response) parse(parse_json(rawToChar(response$content))))
   }) %>% { when_all(.list = .)$then(function(x) x %>% `names<-`(genes)) }
 })
 
@@ -44,78 +40,101 @@ geneEvidence <- async(function(genes, taxa = getOption('app.taxa')) {
 #' @param taxa The taxa scope
 #' @param genes Genes to search for
 #' @param keepNonSpecific, consolidate Options passed on to Gemma
-geneExpression <- async(function(ee.IDs, rsc.IDs, taxa = getOption('app.taxa'), genes, keepNonSpecific = F, consolidate = 'average') {
-  extractSampleInfo <- function(sample, meta) {
-    vals <- sapply(sample$sample$factorValueObjects, function(fv) fv$fvSummary)
-    if((baseline <- any(meta[, cf.Baseline] %in% vals)) || any(meta[, cf.Val] %in% vals))
-      list(name = sample$name,
-           accession = ifelse(is.null(sample$accession$accession), 'N/A', sample$accession$accession),
-           baseline = ifelse(baseline, meta[, data.table::first(cf.Baseline)], meta[, data.table::first(cf.Val)]))
-  }
-  
-  prettyPrintGene <- function(gene, mJson, meta) {
-    if(length(gene$vectors) == 0)
-      mData <- NULL
-    else
-      mData <- unlist(gene$vectors[[1]]$bioAssayExpressionLevels)
+geneExpression <- async(function(ee.IDs, rsc.IDs, taxa = getOption('app.taxa'), genes, keepNonSpecific = T, consolidate = 'average') {
+  parse <- function(content, json, meta) {
+    mJson <- parse_json(rawToChar(content))
     
-    if(is.null(mData))
-      NULL
-    else {
-      mMeta <- lapply(mJson$data, extractSampleInfo, meta) %>% rbindlist %>% setorder(baseline)
+    # Tidy gene expression output
+    prettyPrint <- function(gene) {
+      if(length(gene$vectors) == 0) mData <- NULL
+      else mData <- unlist(gene$vectors[[1]]$bioAssayExpressionLevels)
       
-      list(
-        metadata = mMeta,
-        expr = data.table(gene = gene$geneNcbiId,
-                          t(mData[mMeta[, name]] %>% `class<-`('numeric')))
-      )
+      extractSampleInfo <- function(sample) {
+        # Factor value objects seems to be sufficient, should we merge with characteristic values?
+        vals <- sapply(sample$sample$factorValueObjects, '[[', 'fvSummary') %>%
+          `c`(sample$sample$characteristicValues %>% unname) %>% unique
+        
+        if((baseline <- any(meta[, cf.Baseline] %in% vals)) || any(meta[, cf.Val] %in% vals))
+          list(name = sample$name,
+               accession = ifelse(is.null(sample$accession$accession), 'N/A', sample$accession$accession),
+               baseline = ifelse(baseline, meta[, data.table::first(cf.Baseline)], meta[, data.table::first(cf.Val)]))
+      }
+      
+      if(is.null(mData)) NULL
+      else {
+        mMeta <- lapply(mJson$data, extractSampleInfo) %>% rbindlist %>% setorder(baseline)
+        
+        list(
+          metadata = mMeta,
+          expr = data.table(gene = gene$geneOfficialSymbol, # geneNcbiId
+                            t(mData[mMeta[, name]] %>% `class<-`('numeric')))
+        )
+      }
     }
-  }
-  
-  parseInner <- function(response, json, meta) {
-    mJson <- parse_json(rawToChar(response$content))
+    
     list(ee.Name = as.character(data.table::first(meta[, ee.Name])),
-         geneData = lapply(json$data[[1]]$geneExpressionLevels, prettyPrintGene, mJson, meta) %>% { Filter(Negate(is.null), .) }
+         ee.Scale = as.character(data.table::first(meta[, ee.Scale])),
+         geneData = lapply(json$data[[1]]$geneExpressionLevels, prettyPrint) %>% { Filter(Negate(is.null), .) }
     ) %>% {
       if(length(.$geneData) == 0) NULL
-      else
+      else {
+        # This gross block could be made nicer when I'm less lazy
+        expr <- rbindlist(lapply(.$geneData, '[[', 'expr'))
+        expr.rn <- expr[, gene]
+        expr <- expr[, !'gene']
+        
+        # Try to put everything on a log2 scale. Not sure about this.
+        expr <- switch(.$ee.Scale,
+                       LOG2 = expr,
+                       LOG10 = expr / log10(2),
+                       LN = expr / ln(2),
+                       log2(expr + 1)
+        )
+        expr <- data.table(gene = expr.rn, expr)
+        
         list(ee.Name = .$ee.Name,
              geneData = list(
                metadata = .$geneData[[1]]$metadata,
-               expr = rbindlist(lapply(.$geneData, '[[', 'expr'))
+               expr = expr
              ))
+      }
     }
   }
   
-  parse <- function(json, meta) {
-    http_get(paste0('https://gemma.msl.ubc.ca/rest/v2/datasets/',
-                    data.table::first(meta[, ee.Name]), '/samples'))$
-      then(function(response) parseInner(response, json, meta))
-  }
-  
+  # Get expression information for ee.ID by sending `length(ee.IDs)` async requests
   lapply(ee.IDs, function(dataset) {
+    # No guarantee that the contrast ordering we have is the same as in Gemma :(
     meta <- DATA.HOLDER[[taxa]]@experiment.meta[ee.ID == dataset & rsc.ID %in% rsc.IDs,
-                                 .(rsc.ID, ee.Name, cf.Baseline, cf.Val)] %>% {
-                                   merge(.[, .(rsc.ID, ee.Name)],
-                                         merge(
-                                           .[, .(cf.Baseline = parseListEntry(cf.Baseline) %>% {
-                                             apply(permutation(1:length(.)), 1, function(perm) paste0(.[perm], collapse = ', '))
-                                           }), rsc.ID],
-                                           .[, .(cf.Val = parseListEntry(cf.Val) %>% {
-                                             apply(permutation(1:length(.)), 1, function(perm) paste0(.[perm], collapse = ', '))
-                                           }), rsc.ID],
-                                           by = 'rsc.ID', sort = F, allow.cartesian = T
-                                         ),
-                                         by = 'rsc.ID', sort = F, allow.cartesian = T
-                                   )
-                                 }
+                                                .(rsc.ID, ee.Name = as.character(ee.Name), cf.Baseline, cf.Val, ee.Scale)] %>% {
+                                                  merge(.[, .(rsc.ID, ee.Name, ee.Scale)],
+                                                        merge(
+                                                          .[, .(cf.Baseline = parseListEntry(cf.Baseline) %>% {
+                                                            apply(permutation(1:length(.)), 1, function(perm) paste0(.[perm], collapse = ', '))
+                                                          }), rsc.ID],
+                                                          .[, .(cf.Val = parseListEntry(cf.Val) %>% {
+                                                            apply(permutation(1:length(.)), 1, function(perm) paste0(.[perm], collapse = ', '))
+                                                          }), rsc.ID],
+                                                          by = 'rsc.ID', sort = F, allow.cartesian = T
+                                                        ),
+                                                        by = 'rsc.ID', sort = F, allow.cartesian = T
+                                                  )
+                                                }
+    # %>%
+    # merge(DATA.HOLDER[[taxa]]@experiment.meta[ee.ID == dataset & rsc.ID %in% rsc.IDs, .(rsc.ID, ee.Scale)],
+    #       by = 'rsc.ID', sort = F, allow.cartesian = T)
     
     http_get(paste0('https://gemma.msl.ubc.ca/rest/v2/datasets/', dataset,
                     '/expressions/genes/', paste0(genes, collapse = '%2C'),
                     '?keepNonSpecific=', ifelse(keepNonSpecific, 'true', 'false'),
                     '&consolidate=', consolidate))$then(function(response) {
-                      parse(parse_json(rawToChar(response$content)), meta) })
+                      content <- response$content
+                      # Get the sample information for every expression set
+                      http_get(paste0('https://gemma.msl.ubc.ca/rest/v2/datasets/',
+                                      data.table::first(meta[, ee.Name]), '/samples'))$
+                        then(function(response2) parse(response2$content, parse_json(rawToChar(content)), meta))
+                    })
   }) %>% { when_all(.list = .)$then(function(x) {
+    # Once everything is done, pretty it up for return
     Filter(Negate(is.null), x) %>% {
       list(metadata = rbindlist(lapply(., '[[', 'geneData') %>% lapply('[[', 'metadata')),
            expr = lapply(., '[[', 'geneData') %>% lapply('[[', 'expr') %>% {

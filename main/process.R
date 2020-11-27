@@ -20,6 +20,8 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
   MFX <- options$mfx
   GEEQ <- options$geeq
   METHOD <- options$method
+  REQ_ALL <- options$reqall
+  MEANVAL <- options$meanval
   
   # Data Extraction ---------------------------------------------------------
 
@@ -39,12 +41,8 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
   
   # Only retain experiments that have at least one of the GOI as DE (pv < threshold)
   pv[is.na(pv)] <- 1
-  colFilter <- Rfast::colsums(pv < P_THRESHOLD) > 0
   
-  # Number of DEGs for experiments that pass thresholds
-  geeq <- DATA.HOLDER[[taxa]]@experiment.meta$ee.qScore[colFilter]
-  n.DE.exp <- DATA.HOLDER[[taxa]]@experiment.meta$n.DE[colFilter]
-  scales <- DATA.HOLDER[[taxa]]@experiment.meta$n.DE[colFilter]
+  colFilter <- Rfast::colsums(pv < P_THRESHOLD) >= min(REQ_ALL, n.genes)
   
   # logFCs for only the GOI/EOI and maintain structure.
   logFC <- DATA.HOLDER[[taxa]]@data$fc[rowFilter, colFilter]
@@ -64,12 +62,13 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
   # Only retain experiments that have at least one of the GOI with threshold_u > abs(logFC) > threshold_l
   if(FC_L_THRESHOLD != 0 || FC_U_THRESHOLD != 0) {
     exFilter <- abs(logFC) >= FC_L_THRESHOLD
+    exFilter[is.na(exFilter)] <- F
     
     if(FC_U_THRESHOLD != FC_L_THRESHOLD)
       exFilter <- exFilter & (abs(logFC) <= FC_U_THRESHOLD)
+    exFilter[is.na(exFilter)] <- F
     
-    colFilter <- Rfast::colsums(exFilter) > 0
-    colFilter[is.na(colFilter)] <- F
+    colFilter <- Rfast::colsums(exFilter) >= min(REQ_ALL, n.genes)
     
     print(paste0(sum(colFilter), '/', ncol(zscore), ' passed thresholds'))
     
@@ -81,35 +80,52 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
     logFC <- logFC[, colFilter, with = F]
     zscore <- zscore[, colFilter, with = F]
     mx <- mx[, colFilter, with = F]
-    n.DE.exp <- n.DE.exp[colFilter]
-    scales <- scales[colFilter]
-    geeq <- geeq[colFilter]
   }
   
   # Data Processing ---------------------------------------------------------
   if(verbose)
     advanceProgress('Ranking')
   
+  # Number of DEGs for experiments that pass thresholds
+  mFilter <- DATA.HOLDER[[taxa]]@experiment.meta %>% as.data.frame %>%
+    `rownames<-`(.[, 'rsc.ID']) %>% .[colnames(zscore), c('ee.qScore', 'n.DE', 'ee.Scale')]
+  
+  geeq <- mFilter$ee.qScore
+  n.DE.exp <- mFilter$n.DE
+  scales <- mFilter$ee.Scale
+  
   n.DE.exp[is.na(n.DE.exp)] <- 0
   geeq[is.na(geeq)] <- 0
-  
+
   # Put everything on a linear scale
-  mx[, scales == 'LOG2'] <- 2^(mx[, scales == 'LOG2'])
+  mx <- as.matrix(mx)
+  tmp <<- mFilter
+  mx[, scales == 'LOG2'] <- 2^mx[, scales == 'LOG2']
   mx[, scales == 'LOG10'] <- 10^mx[, scales == 'LOG10']
   mx[, scales == 'LN'] <- exp(1)^mx[, scales == 'LN']
+  # What to do with LINEAR, UNSCALED, OTHER, COUNT?
   
-  mx[is.na(mx)] <- 0
+  # TODO Capping randomly at 10k
+  mx <- Rfast::Pmin(matrix(1e4, nrow(mx), ncol(mx)), mx)
+  
+  mx[is.na(mx) | is.infinite(mx)] <- 0
   
   if(!GEEQ)
     geeq <- 1
   else
-    geeq <- sqrt(pmax(geeq, 0)) / Rfast::Log(2 + n.DE.exp) # Weight by experiment quality score (augmented by number of DEGs)
+    geeq <- sqrt(pmax(geeq, 0))
   
-  directions <- ifelse(Rfast::colmeans(zscore %>% as.matrix) < 0, F, T)
+  geeq <- c(geeq / Rfast::Log(2 + n.DE.exp)^(5/4))
+  
+  logFC[is.na(logFC)] <- 0
+  directions <- ifelse(Rfast::colmeans(logFC %>% as.matrix) < 0, F, T)
   
   # TODO This should have an equivalent in artificial.
-  if(taxa != 'artificial')
-    zscore <- zscore * mx^(1/5)
+  # TODO Justify weighting
+  if(MEANVAL && taxa != 'artificial')
+    zscore <- zscore * (1 + mx^(1/4))
+  
+  zscore[is.na(zscore)] <- 0
   
   query <- Rfast::rowMaxs(zscore %>% as.matrix, value = T)
   
@@ -118,9 +134,6 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
   else
     MFX_WEIGHT <- rep(1, n.genes)
   
-  tmp <<- zscore
-  tmp2 <<- query
-
   if(METHOD == 'zscore') {
     (zscore / query) %>% t %>% as.data.table %>%
       .[, score := Rfast::rowsums(as.matrix(. * MFX_WEIGHT)) / sum(MFX_WEIGHT)] %>%
@@ -131,6 +144,13 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
       .[, score := 1 + scale(c(geeq) * score, F)] %>%
       setorder(-score)
   } else if(METHOD == 'mvsm') {
+    #idf <- Rfast::Log(1 / MFX_WEIGHT) + 1 # Gene-wise IDF
+    #idf2 <- c(geeq) # Experiment-wise IDF
+    
+    #tfidf <- t(t(zscore * idf) * idf2) %>% as.matrix
+    
+    #query <- Rfast::rowMaxs(tfidf, value = T)
+    
     idf <- Rfast::Log(1 / MFX_WEIGHT) + 1
     zscore[, query := query]
     tfidf <- zscore * idf
@@ -145,7 +165,7 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
     cross_x <- crossprod(query)
     scores <- sapply(1:ncol(tfidf), function(i) {
       cross_q <- crossprod(query, tfidf[, i])
-      if(is.null(cross_q) || cross_q == 0) 0
+      if(cross_q == 0) 0
       else cross_q / sqrt(cross_x * crossprod(tfidf[, i]))
     })
     scores[is.nan(scores)] <- 0
@@ -192,31 +212,6 @@ getTags <- function(taxa = getOption('app.taxa'), scope = getOption('app.ontolog
 #'
 #' @param taxa A taxa scope. Can be one of [human, mouse, rat].
 precomputeTags <- function(taxa = getOption('app.taxa')) {
-  #' Reorder Tags
-  #' 
-  #' Reorders the baseline and contrast so that the most common one is in the baseline.
-  #'
-  #' @param cache The cache entry
-  #'
-  #' @return A reordered cache entry
-  reorderTags <- function(cache) {
-    vals <- cache[, .N, cf.BaseLongUri] %>%
-      merge(cache[, .N, cf.ValLongUri],
-            by.x = 'cf.BaseLongUri', by.y = 'cf.ValLongUri', all = T, sort = F, allow.cartesian = T) %>%
-      .[is.na(N.x), N.x := 0] %>% .[is.na(N.y), N.y := 0] %>%
-      .[, N := N.x + N.y, cf.BaseLongUri] %>%
-      .[, .(tag = cf.BaseLongUri, N)]
-    
-    cache[, .(rsc.ID, ee.ID, cf.Cat, b = cf.BaseLongUri, v = cf.ValLongUri, distance)] %>%
-      merge(vals, by.x = 'b', by.y = 'tag', sort = F, allow.cartesian = T) %>%
-      merge(vals, by.x = 'v', by.y = 'tag', sort = F, allow.cartesian = T) %>%
-      .[, reverse := (N.y > N.x) | (N.y == N.x & b < v)] %>%
-      .[reverse == T, c('b', 'v') := list(v, b)] %>%
-      .[, .(rsc.ID = as.factor(rsc.ID), ee.ID,
-            cf.Cat = as.factor(cf.Cat), cf.BaseLongUri = as.factor(b), cf.ValLongUri = as.factor(v),
-            reverse, distance)]
-  }
-  
   mGraph <- simplify(igraph::graph_from_data_frame(ONTOLOGIES[, .(ChildNode_Long, ParentNode_Long)]))
   graphTerms <- unique(ONTOLOGIES[, as.character(ChildNode_Long, ParentNode_Long)])
   
@@ -239,34 +234,46 @@ precomputeTags <- function(taxa = getOption('app.taxa')) {
             .[!(tag %in% graphTerms)]) %>% na.omit %>% .[, distance := 0]
   
   # Expand the bagged tags so there's one row per entry
-  mBagOfWords <- DATA.HOLDER[[taxa]]@experiment.meta[bagged, .(tag = unique(cf.BaseLongUri),
-                                                                type = 'cf.BaseLongUri'), .(rsc.ID, ee.ID)] %>%
-    .[!(tag %in% graphTerms)] %>%
-    rbind(DATA.HOLDER[[taxa]]@experiment.meta[bagged, .(tag = unique(cf.ValLongUri),
-                                                         type = 'cf.ValLongUri'), .(rsc.ID, ee.ID)] %>%
-            .[!(tag %in% graphTerms)]) %>%
-    na.omit %>%
-    .[, lapply(.SD, function(x) parseListEntry(as.character(x))), .(rsc.ID, ee.ID, type)] %>%
-    .[, ID := 1:length(tag), .(rsc.ID, ee.ID, type)]
+  if(sum(bagged) == 0)
+    mBagOfWords <- data.table()
+  else
+    mBagOfWords <- DATA.HOLDER[[taxa]]@experiment.meta[bagged, .(tag = unique(cf.BaseLongUri),
+                                                                 type = 'cf.BaseLongUri'), .(rsc.ID, ee.ID)] %>%
+      .[!(tag %in% graphTerms)] %>%
+      rbind(DATA.HOLDER[[taxa]]@experiment.meta[bagged, .(tag = unique(cf.ValLongUri),
+                                                          type = 'cf.ValLongUri'), .(rsc.ID, ee.ID)] %>%
+              .[!(tag %in% graphTerms)]) %>%
+      na.omit %>%
+      .[, lapply(.SD, function(x) parseListEntry(as.character(x))), .(rsc.ID, ee.ID, type)] %>%
+      .[, ID := 1:length(tag), .(rsc.ID, ee.ID, type)]
+  
+  if(nrow(mBagOfWords) > 0)
+    mComputable <- union(mSimpleTags[, unique(tag)], mBagOfWords[tag %in% graphTerms, tag])
+  else
+    mComputable <- mSimpleTags[, unique(tag)]
   
   # Compute ontology expansions on ontology terms
   # Applies to both simple tags and bag of word tags that expanded into ontology terms
-  mComputedTags <- rbindlist(lapply(union(mSimpleTags[, unique(tag)], mBagOfWords[tag %in% graphTerms, tag]), function(uri) {
+  mComputedTags <- rbindlist(lapply(mComputable, function(uri) {
     tag <- igraph::subcomponent(mGraph, uri, 'out')
     distance <- igraph::distances(mGraph, uri, tag)
     data.table(startTag = uri, tag = names(tag), distance = c(distance))
   }))
   
-  # Simple (ontology) tags get associated with their parents from mComputedTags
-  mTags <- mSimpleTags %>% merge(mComputedTags[startTag %in% mSimpleTags[, unique(tag)]],
-                                 by.x = 'tag', by.y = 'startTag', sort = F, allow.cartesian = T) %>%
-    .[, c('tag', 'tag.y') := list(tag.y, NULL)] %>% .[, ID := NA] %>%
+  if(nrow(mComputedTags) > 0)
+    # Simple (ontology) tags get associated with their parents from mComputedTags
+    mTags <- mSimpleTags %>% merge(mComputedTags[startTag %in% mSimpleTags[, unique(tag)]],
+                                   by.x = 'tag', by.y = 'startTag', sort = F, allow.cartesian = T) %>%
+    .[, c('tag', 'tag.y') := list(tag.y, NULL)] %>% .[, ID := NA]
+  else
+    mTags <- data.table()
     
-    # Structured tags just get inserted
-    rbind(mStructuredTags[, ID := NA] %>% .[, .(tag, rsc.ID, ee.ID, type, distance, ID)]) %>%
-    
+  # Structured tags just get inserted
+  mTags <- mTags %>% rbind(mStructuredTags[, ID := NA] %>% .[, .(tag, rsc.ID, ee.ID, type, distance, ID)])
+  
+  if(nrow(mBagOfWords) > 0)
     # Ontology-expanded bag of word tags get associated with their parents from mComputedTags
-    rbind(
+    mTags <- mTags %>% rbind(
       mBagOfWords %>%
         merge(mComputedTags[startTag %in% mBagOfWords[, unique(tag)]],
               by.x = 'tag', by.y = 'startTag', all = T, sort = F, allow.cartesian = T) %>%
@@ -280,10 +287,15 @@ precomputeTags <- function(taxa = getOption('app.taxa')) {
     .[is.na(Definition), Definition := tag] %>%
     .[, .(rsc.ID, ee.ID, type, tag = as.character(Definition), distance, ID)]
   
-  # Do a grid expansion of bagged terms, maintaining indexed ordering 
-  mTags %>% .[!is.na(ID) & distance < 1, expand.grid(aggregate(.SD[, tag], by = list(.SD[, ID]), FUN = list)[[-1]]) %>%
-                apply(1, paste0, collapse = '; ') %>% unique, .(rsc.ID, ee.ID, type)] %>%
-    .[, c('tag', 'V1') := list(V1, NULL)] %>% rbind(mTags[is.na(ID), .(rsc.ID, ee.ID, type, tag)]) %>%
+  # Do a grid expansion of bagged terms, maintaining indexed ordering
+  if(nrow(mBagOfWords) > 0)
+    mTagsExpanded <- mTags %>% .[!is.na(ID) & distance < 1, expand.grid(aggregate(.SD[, tag], by = list(.SD[, ID]), FUN = list)[[-1]]) %>%
+                                   apply(1, paste0, collapse = '; ') %>% unique, .(rsc.ID, ee.ID, type)] %>%
+    .[, c('tag', 'V1') := list(V1, NULL)] %>% rbind(mTags[is.na(ID), .(rsc.ID, ee.ID, type, tag)])
+  else
+    mTagsExpanded <- mTags
+  
+  mTagsExpanded %>%
     
     # Now expand these expanded terms
     .[, expand.grid(cf.BaseLongUri = .SD[type == 'cf.BaseLongUri', tag],
@@ -308,6 +320,31 @@ precomputeTags <- function(taxa = getOption('app.taxa')) {
     reorderTags
 }
 
+#' Reorder Tags
+#' 
+#' Reorders the baseline and contrast so that the most common one is in the baseline.
+#'
+#' @param cache The cache entry
+#'
+#' @return A reordered cache entry
+reorderTags <- function(cache) {
+  vals <- cache[, .N, cf.BaseLongUri] %>%
+    merge(cache[, .N, cf.ValLongUri],
+          by.x = 'cf.BaseLongUri', by.y = 'cf.ValLongUri', all = T, sort = F, allow.cartesian = T) %>%
+    .[is.na(N.x), N.x := 0] %>% .[is.na(N.y), N.y := 0] %>%
+    .[, N := N.x + N.y, cf.BaseLongUri] %>%
+    .[, .(tag = cf.BaseLongUri, N)]
+  
+  cache[, .(rsc.ID, ee.ID, cf.Cat, b = cf.BaseLongUri, v = cf.ValLongUri, distance)] %>%
+    merge(vals, by.x = 'b', by.y = 'tag', sort = F, allow.cartesian = T) %>%
+    merge(vals, by.x = 'v', by.y = 'tag', sort = F, allow.cartesian = T) %>%
+    .[, reverse := (N.y > N.x) | (N.y == N.x & as.character(b) < as.character(v))] %>%
+    .[reverse == T, c('b', 'v') := list(v, b)] %>%
+    .[, .(rsc.ID = as.factor(rsc.ID), ee.ID,
+          cf.Cat = as.factor(cf.Cat), cf.BaseLongUri = as.factor(b), cf.ValLongUri = as.factor(v),
+          reverse, distance)]
+}
+
 #' Enrich
 #' 
 #' Given rankings (@seealso search), generate a ranking-weighted count of all terms that can be
@@ -330,10 +367,10 @@ enrich <- function(rankings, taxa = getOption('app.taxa'), scope = getOption('ap
           by = 'rsc.ID', sort = F, allow.cartesian = T)
   
   aprior <- function() {
-    tmp <- mMaps[[2]][, .(A = sum(score) / (1 + sum(distance))),
-                      .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)][, B := sum(A)] %>%
-      merge(mMaps[[1]][, .(C = .N / (1 + sum(distance))),
-                       .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)][, D := sum(C)],
+    tmp <- mMaps[[2]][, .(A = sum(score) / (1 + sum(distance, na.rm = T))),
+                      .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)][, B := sum(A, na.rm = T)] %>%
+      merge(mMaps[[1]][, .(C = .N / (1 + sum(distance, na.rm = T))),
+                       .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)][, D := sum(C, na.rm = T)],
             by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), sort = F, all = T, allow.cartesian = T)
     
     tmp[is.na(tmp)] <- 0

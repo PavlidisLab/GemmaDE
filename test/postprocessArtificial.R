@@ -1,7 +1,7 @@
 VERSION <- '_superuniform-binary'
 VERSION2 <- substring(VERSION, 2)
 
-artificial <- readRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/Limma/', VERSION2, '/',
+artificial <- readRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/Limma/', VERSION2, '/artificial',
                              VERSION, '.rds'))
 
 tmp <- rbindlist(lapply(1:length(artificial), function(i) {
@@ -30,7 +30,7 @@ pv <- pv[, -1] %>% as.matrix
 artificial.gene.associations <- readRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/Limma/', VERSION2, '/gene.associations',
                                                VERSION, '.rds'))
 artificial.gene.meta <- readRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/Limma/', VERSION2, '/artificial.gene.meta',
-VERSION, '.rds'))
+                                       VERSION, '.rds'))
 
 N <- ncol(fc)
 
@@ -72,11 +72,13 @@ experiment.meta <- data.table(rsc.ID = EXPERIMENTS,
                               mean.fc = colMeans2(fc %>% as.matrix, na.rm = T))
 
 saveRDS(new('EData', taxon = 'artificial', data = list(fc = fc, adj.pv = pv),
-            experiment.meta = experiment.meta, gene.meta = artificial.gene.meta),
+            experiment.meta = experiment.meta, gene.meta = artificial.gene.meta,
+            go = data.table(entrez.ID = NA, category = NA, id = NA, term = NA)),
         paste0('/space/scratch/jsicherman/Thesis Work/data/Limma/', VERSION2, '/artificial', VERSION, '.rds'))
 
 DATA.HOLDER$artificial <- new('EData', taxon = 'artificial', data = list(fc = fc, adj.pv = pv),
-                              experiment.meta = experiment.meta, gene.meta = artificial.gene.meta)
+                              experiment.meta = experiment.meta, gene.meta = artificial.gene.meta,
+                              go = data.table(entrez.ID = NA, category = NA, id = NA, term = NA))
 rm(fc, pv, artificial.gene.meta, experiment.meta, N, EXPERIMENTS)
 
 DATA.HOLDER$artificial@gene.meta <- DATA.HOLDER$artificial@gene.meta[, c('n.DE', 'dist.Mean', 'dist.SD') :=
@@ -91,6 +93,7 @@ DATA.HOLDER$artificial@data$pvz <- DATA.HOLDER$artificial@data$zscore %>% {
   tmp[tmp < 1e-20] <- 1e-20
   abs(.) * -log(tmp, 100)
 }
+DATA.HOLDER$artificial@data$meanval <- matrix(exp(1), nrow(DATA.HOLDER$artificial@data$fc), ncol(DATA.HOLDER$artificial@data$fc))
 DATA.HOLDER$artificial@experiment.meta$version <- VERSION
 
 CACHE.BACKGROUND$artificial <- precomputeTags('artificial')

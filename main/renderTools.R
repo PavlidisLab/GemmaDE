@@ -15,11 +15,14 @@ generateResultsHeader <- function(title) {
 #' @param expr Expression information to plot
 #' @param options Any additional options 
 #' @param plot_genes Genes to visualize
+#' @param plot_conditions Conditions to visualize
 #' @param plot_type The plot type (heatmap, boxplot, etc.)
 #' @param plot_data The data to plot (gene expression data, etc.)
 generateResultsPlot <- function(genes, conditions, expr, options = getOption('app.all_options'),
-                                plot_genes, plot_type, plot_data) {
-  expr$expr <- expr$expr[plot_genes, ]
+                                plot_genes, plot_conditions, plot_type, plot_data) {
+  plot_conditions <- expr$metadata[grepl(paste0(gsub('([.|()\\^{}+$*?]|\\[|\\])', '\\\\\\1', unlist(strsplit(plot_conditions, ' vs. ', T))), collapse = '|'), baseline), name]
+  
+  expr$expr <- expr$expr[plot_genes, plot_conditions]
   
   if(length(plot_genes) == 1)
     expr$expr <- t(expr$expr)
@@ -57,22 +60,43 @@ generateResultsPlot <- function(genes, conditions, expr, options = getOption('ap
     }
     
     if(plot_type == 'Scatterplot') {
-      data %>% ggplot(aes(Sample, Expression, color = Gene)) +
-        geom_point(aes(shape = Contrast), size = 2) +
-        geom_line(aes(group = interaction(Gene, Contrast))) +
-        theme_classic() + theme(axis.text.x = element_blank())
+      (data %>% ggplot(aes(color = Gene, x = Sample, y = Expression)) +
+         geom_point(aes(text = paste('Accession:', accession), shape = Contrast), size = 2) +
+         scale_color_brewer(palette = 'Dark2') +
+         geom_line(aes(group = interaction(Gene, Contrast))) +
+         theme_classic() + theme(axis.text.x = element_blank())) %>%
+        ggplotly %>%
+        layout(yaxis = list(title = 'Expression (log<sub>2</sub> CPM)'))
     } else if(plot_type == 'Boxplot') {
-      suppressMessages((data %>% ggplot(aes(Gene, Expression, fill = Contrast)) +
-                          geom_boxplot() +
-                          scale_fill_brewer(palette = 'Dark2') +
-                          theme_classic()) %>%
-                         ggplotly %>% layout(boxmode = 'group'))
+      suppressWarnings(suppressMessages((data %>% ggplot(aes(fill = Contrast,
+                                                             x = Gene, y = Expression)) +
+                                           geom_boxplot() +
+                                           scale_fill_brewer(palette = 'Dark2') +
+                                           theme_classic()) %>%
+                                          ggplotly(dynamicTicks = T) %>%
+                                          layout(boxmode = 'group',
+                                                 yaxis = list(title = 'Expression (log<sub>2</sub> CPM)'))))
     } else if(plot_type == 'Jitterplot') {
-      suppressMessages((data %>% ggplot(aes(Gene, Expression, fill = Contrast)) +
-                          geom_jitter() +
-                          scale_fill_brewer(palette = 'Dark2') +
-                          theme_classic()) %>%
-                         ggplotly %>% layout(boxmode = 'group'))
+      data <- data %>% mutate(GeneID = Gene, Gene = as.numeric(Gene))
+      
+      suppressWarnings(suppressMessages((data %>% ggplot(aes(text = paste0('Accession: ', accession, '<br>Gene: ', GeneID),
+                                                             fill = Contrast, group = interaction(Gene, Contrast),
+                                                             x = Gene, y = Expression)) +
+                                           geom_jitter(position = position_jitterdodge(), alpha = 0.8) +
+                                           scale_fill_brewer(palette = 'Dark2') +
+                                           theme_classic()) %>%
+                                          ggplotly(dynamicTicks = T, tooltip = c('text', 'fill', 'y')) %>%
+                                          layout(boxmode = 'group',
+                                                 xaxis = list(title = 'Gene', tickmode = 'array', autotick = F, tickvals = 1:(length(unique(data$Gene))), ticktext = unique(data$GeneID)),
+                                                 yaxis = list(title = 'Expression (log<sub>2</sub> CPM)'))))
+    } else if(plot_type == 'Violin plot') {
+      suppressWarnings(suppressMessages((data %>% ggplot(aes(fill = Contrast,
+                                                             x = Gene, y = Expression)) +
+                                           geom_violin(alpha = 0.9) +
+                                           scale_fill_brewer(palette = 'Dark2') +
+                                           theme_classic()) %>%
+                                          ggplotly %>%
+                                          layout(yaxis = list(title = 'Expression (log<sub>2</sub> CPM)'))))
     }
   }
 }
@@ -118,16 +142,20 @@ generateResults <- function(conditions, taxa = getOption('app.taxa'), options = 
                                      autoWidth = T,
                                      columnDefs = list(
                                        list(targets = 0,
-                                            width = '10%', className = 'cf-cat'),
+                                            width = '10%',
+                                            searchable = T,
+                                            className = 'cf-cat'),
                                        list(targets = which(outputColumns == 'Contrast'),
                                             width = '60%',
-                                            searchable = F, orderable = F),
+                                            searchable = T, orderable = F),
                                        list(targets = which(outputColumns == 'Evidence'),
                                             width = '15%',
                                             className = 'dt-right',
                                             searchable = F, orderable = F),
                                        list(targets = which(outputColumns == 'P-value'),
-                                            render = JS('asPval'), width = '10%'),
+                                            render = JS('asPval'),
+                                            width = '10%',
+                                            searchable = F),
                                        list(targets = which(outputColumns == 'Direction'),
                                             width = '5%',
                                             render = JS('asSparkline2'), width = '1px', className = 'dt-center', searchable = F, orderable = F)#,
@@ -165,8 +193,8 @@ generateResults <- function(conditions, taxa = getOption('app.taxa'), options = 
 #'
 #' @param ora The result of an ermineR::ora
 generateGOPage <- function(ora) {
-  ora$results <- ora$results %>% rename(c('Pval' = 'P-value'))
-  mTable <- datatable(ora$results[, c('Name', 'P-value')],
+  ora$results <- ora$results %>% rename(c('Pval' = 'P-value', 'CorrectedPvalue' = 'FDR'))
+  mTable <- datatable(ora$results[, c('Name', 'P-value', 'FDR')],
                       rownames = ora$results$ID,
                       filter = 'top',
                       options = list(pageLength = 10,
@@ -181,8 +209,11 @@ generateGOPage <- function(ora) {
                                      fixedHeader = T,
                                      autoWidth = T,
                                      drawCallback = JS('addMathJax'),
+                                     search = list(
+                                       list(regex = T)
+                                     ),
                                      columnDefs = list(
-                                       list(targets = 2,
+                                       list(targets = 2:3,
                                             render = JS('asPval'), width = '10%')
                                      )))
   renderDT(mTable)

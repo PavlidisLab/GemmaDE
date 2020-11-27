@@ -19,6 +19,8 @@ server <- function(input, output, session) {
     updateSelectizeInput(session, 'method', selected = ifelse(is.null(query$method), getOption('app.search_method'), query$method))
     updatePickerInput(session, 'scope', selected = scope)
     updateCheckboxInput(session, 'mfx', value = ifelse(is.null(query$mfx), getOption('app.mfx'), query$mfx))
+    updateNumericInput(session, 'reqall', value = ifelse(is.null(query$required), getOption('app.req.all'), query$required))
+    updateCheckboxInput(session, 'meanval', value = ifelse(is.null(query$expr), getOption('app.meanval'), query$expr))
     updateNumericInput(session, 'distance', value = ifelse(is.null(query$distance), getOption('app.distance_cutoff'), query$distance))
     updateNumericInput(session, 'min.tags', value = ifelse(is.null(query$min), getOption('app.min.tags'), query$min))
     updateNumericInput(session, 'max.rows', value = ifelse(is.null(query$rows), getOption('app.max.rows'), query$rows))
@@ -48,6 +50,8 @@ server <- function(input, output, session) {
     updateSelectizeInput(session, 'method', selected = NULL)
     updatePickerInput(session, 'scope', selected = getOption('app.ontology'))
     updateCheckboxInput(session, 'mfx', value = getOption('app.mfx'))
+    updateNumericInput(session, 'reqall', value = getOption('app.req.all'))
+    updateCheckboxInput(session, 'meanval', value = getOption('app.meanval'))
     updateCheckboxInput(session, 'geeq', value = getOption('app.geeq'))
     updateNumericInput(session, 'min.tags', value = getOption('app.min.tags'))
     updateNumericInput(session, 'distance', value = getOption('app.distance_cutoff'))
@@ -160,7 +164,7 @@ server <- function(input, output, session) {
                column(2, style = 'padding-top: 15px; padding-right: 30px;',
                       fluidRow(style = 'display: flex; flex-direction: row; justify-content: space-evenly; margin-bottom: 15px;',
                                downloadButton('plot_save_jpg', 'Save JPG'), downloadButton('plot_save_pdf', 'Save PDF')),
-                      selectInput('plot_type', 'Type', list('Heatmap', 'Scatterplot', 'Boxplot', 'Jitterplot')),
+                      selectInput('plot_type', 'Type', list('Boxplot', 'Violin plot', 'Heatmap', 'Scatterplot', 'Jitterplot')),
                       selectInput('plot_data', 'Data', list('Gene Expression')),
                       pickerInput('plot_genes', 'Genes', list('Loading...'), multiple = T),
                       pickerInput('plot_conditions', 'Contrasts', list('Loading...'), multiple = T))
@@ -168,10 +172,10 @@ server <- function(input, output, session) {
     ), session)
     
     generatePlot <- function(value) {
-      rownames(value$expr) <- merge(data.table(ID = rownames(value$expr)),
-                                data.table(ID = session$userData$plotData$gene.ID,
-                                           name = session$userData$plotData$gene.Name),
-                                by = 'ID', sort = F, all.x = T)[, name]
+      #rownames(value$expr) <- merge(data.table(ID = rownames(value$expr)),
+      #                          data.table(ID = session$userData$plotData$gene.ID,
+      #                                     name = session$userData$plotData$gene.Name),
+      #                          by = 'ID', sort = F, all.x = T)[, name]
       
       session$userData$plotData$processed <- value
       session$userData$plotData$queued <- NULL
@@ -181,18 +185,20 @@ server <- function(input, output, session) {
                         selected = intersect(session$userData$plotData$gene.Name, rownames(value$expr)))
       updatePickerInput(session, 'plot_conditions',
                         choices = as.list(session$userData$plotData$conditions),
-                        selected = session$userData$plotData$conditions)
+                        selected = data.table::first(session$userData$plotData$conditions))
       
       output$plot <- renderPlotly({
         generateResultsPlot(session$userData$plotData$gene.Name,
                             session$userData$plotData$conditions,
                             value,
                             session$userData$plotData$options,
-                            input$plot_genes, input$plot_type, input$plot_data)
+                            input$plot_genes, input$plot_conditions, input$plot_type, input$plot_data)
       })
     }
     
     if(is.null(session$userData$plotData$processed)) {
+      # If we didn't already process we need to give the UI a tick to update and then
+      # fetch the data.
       if(!is.null(session$userData$plotData$queued)) {
         shinyjs::delay(1, {
           synchronise(session$userData$plotData$queued %>% {
@@ -204,6 +210,7 @@ server <- function(input, output, session) {
         })
       }
     } else {
+      # If we already processed then we can just display
       output$plot <- renderPlotly({
         generateResultsPlot(session$userData$plotData$gene.Name,
                             session$userData$plotData$conditions,
@@ -269,6 +276,7 @@ server <- function(input, output, session) {
       .[, N := length(unique(ee.ID)), .(cf.BaseLongUri, cf.ValLongUri)] %>%
       merge(data.table(rsc.ID = experiments$rn, experiments[, !c('score', 'rn')]), by = 'rsc.ID')
     
+    # @see[1] Currently only supporting visualizing conditions that are significant.
     geneExpr <- mCache[paste0(cf.BaseLongUri, cf.ValLongUri) %in% conditions[pv.fisher < options$pv, paste0(cf.BaseLongUri, cf.ValLongUri)]]
     
     advanceProgress('Adding cross references')
@@ -326,6 +334,7 @@ server <- function(input, output, session) {
           taxa = taxa,
           gene.ID = genes,
           gene.Name = DATA.HOLDER[[taxa]]@gene.meta[entrez.ID %in% genes, gene.Name],
+          # @see[1] Make sure to update this if we change the strategy to select viz-able
           conditions = conditions[pv.fisher < options$pv, paste(cf.BaseLongUri, 'vs.', cf.ValLongUri)],
           options = options,
           queued = results$expression %>%
@@ -363,6 +372,8 @@ server <- function(input, output, session) {
                     fc.lower = input$fc[1], fc.upper = input$fc[2],
                     score.lower = input$score[1], score.upper = input$score[2],
                     mfx = input$mfx,
+                    reqall = input$reqall,
+                    meanval = input$meanval,
                     geeq = input$geeq,
                     distance = input$distance,
                     min.tags = input$min.tags,
@@ -381,6 +392,8 @@ server <- function(input, output, session) {
                       switch(isTRUE(all.equal(input$fc, c(getOption('app.fc_lower'), getOption('app.fc_upper')))) + 1,
                              paste0('&fc=[', paste0(input$fc, collapse = ','), ']'), ''),
                       switch((options$mfx == getOption('app.mfx')) + 1, paste0('&mfx=', options$mfx), ''),
+                      switch((options$reqall == getOption('app.req.all')) + 1, paste0('&required=', options$reqall), ''),
+                      switch((options$meanval == getOption('app.meanval')) + 1, paste0('&expr=', options$meanval), ''),
                       switch((options$geeq == getOption('app.geeq')) + 1, paste0('&geeq=', options$geeq), ''),
                       switch((options$min.tags == getOption('app.min.tags')) + 1, paste0('&min=', options$min.tags), ''),
                       switch((options$max.rows == getOption('app.max.rows')) + 1, paste0('&rows=', options$max.rows), ''),
