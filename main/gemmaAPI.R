@@ -123,6 +123,7 @@ geneExpression <- async(function(ee.IDs, rsc.IDs, taxa = getOption('app.taxa'), 
     # merge(DATA.HOLDER[[taxa]]@experiment.meta[ee.ID == dataset & rsc.ID %in% rsc.IDs, .(rsc.ID, ee.Scale)],
     #       by = 'rsc.ID', sort = F, allow.cartesian = T)
     
+    # TODO Look into these
     http_get(paste0('https://gemma.msl.ubc.ca/rest/v2/datasets/', dataset,
                     '/expressions/genes/', paste0(genes, collapse = '%2C'),
                     '?keepNonSpecific=', ifelse(keepNonSpecific, 'true', 'false'),

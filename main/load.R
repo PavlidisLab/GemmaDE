@@ -54,12 +54,11 @@ if(!exists('DATA.HOLDER')) {
   if(file.exists('/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER.rds'))
     DATA.HOLDER <- readRDS('/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER.rds')
   else {
-    DATA.HOLDER <- lapply(Filter(function(x) x != 'artificial', getOption('app.all_taxa')), function(taxon) {
+    DATA.HOLDER <- lapply(Filter(function(x) !(x %in% c('artificial', 'dope')), getOption('app.all_taxa')), function(taxon) {
       load(paste0('/home/nlim/MDE/RScripts/DataFreeze/Packaged/Current/', taxon, '.RDAT.XZ'))
       
       dataHolder$ts <- NULL
       dataHolder$meanrank <- NULL
-      # dataHolder$meanval <- NULL
       dataHolder$baserank <- NULL
       dataHolder$baseval <- NULL
       
@@ -176,10 +175,31 @@ if(!exists('DATA.HOLDER')) {
           experiment.meta = metaData, gene.meta = metaGene, go = unique(goTerms))
     })
     
-    names(DATA.HOLDER) <- unlist(Filter(function(x) x != 'artificial', getOption('app.all_taxa')))
+    names(DATA.HOLDER) <- unlist(Filter(function(x) !(x %in% c('artificial', 'dope')), getOption('app.all_taxa')))
     
     saveRDS(DATA.HOLDER, '/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER.rds')
   }
+  
+  lapply(Filter(function(x) !(x %in% c('artificial', 'dope')), names(DATA.HOLDER)), function(taxa) {
+    matches <- do.call(rbind,
+                       str_match_all(DATA.HOLDER[[taxa]]@experiment.meta[, unique(as.character(cf.BaseLongUri),
+                                                                                  as.character(cf.ValLongUri))],
+                                     'http://purl.org/commons/record/ncbi_gene/(\\d*)')) %>% unique
+    
+    matches[, 2] <- lapply(Filter(function(x) !(x %in% c('artificial', 'dope')), names(DATA.HOLDER)), function(name) {
+      DATA.HOLDER[[name]]@gene.meta[entrez.ID %in% matches[, 2],
+                                    .(entrez.ID, gene.Name = paste0(gene.Name, ' [', name, ']'))]
+    }) %>% rbindlist %>% unique(by = 'entrez.ID') %>% .[match(matches[, 2], entrez.ID), gene.Name]
+    
+    data.table(Node_Long = matches[, 1], Definition = matches[, 2], OntologyScope = 'TGEMO')
+  }) %>% rbindlist %>% {
+    rbind(ONTOLOGIES.DEFS[, .(Node_Long = as.character(Node_Long),
+                              Definition = as.character(Definition),
+                              OntologyScope = as.character(OntologyScope))], .) %>%
+      .[, c('Node_Long', 'Definition', 'OntologyScope') := list(as.factor(Node_Long),
+                                                                as.factor(Definition),
+                                                                as.factor(OntologyScope))]
+  } -> ONTOLOGIES.DEFS
   
   # Pre-load all ontology expansions
   if(file.exists('/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND.rds'))

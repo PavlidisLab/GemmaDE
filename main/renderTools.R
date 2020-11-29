@@ -156,6 +156,8 @@ generateResults <- function(conditions, taxa = getOption('app.taxa'), options = 
                                             render = JS('asPval'),
                                             width = '10%',
                                             searchable = F),
+                                       list(targets = which(outputColumns == 'Augmented Count'),
+                                            searchable = F),
                                        list(targets = which(outputColumns == 'Direction'),
                                             width = '5%',
                                             render = JS('asSparkline2'), width = '1px', className = 'dt-center', searchable = F, orderable = F)#,

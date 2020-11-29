@@ -99,7 +99,6 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
 
   # Put everything on a linear scale
   mx <- as.matrix(mx)
-  tmp <<- mFilter
   mx[, scales == 'LOG2'] <- 2^mx[, scales == 'LOG2']
   mx[, scales == 'LOG10'] <- 10^mx[, scales == 'LOG10']
   mx[, scales == 'LN'] <- exp(1)^mx[, scales == 'LN']

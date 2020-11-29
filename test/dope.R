@@ -5,7 +5,8 @@ dope <- function(taxa,
                  fc = list(mean = 2, sd = 0.2),
                  pv = list(mean = 0.001, sd = 0.05),
                  dropout = list(severity = 0.2, frequency = 0.1),
-                 geeq = list(mean = 1, sd = 0)) {
+                 geeq = list(mean = 1, sd = 0),
+                 gene_perms = 1) {
   # Dope the real data by adding `N_examples` new pseudo-experiments
   # that differentially express the same `N_genes` at the parameters:
   # logFC ~ N(fc$mean, fc$sd)
@@ -43,12 +44,15 @@ dope <- function(taxa,
   mConditions <- mData@experiment.meta[, .(cf.Cat, cf.CatLongUri, cf.Val, cf.ValLongUri, cf.Baseline, cf.BaseLongUri)] %>%
     unique %>% .[sample(1:.N, N_conditions)]
   
-  lapply(examples, function(N_examples) {
+  list(data = lapply(examples, function(N_examples) {
     message(paste0('Simulating ', N_examples, ' examples...'))
     lapply(genes, function(N_genes) {
       message(paste0('Simulating ', N_genes, ' genes...'))
       
       mSelected <- nSelected[1:N_genes]
+      
+      DATA.HOLDER$dope <<- NULL
+      CACHE.BACKGROUND$dope <<- NULL
       
       mData <- DATA.HOLDER[[taxa]]
       mData@taxon <- 'dope'
@@ -89,7 +93,7 @@ dope <- function(taxa,
                           sf.Cat = NA,
                           sf.CatLongUri = NA,
                           sf.ValLongUri = NA,
-                          mConditions,
+                          mConditions[sample(1:N_conditions, N_examples, T)],
                           n.DE = sum(mPV < 0.05, na.rm = T),
                           mean.fc = mean(mMean, na.rm = T))
       
@@ -110,9 +114,9 @@ dope <- function(taxa,
       CACHE.BACKGROUND$dope <<- rbind(CACHE.BACKGROUND[[taxa]], CACHE.BACKGROUND$dope) %>% reorderTags
       
       message('Searching...')
-      searched <- search(mGenes$entrez.ID, 'dope', verbose = F)
+      searched <- lapply(seq(1, N_genes, by = gene_perms), function(i) { search(mGenes$entrez.ID[1:i], 'dope', verbose = F) })
       message('Enriching...')
-      enriched <- enrich(searched, 'dope', verbose = F)
+      enriched <- lapply(searched, function(i) { enrich(i, 'dope', verbose = F) })
       
       list(searched = searched,
            enriched = enriched,
@@ -121,9 +125,58 @@ dope <- function(taxa,
            N_examples = N_examples,
            N_genes = N_genes)
     })
-  })
+  }),
+  fc = fc,
+  pv = pv,
+  dropout = dropout,
+  geeq = geeq,
+  N_conditions = N_conditions)
+}
+
+evalDope <- function(dopeResults) {
+  lapply(dopeResults$data, function(genes) {
+    lapply(genes, function(examples) {
+      cond <- examples$conditions
+      lapply(1:length(examples$enriched), function(N_genes) {
+        tmp <- copy(examples$enriched[[N_genes]])[, I := .I]
+        mOptions <- c(cond$cf.Baseline, as.character(cond$cf.BaseLongUri),
+                      cond$cf.Val, as.character(cond$cf.ValLongUri))
+        matched <- tmp[cond$cf.Cat %in% cond$cf.Cat &
+                          cf.BaseLongUri %in% mOptions &
+                          cf.ValLongUri %in% mOptions]
+        
+        data.table(meanfc = dopeResults$fc$mean,
+                   meanpv = dopeResults$pv$mean,
+                   dropout = dopeResults$dropout$frequency,
+                   meangeeq = dopeResults$geeq$mean,
+                   n_spiked = examples$N_examples,
+                   n_total = matched$C,
+                   n_searched_genes = N_genes,
+                   n_total_genes = examples$N_genes,
+                   index = matched[, I],
+                   index_frac = matched[, I] / nrow(tmp),
+                   pval = matched[, pv.fisher])
+      }) %>% rbindlist
+    }) %>% rbindlist
+  }) %>% rbindlist
 }
 
 options(app.distance_cutoff = Inf)
+options(app.mfx = T, app.geeq = F, app.meanval = F)
 updateOptions()
-doped <- dope('mouse', seq(1, 20, by = 3), seq(1, 10, by = 2), 1)
+doped.def <- dope('mouse', genes = seq(1, 10, by = 1), examples = seq(1, 20, by = 2), 1)
+
+options(app.mfx = T, app.geeq = T, app.meanval = F)
+updateOptions()
+doped.geeq <- dope('mouse', genes = seq(1, 10, by = 1), examples = seq(1, 20, by = 1), 1, geeq = list(mean = 0.7, sd = 0.1))
+
+options(app.mfx = T, app.geeq = F, app.meanval = F)
+updateOptions()
+doped.lowfc <- dope('mouse', genes = seq(1, 10, by = 1), examples = seq(1, 20, by = 2), 1, fc = list(mean = 1.2, sd = 0.1))
+doped.lowpv <- dope('mouse', genes = seq(1, 10, by = 1), examples = seq(1, 20, by = 2), 1, pv = list(mean = 0.01, sd = 0.05), dropout = list(severity = 0.3, frequency = 0.4))
+doped.conds <- dope('mouse', genes = seq(1, 10, by = 1), examples = seq(1, 20, by = 2), 5, pv = list(mean = 0.01, sd = 0.05), dropout = list(severity = 0.3, frequency = 0.4))
+
+eval.def <- evalDope(doped.def)
+eval.geeq <- evalDope(doped.geeq)
+eval.lowfc <- evalDope(doped.lowfc)
+eval.lowpv <- evalDope(doped.lowpv)
