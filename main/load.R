@@ -54,7 +54,7 @@ if(!exists('DATA.HOLDER')) {
   if(file.exists('/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER.rds'))
     DATA.HOLDER <- readRDS('/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER.rds')
   else {
-    DATA.HOLDER <- lapply(Filter(function(x) !(x %in% c('artificial', 'dope')), getOption('app.all_taxa')), function(taxon) {
+    DATA.HOLDER <- lapply(Filter(function(x) !(x %in% c('artificial', 'dope', 'any')), getOption('app.all_taxa')), function(taxon) {
       load(paste0('/home/nlim/MDE/RScripts/DataFreeze/Packaged/Current/', taxon, '.RDAT.XZ'))
       
       dataHolder$ts <- NULL
@@ -182,7 +182,7 @@ if(!exists('DATA.HOLDER')) {
   
   lapply(Filter(function(x) !(x %in% c('artificial', 'dope')), names(DATA.HOLDER)), function(taxa) {
     matches <- do.call(rbind,
-                       str_match_all(DATA.HOLDER[[taxa]]@experiment.meta[, unique(as.character(cf.BaseLongUri),
+                       str_match_all(DATA.HOLDER[[taxa]]@experiment.meta[, c(as.character(cf.BaseLongUri),
                                                                                   as.character(cf.ValLongUri))],
                                      'http://purl.org/commons/record/ncbi_gene/(\\d*)')) %>% unique
     
@@ -211,6 +211,8 @@ if(!exists('DATA.HOLDER')) {
     
     saveRDS(CACHE.BACKGROUND, '/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND.rds')
   }
+  
+  TAGS <- lapply(names(CACHE.BACKGROUND), getTags) %>% `names<-`(names(CACHE.BACKGROUND))
 }
 
 rm(isDataLoaded)

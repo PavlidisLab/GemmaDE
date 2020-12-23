@@ -277,7 +277,7 @@ server <- function(input, output, session) {
       merge(data.table(rsc.ID = experiments$rn, experiments[, !c('score', 'rn')]), by = 'rsc.ID')
     
     # @see[1] Currently only supporting visualizing conditions that are significant.
-    geneExpr <- mCache[paste0(cf.BaseLongUri, cf.ValLongUri) %in% conditions[pv.fisher < options$pv, paste0(cf.BaseLongUri, cf.ValLongUri)]]
+    geneExpr <- mCache[paste0(cf.BaseLongUri, cf.ValLongUri) %in% conditions[pv.fisher <= options$pv, paste0(cf.BaseLongUri, cf.ValLongUri)]]
     
     advanceProgress('Adding cross references')
     
@@ -335,7 +335,7 @@ server <- function(input, output, session) {
           gene.ID = genes,
           gene.Name = DATA.HOLDER[[taxa]]@gene.meta[entrez.ID %in% genes, gene.Name],
           # @see[1] Make sure to update this if we change the strategy to select viz-able
-          conditions = conditions[pv.fisher < options$pv, paste(cf.BaseLongUri, 'vs.', cf.ValLongUri)],
+          conditions = conditions[pv.fisher <= options$pv, paste(cf.BaseLongUri, 'vs.', cf.ValLongUri)],
           options = options,
           queued = results$expression %>%
             merge(DATA.HOLDER[[taxa]]@experiment.meta[, .(rsc.ID, ee.ID, ee.NumSamples)],
@@ -405,9 +405,41 @@ server <- function(input, output, session) {
     if(is.null(taxa)) taxa <- getOption('app.taxa')
     if(is.null(scope)) scope <- getOption('app.ontology')
     
-    # Clean numerics (interpreted as entrez IDs) and remove them from further processing.
     tidyGenes <- function(genes, taxa) {
-      cleanGenes <- suppressWarnings(Filter(function(x) !is.na(as.integer(x)), genes))
+      if(taxa == 'any') {
+        taxOptions <- Filter(function(x) !(x %in% c('artificial', 'dope', 'any')), getOption('app.all_taxa'))
+        taxIDs <- c(human = 9606, mouse = 10090, rat = 10116)
+        
+        orthologs <- lapply(taxOptions, function(i) {
+          lapply(taxOptions, function(j) {
+            homologene(genes, inTax = unname(taxIDs[i]), outTax = unname(taxIDs[j])) %>% {
+              if(nrow(.) > 0) {
+                if(i == j) {
+                  .[, !duplicated(colnames(.))] %>% .[, grepl('_ID', colnames(.))] %>% {
+                    data.frame(.) %>% `colnames<-`(paste0(unname(taxIDs[i]), '_ID')) %>%
+                      rbind(
+                        data.frame(
+                          DATA.HOLDER[[i]]@gene.meta[gene.Name %in% genes | entrez.ID %in% genes, entrez.ID]
+                        ) %>% `colnames<-`(paste0(unname(taxIDs[i]), '_ID'))
+                      )
+                  }
+                } else
+                  .[, grepl('_ID', colnames(.))]
+              }
+            }
+          }) %>% rbindlist(fill = T) %>% {
+            if(nrow(.) > 0) .
+          }
+        }) %>% rbindlist(fill = T) %>% .[, names(.) := lapply(.SD, as.character)] %>%
+          .[, key := fcoalesce(.)] %>%
+          group_by(key) %>% summarise_all(~na.omit(unique(.))[1]) %>%
+          as.data.table
+        
+        return(orthologs)
+      }
+      
+      # Clean numerics (interpreted as entrez IDs) and remove them from further processing.
+      cleanGenes <- suppressWarnings(Filter(~!is.na(as.integer(.)), genes))
       genes <- genes[!(genes %in% cleanGenes)]
       
       # If it matches (ENSG|ENSMUS|ENSRNO)\d{11}, it's an Ensembl ID (for human, mouse or rat).
@@ -445,9 +477,9 @@ server <- function(input, output, session) {
       # If anything is left, try to match it to gene aliases.
       if(length(genes) > 0) {
         aliases <- DATA.HOLDER[[taxa]]@gene.meta[, parseListEntry(alias.Name), entrez.ID] %>%
-          .[V1 %in% genes] # TODO may have multiple aliases for one entry
+          .[grepl(genes, V1)]
         if(nrow(aliases) > 0)
-          cleanGenes <- c(cleanGenes, aliases[, entrez.ID])
+          cleanGenes <- c(cleanGenes, aliases[, unique(entrez.ID)])
       }
       
       cleanGenes

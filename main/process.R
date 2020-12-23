@@ -24,9 +24,63 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
   MEANVAL <- options$meanval
   
   # Data Extraction ---------------------------------------------------------
+  
+  if(taxa == 'any') {
+    mData <- new('EData')
+    taxOptions <- Filter(function(x) !(x %in% c('artificial', 'dope', 'any')), getOption('app.all_taxa'))
+    taxIDs <- c(human = 9606, mouse = 10090, rat = 10116)
+    
+    for(x in taxOptions) {
+      message(x)
+      ID <- paste0(unname(taxIDs[x]), '_ID')
+      IDs <- genes[, ..ID] %>% unlist %>% unname
+      
+      gMeta <- DATA.HOLDER[[x]]@gene.meta %>% copy %>% .[, I := .I]
+      gMap <- merge(genes[, c('key', ID), with = F],
+                    gMeta %>% .[entrez.ID %in% IDs, .(entrez.ID, I)],
+                    by.x = ID, by.y = 'entrez.ID', all = T) %>%
+        .[, c(ID) := list(NULL)]
+      
+      pvData <- DATA.HOLDER[[x]]@data$adj.pv[gMap$I, ] %>% `rownames<-`(gMap$key)
+      pvData[is.na(pvData)] <- 1
+      fcData <- DATA.HOLDER[[x]]@data$fc[gMap$I, ] %>% `rownames<-`(gMap$key)
+      pvzData <- DATA.HOLDER[[x]]@data$pvz[gMap$I, ] %>% `rownames<-`(gMap$key)
+      meanvalData <- DATA.HOLDER[[x]]@data$meanval[gMap$I, ] %>% `rownames<-`(gMap$key)
+      
+      mData@experiment.meta <- rbind(mData@experiment.meta, DATA.HOLDER[[x]]@experiment.meta)
+      
+      if(is.null(mData@data$adj.pv)) {
+        mData@data$adj.pv <- pvData
+        mData@data$fc <- fcData
+        mData@data$pvz <- pvzData
+        mData@data$meanval <- meanvalData
+        
+        mData@gene.meta <- gMeta[gMap$I, ] %>% .[, entrez.ID := gMap$key]
+      } else {
+        mData@data$adj.pv <- merge(mData@data$adj.pv, pvData, by = 0, all = T) %>%
+          `rownames<-`(.[, 1]) %>% .[, -1]
+        mData@data$fc <- merge(mData@data$fc, fcData, by = 0, all = T) %>%
+          `rownames<-`(.[, 1]) %>% .[, -1]
+        mData@data$pvz <- merge(mData@data$pvz, pvzData, by = 0, all = T) %>%
+          `rownames<-`(.[, 1]) %>% .[, -1]
+        mData@data$meanval <- merge(mData@data$meanval, meanvalData, by = 0, all = T) %>%
+          `rownames<-`(.[, 1]) %>% .[, -1]
+        
+        mData@gene.meta$gene.Name <- coalesce(mData@gene.meta$gene.Name, gMeta[gMap$I, gene.Name])
+        mData@gene.meta$mfx.Rank <- rowMeans2(cbind(mData@gene.meta$mfx.Rank, gMeta[gMap$I, mfx.Rank]),
+                                              na.rm = T)
+      }
+    }
+    
+    genes <- genes$key
+    rowFilter <- which(!is.na(mData@gene.meta$mfx.Rank))
+  } else {
+    mData <- DATA.HOLDER[[taxa]]
 
-  # Only retain GOI
-  rowFilter <- which(DATA.HOLDER[[taxa]]@gene.meta$entrez.ID %in% genes)
+    # Only retain GOI
+    rowFilter <- which(mData@gene.meta$entrez.ID %in% genes)
+  }
+  
   n.genes <- length(rowFilter)
   if(n.genes == 0) {
     setProgress(T)
@@ -34,20 +88,21 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
   }
   
   # P-values for only the GOI
-  pv <- DATA.HOLDER[[taxa]]@data$adj.pv[rowFilter, ]
+  pv <- mData@data$adj.pv[rowFilter, ]
   
   if(n.genes == 1)
     pv <- t(pv)
   
   # Only retain experiments that have at least one of the GOI as DE (pv < threshold)
-  pv[is.na(pv)] <- 1
+  if(taxa != 'any')
+    pv[is.na(pv)] <- 1 # Turns out this is significantly faster on smaller matrices
   
-  colFilter <- Rfast::colsums(pv < P_THRESHOLD) >= min(REQ_ALL, n.genes)
+  colFilter <- Rfast::colsums(pv <= P_THRESHOLD) >= min(REQ_ALL, n.genes)
   
   # logFCs for only the GOI/EOI and maintain structure.
-  logFC <- DATA.HOLDER[[taxa]]@data$fc[rowFilter, colFilter]
-  zscore <- DATA.HOLDER[[taxa]]@data$pvz[rowFilter, colFilter]
-  mx <- DATA.HOLDER[[taxa]]@data$meanval[rowFilter, colFilter]
+  logFC <- mData@data$fc[rowFilter, colFilter]
+  zscore <- mData@data$pvz[rowFilter, colFilter]
+  mx <- mData@data$meanval[rowFilter, colFilter]
   
   if(n.genes == 1) {
     logFC <- t(logFC)
@@ -70,8 +125,6 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
     
     colFilter <- Rfast::colsums(exFilter) >= min(REQ_ALL, n.genes)
     
-    print(paste0(sum(colFilter), '/', ncol(zscore), ' passed thresholds'))
-    
     if(sum(colFilter) == 0) {
       setProgress(T)
       return(NULL)
@@ -87,7 +140,7 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
     advanceProgress('Ranking')
   
   # Number of DEGs for experiments that pass thresholds
-  mFilter <- DATA.HOLDER[[taxa]]@experiment.meta %>% as.data.frame %>%
+  mFilter <- mData@experiment.meta %>% as.data.frame %>%
     `rownames<-`(.[, 'rsc.ID']) %>% .[colnames(zscore), c('ee.qScore', 'n.DE', 'ee.Scale')]
   
   geeq <- mFilter$ee.qScore
@@ -95,7 +148,7 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
   scales <- mFilter$ee.Scale
   
   n.DE.exp[is.na(n.DE.exp)] <- 0
-  geeq[is.na(geeq)] <- 0
+  geeq[is.na(geeq)] <- -1
 
   # Put everything on a linear scale
   mx <- as.matrix(mx)
@@ -110,11 +163,11 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
   mx[is.na(mx) | is.infinite(mx)] <- 0
   
   if(!GEEQ)
-    geeq <- 1
+    geeq <- 2
   else
-    geeq <- sqrt(pmax(geeq, 0))
+    geeq <- pmax(geeq + 1, 0)
   
-  geeq <- c(geeq / Rfast::Log(2 + n.DE.exp)^(5/4))
+  geeq <- c(geeq / Rfast::Log(2 + n.DE.exp)^(5/4)) / 2
   
   logFC[is.na(logFC)] <- 0
   directions <- ifelse(Rfast::colmeans(logFC %>% as.matrix) < 0, F, T)
@@ -129,14 +182,14 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
   query <- Rfast::rowMaxs(zscore %>% as.matrix, value = T)
   
   if(MFX)
-    MFX_WEIGHT <- 1 - DATA.HOLDER[[taxa]]@gene.meta$mfx.Rank[rowFilter]
+    MFX_WEIGHT <- 1 - mData@gene.meta$mfx.Rank[rowFilter]
   else
     MFX_WEIGHT <- rep(1, n.genes)
   
   if(METHOD == 'zscore') {
     (zscore / query) %>% t %>% as.data.table %>%
       .[, score := Rfast::rowsums(as.matrix(. * MFX_WEIGHT)) / sum(MFX_WEIGHT)] %>%
-      setnames(c(DATA.HOLDER[[taxa]]@gene.meta$gene.Name[rowFilter], 'score')) %>%
+      setnames(c(mData@gene.meta$gene.Name[rowFilter], 'score')) %>%
       .[, direction := directions] %>%
       .[, rn := colnames(zscore)] %>%
       .[is.nan(score), score := 0] %>%
@@ -170,7 +223,7 @@ search <- function(genes, taxa = getOption('app.taxa'), options = getOption('app
     scores[is.nan(scores)] <- 0
     
     ret <- rbind(tfidf, scores) %>% t %>% as.data.table %>%
-      setnames(c(DATA.HOLDER[[taxa]]@gene.meta$gene.Name[rowFilter], 'score')) %>%
+      setnames(c(mData@gene.meta$gene.Name[rowFilter], 'score')) %>%
       .[, direction := directions] %>%
       .[, rsc.ID := colnames(tfidf)] %>%
       .[, score := 1 + scale(c(geeq) * score, F)]
@@ -194,6 +247,9 @@ getTags <- function(taxa = getOption('app.taxa'), scope = getOption('app.ontolog
     rsc.IDs <- CACHE.BACKGROUND[[taxa]][, unique(as.character(rsc.ID))]
   
   graphTerms <- ONTOLOGIES.DEFS[!(OntologyScope %in% scope), as.character(Definition)]
+  
+  if(exists('TAGS') && !is.null(TAGS[[taxa]]))
+    return(TAGS[[taxa]][rsc.ID %in% rsc.IDs & !(cf.BaseLongUri %in% graphTerms) & !(cf.ValLongUri %in% graphTerms)])
     
   CACHE.BACKGROUND[[taxa]] %>%
     .[distance <= max.distance] %>%
@@ -201,7 +257,7 @@ getTags <- function(taxa = getOption('app.taxa'), scope = getOption('app.ontolog
           cf.ValLongUri = as.character(cf.ValLongUri), distance, reverse)] %>%
     .[rsc.ID %in% rsc.IDs & !(cf.BaseLongUri %in% graphTerms) & !(cf.ValLongUri %in% graphTerms)] %>%
     .[as.character(cf.BaseLongUri) != as.character(cf.ValLongUri)] %>%
-    .[, .(distance = mean(distance), reverse = first(reverse)),
+    .[, .(distance = mean(distance), reverse = data.table::first(reverse)),
       .(rsc.ID, cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>% setorder(distance, rsc.ID)
 }
 
@@ -270,7 +326,7 @@ precomputeTags <- function(taxa = getOption('app.taxa')) {
   # Structured tags just get inserted
   mTags <- mTags %>% rbind(mStructuredTags[, ID := NA] %>% .[, .(tag, rsc.ID, ee.ID, type, distance, ID)])
   
-  if(nrow(mBagOfWords) > 0)
+  if(nrow(mBagOfWords) > 0 & nrow(mComputedTags) > 0)
     # Ontology-expanded bag of word tags get associated with their parents from mComputedTags
     mTags <- mTags %>% rbind(
       mBagOfWords %>%
@@ -287,7 +343,7 @@ precomputeTags <- function(taxa = getOption('app.taxa')) {
     .[, .(rsc.ID, ee.ID, type, tag = as.character(Definition), distance, ID)]
   
   # Do a grid expansion of bagged terms, maintaining indexed ordering
-  if(nrow(mBagOfWords) > 0)
+  if(nrow(mBagOfWords) > 0 && nrow(mTags[!is.na(ID) & distance < 1]) > 0)
     mTagsExpanded <- mTags %>% .[!is.na(ID) & distance < 1, expand.grid(aggregate(.SD[, tag], by = list(.SD[, ID]), FUN = list)[[-1]]) %>%
                                    apply(1, paste0, collapse = '; ') %>% unique, .(rsc.ID, ee.ID, type)] %>%
     .[, c('tag', 'V1') := list(V1, NULL)] %>% rbind(mTags[is.na(ID), .(rsc.ID, ee.ID, type, tag)])
@@ -358,15 +414,21 @@ enrich <- function(rankings, taxa = getOption('app.taxa'), scope = getOption('ap
   if(verbose)
     advanceProgress('Looking up ontology terms')
   
-  mMaps <- list(getTags(taxa, scope, NULL, options$distance),
-                getTags(taxa, scope, rankings$rn, options$distance))
+  if(taxa == 'any') {
+    taxOptions <- Filter(function(x) !(x %in% c('artificial', 'dope', 'any')), getOption('app.all_taxa'))
+    
+    mMaps <- list(rbindlist(lapply(taxOptions, function(x) getTags(x, scope, NULL, options$distance))),
+                  rbindlist(lapply(taxOptions, function(x) getTags(x, scope, rankings$rn, options$distance))))
+  } else
+    mMaps <- list(getTags(taxa, scope, NULL, options$distance),
+                  getTags(taxa, scope, rankings$rn, options$distance))
   
   mMaps[[2]] <- mMaps[[2]] %>%
     merge(rankings[, .(rsc.ID = rn, score, direction)],
           by = 'rsc.ID', sort = F, allow.cartesian = T)
   
   aprior <- function() {
-    tmp <- mMaps[[2]][, .(A = sum(score) / (1 + sum(distance, na.rm = T))),
+    tmp <- mMaps[[2]][, .(A = sum(score, na.rm = T) / (1 + sum(distance, na.rm = T))),
                       .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)][, B := sum(A, na.rm = T)] %>%
       merge(mMaps[[1]][, .(C = .N / (1 + sum(distance, na.rm = T))),
                        .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)][, D := sum(C, na.rm = T)],

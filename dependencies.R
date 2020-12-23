@@ -15,9 +15,13 @@ options(app.fc_lower = 0, app.fc_upper = 10)
 options(app.distance_cutoff = 2.25)
 options(app.mfx = T, app.geeq = T, app.meanval = T)
 options(app.search_method = 'mvsm')
-options(app.taxa = 'human',
+options(app.taxa = 'any',
         app.ontology = c('GO', 'CLO', 'CL', 'CHEBI', 'DO', 'EFO', 'TGEMO', 'HP', 'MP', 'OBI', 'UBERON'))
-options(app.all_taxa = list(`H. sapiens` = 'human', `M. musculus` = 'mouse', `R. norvegicus` = 'rat', artificial = 'artificial'))
+options(app.all_taxa = list(`H. sapiens` = 'human',
+                            `M. musculus` = 'mouse',
+                            `R. norvegicus` = 'rat',
+                            Any = 'any',
+                            artificial = 'artificial'))
 options(app.all_search_methods = list(`M-VSM` = 'mvsm', `Weighted Average` = 'zscore'))
 
 updateOptions <- function() {
