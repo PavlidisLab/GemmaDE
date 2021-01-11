@@ -54,17 +54,18 @@ if(!exists('DATA.HOLDER')) {
   if(file.exists('/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER.rds'))
     DATA.HOLDER <- readRDS('/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER.rds')
   else {
-    DATA.HOLDER <- lapply(Filter(function(x) !(x %in% c('artificial', 'dope', 'any')), getOption('app.all_taxa')), function(taxon) {
+    DATA.HOLDER <- lapply(getConfig(key = 'taxa')$core, function(taxon) {
       load(paste0('/home/nlim/MDE/RScripts/DataFreeze/Packaged/Current/', taxon, '.RDAT.XZ'))
       
       dataHolder$ts <- NULL
       dataHolder$meanrank <- NULL
       dataHolder$baserank <- NULL
+      dataHolder$meanval <- NULL
       dataHolder$baseval <- NULL
       
       metaData <- metaData %>% as.data.table %>% .[, .(rsc.ID, ee.Troubled, ee.Public, ee.ID, ee.Name, ee.Source, ee.Scale,
                                                        ee.NumSamples, ee.TagLongUri, ad.Name, ad.Company,
-                                                       ad.Sequencing, sf.Subset, sf.Cat, sf.CatLongUri, sf.ValLongUri,
+                                                       ad.Sequencing, sf.Subset, sf.Cat, sf.CatLongUri, sf.Val, sf.ValLongUri,
                                                        cf.Cat, cf.CatLongUri, cf.Val, cf.ValLongUri, cf.Baseline, cf.BaseLongUri)]
       
       # Clean up the data.
@@ -92,14 +93,21 @@ if(!exists('DATA.HOLDER')) {
       metaData[cf.BaseLongUri == '', cf.BaseLongUri := NA]
       metaData[cf.ValLongUri == '', cf.ValLongUri := NA]
       
+      # Experiments who have any rsc that are DE_Exclude or Include should be ignored
+      bad.ees <- metaData[sf.ValLongUri == 'http://purl.obolibrary.org/obo/TGEMO_00014' |
+                            sf.Val == 'DE_Exclude' |
+                            sf.ValLongUri == 'http://purl.obolibrary.org/obo/TGEMO_00013' |
+                            sf.Val == 'DE_Include', ee.ID]
+      bad.rscs <- metaData[ee.ID %in% bad.ees, rsc.ID]
+      
       # We don't want:
       # Troubled or private experiments
       # Experiments where one/both contrasts is/are unknown
       # Experiments when the contrasts are identical (seemingly dose-dependent?)
-      bad.rscs <- metaData[ee.Troubled | !ee.Public |
-                             is.na(cf.BaseLongUri) |
-                             is.na(cf.ValLongUri) |
-                             cf.BaseLongUri == cf.ValLongUri, rsc.ID]
+      bad.rscs <- c(bad.rscs, metaData[ee.Troubled | !ee.Public |
+                                         is.na(cf.BaseLongUri) |
+                                         is.na(cf.ValLongUri) |
+                                         cf.BaseLongUri == cf.ValLongUri, rsc.ID]) %>% unique
       
       # Drop experiment samples that don't meet our needs
       dataHolder$fc <- dataHolder$fc[, !(colnames(dataHolder$fc) %in% bad.rscs)]
@@ -110,30 +118,24 @@ if(!exists('DATA.HOLDER')) {
       dataHolder$pv[is.nan(dataHolder$pv)] <- NA
       
       dataHolder$adj.pv <- apply(dataHolder$pv, 2, function(pv)
-        p.adjust(pv, method = 'BH', n = length(pv))) # Assuming NaN p-values should be 1.
+        p.adjust(pv, method = 'BH', n = length(pv))) # TODO assuming NaN p-values should be 1, they may also be missing genes.
       dataHolder$pv <- NULL
       
-      metaData[, n.DE := colSums2(dataHolder$adj.pv < 0.05, na.rm = T)]
+      metaData[, n.DE := colSums2(dataHolder$adj.pv <= 0.05, na.rm = T)]
       metaData[, mean.fc := colMeans2(dataHolder$fc, na.rm = T)]
+      metaData[, n.detect := nrow(dataHolder$fc) - colSums2(dataHolder$fc %>% is.na)]
       
       metaData$ee.ID <- metaData$ee.ID %>% as.integer
       
-      metaGene <- metaGene %>% as.data.table %>% .[, .(entrez.ID, gene.ID, ensembl.ID, gene.Name, alias.Name,
-                                                       gene.Desc, mfx.Rank)]
+      metaGene <- metaGene %>% as.data.table %>% .[, .(entrez.ID, gene.ID, ensembl.ID, gene.Name,
+                                                       alias.Name, gene.Desc, mfx.Rank)]
       
-      metaGene[, n.DE := rowSums2(dataHolder$adj.pv < 0.05, na.rm = T)]
+      metaGene[, n.DE := rowSums2(dataHolder$adj.pv <= 0.05, na.rm = T)]
       metaGene[, dist.Mean := rowMeans2(dataHolder$fc, na.rm = T)]
       metaGene[, dist.SD := Rfast::rowVars(dataHolder$fc, na.rm = T, std = T)]
       
-      # Precompute z-scores and p-weighted z-scores. Need to maintain logFC and adj.pv for user-selected filtering
+      # Precompute z-scores. Need to maintain logFC and adj.pv for user-selected filtering
       dataHolder$zscore <- (dataHolder$fc - metaGene$dist.Mean) / metaGene$dist.SD
-      
-      dataHolder$pvz <- dataHolder$zscore %>% {
-        tmp <- dataHolder$adj.pv
-        tmp[is.na(tmp)] <- 1
-        tmp[tmp < 1e-20] <- 1e-20
-        abs(.) * -log(tmp, 100)
-      }
       
       # Split into 500 ee.ID chunks (so the URI doesn't get too long) and fetch quality scores 
       # from Gemma for all experiments.
@@ -153,14 +155,14 @@ if(!exists('DATA.HOLDER')) {
       metaData$ad.Sequencing <- metaData$ad.Sequencing %>% as.factor
       metaData$sf.Cat <- metaData$sf.Cat %>% as.factor
       metaData$sf.CatLongUri <- metaData$sf.CatLongUri %>% as.factor
+      metaData$sf.Val <- metaData$sf.Val %>% as.factor
       metaData$sf.ValLongUri <- metaData$sf.ValLongUri %>% as.factor
       metaData$cf.Cat <- metaData$cf.Cat %>% as.factor
       metaData$cf.CatLongUri <- metaData$cf.CatLongUri %>% as.factor
       metaData$cf.ValLongUri <- metaData$cf.ValLongUri %>% as.factor
       metaData$cf.BaseLongUri <- metaData$cf.BaseLongUri %>% as.factor
       
-      goTerms <- queryMany(metaGene$entrez.ID,
-                           scopes = 'entrezgene', fields = 'go', species = taxon)
+      goTerms <- queryMany(metaGene$entrez.ID, scopes = 'entrezgene', fields = 'go', species = taxon)
       
       goTerms <- rbindlist(lapply(c('CC', 'BP', 'MF'), function(cat) {
         gocat <- paste0('go.', cat)
@@ -175,20 +177,20 @@ if(!exists('DATA.HOLDER')) {
           experiment.meta = metaData, gene.meta = metaGene, go = unique(goTerms))
     })
     
-    names(DATA.HOLDER) <- unlist(Filter(function(x) !(x %in% c('artificial', 'dope')), getOption('app.all_taxa')))
+    names(DATA.HOLDER) <- getConfig(key = 'taxa')$core
     
     saveRDS(DATA.HOLDER, '/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER.rds')
   }
   
-  lapply(Filter(function(x) !(x %in% c('artificial', 'dope')), names(DATA.HOLDER)), function(taxa) {
+  lapply(getConfig(key = 'taxa')$core, function(taxa) {
     matches <- do.call(rbind,
                        str_match_all(DATA.HOLDER[[taxa]]@experiment.meta[, c(as.character(cf.BaseLongUri),
                                                                                   as.character(cf.ValLongUri))],
                                      'http://purl.org/commons/record/ncbi_gene/(\\d*)')) %>% unique
     
-    matches[, 2] <- lapply(Filter(function(x) !(x %in% c('artificial', 'dope')), names(DATA.HOLDER)), function(name) {
-      DATA.HOLDER[[name]]@gene.meta[entrez.ID %in% matches[, 2],
-                                    .(entrez.ID, gene.Name = paste0(gene.Name, ' [', name, ']'))]
+    matches[, 2] <- lapply(getConfig(key = 'taxa')$core, function(taxa) {
+      DATA.HOLDER[[taxa]]@gene.meta[entrez.ID %in% matches[, 2],
+                                    .(entrez.ID, gene.Name = paste0(gene.Name, ' [', taxa, ']'))]
     }) %>% rbindlist %>% unique(by = 'entrez.ID') %>% .[match(matches[, 2], entrez.ID), gene.Name]
     
     data.table(Node_Long = matches[, 1], Definition = matches[, 2], OntologyScope = 'TGEMO')
@@ -205,14 +207,30 @@ if(!exists('DATA.HOLDER')) {
   if(file.exists('/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND.rds'))
     CACHE.BACKGROUND <- readRDS('/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND.rds')
   else {
-    CACHE.BACKGROUND <- lapply(Filter(function(x) x %in% names(DATA.HOLDER), getOption('app.all_taxa')), precomputeTags)
-    
-    names(CACHE.BACKGROUND) <- Filter(function(x) x %in% names(DATA.HOLDER), getOption('app.all_taxa'))
+    CACHE.BACKGROUND <- lapply(names(DATA.HOLDER), precomputeTags)
+    names(CACHE.BACKGROUND) <- names(DATA.HOLDER)
     
     saveRDS(CACHE.BACKGROUND, '/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND.rds')
   }
   
   TAGS <- lapply(names(CACHE.BACKGROUND), getTags) %>% `names<-`(names(CACHE.BACKGROUND))
+  
+  mFiles <- list.files('/space/scratch/jsicherman/Thesis Work/data/nulls')
+  NULLS <- lapply(names(DATA.HOLDER), function(taxa) {
+    mDT <- NULL
+    for(f in mFiles[startsWith(mFiles, taxa)]) {
+      message(paste('Loading', f))
+      N <- gsub(paste0(taxa, '_(\\d+)\\.rds'), '\\1', f)
+      dt <- readRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/nulls/', f)) %>%
+        .[, list(list(.SD[, .(st.mean, st.sd)])) %>% `names<-`(paste0('C', N)), .(cf.BaseLongUri, cf.ValLongUri)]
+      if(is.null(mDT))
+        mDT <- dt
+      else
+        mDT <- merge(mDT, dt, by = c('cf.BaseLongUri', 'cf.ValLongUri'), all = T)
+    }
+    mDT
+  }) %>% `names<-`(names(DATA.HOLDER))
+  rm(mFiles)
 }
 
 rm(isDataLoaded)

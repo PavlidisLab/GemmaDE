@@ -9,28 +9,29 @@ server <- function(input, output, session) {
       HTML('<div style="margin-bottom: 10px"><h2 class="loading" style="display: inline">EnriChing</h2></div>')))
     
     query <- getQueryString(session)
+    options <- getConfig()
     
     genes <- query$genes %>% jsonify
-    scope <- switch(is.null(query$scope) + 1, jsonify(query$scope), getOption('app.ontology'))
+    
+    scope <- switch(is.null(query$scope) + 1, jsonify(query$scope), options$scope$value)
+    sig <- switch(is.null(query$sig) + 1, jsonify(query$sig), options$sig$value)
+    fc <- switch(is.null(query$fc) + 1, jsonify(query$fc) %>% as.numeric, options$fc$value)
     
     updateSelectizeInput(session, 'genes', options = list(persist = F, create = T, createOnBlur = T))
     session$sendCustomMessage('querySet', genes)
-    updateSelectizeInput(session, 'taxa', selected = ifelse(is.null(query$taxa), getOption('app.taxa'), query$taxa))
-    updateSelectizeInput(session, 'method', selected = ifelse(is.null(query$method), getOption('app.search_method'), query$method))
-    updatePickerInput(session, 'scope', selected = scope)
-    updateCheckboxInput(session, 'mfx', value = ifelse(is.null(query$mfx), getOption('app.mfx'), query$mfx))
-    updateNumericInput(session, 'reqall', value = ifelse(is.null(query$required), getOption('app.req.all'), query$required))
-    updateCheckboxInput(session, 'meanval', value = ifelse(is.null(query$expr), getOption('app.meanval'), query$expr))
-    updateNumericInput(session, 'distance', value = ifelse(is.null(query$distance), getOption('app.distance_cutoff'), query$distance))
-    updateNumericInput(session, 'min.tags', value = ifelse(is.null(query$min), getOption('app.min.tags'), query$min))
-    updateNumericInput(session, 'max.rows', value = ifelse(is.null(query$rows), getOption('app.max.rows'), query$rows))
-    updateNumericInput(session, 'pv', value = ifelse(is.null(query$pv), getOption('app.pv'), query$pv))
-    updateSliderInput(session, 'fc', value = ifelse(is.null(query$fc), c(getOption('app.fc_lower'), getOption('app.fc_upper')), query$fc %>% jsonify %>% as.numeric))
     
+    updatePickerInput(session, 'scope', selected = scope)
+    updateTextInput(session, 'sig', value = sig) # TODO This is gonna need work since it's not a vector
+    updateSliderInput(session, 'fc', value = fc)
+    
+    for(mName in Filter(function(x) !(x %in% c('scope', 'sig', 'fc')), names(options))) {
+      do.update(session, options[[mName]], ifelse(is.null(query[[mName]]), options[[mName]]$value, query[[mName]]))
+    }
+
     # Search if any genes are specified. Specify parameters to make sure no reactives.
     # Run it next ms to give the server time to propagate layout changes.
     if(!is.null(query$genes))
-      shinyjs::delay(1, searchGenes(genes, query$taxa, scope, update = F))
+      shinyjs::delay(1, searchGenes(genes, sig, query$taxa, scope, update = F))
   }, once = T, ignoreNULL = T)
   
   observeEvent(input$genes.csv, {
@@ -46,19 +47,15 @@ server <- function(input, output, session) {
   # Reset the search bar
   observeEvent(input$reset, {
     updateTextInput(session, 'genes', value = '')
+    session$sendCustomMessage('fileUpload', F)
     updateSelectizeInput(session, 'taxa', selected = NULL)
     updateSelectizeInput(session, 'method', selected = NULL)
-    updatePickerInput(session, 'scope', selected = getOption('app.ontology'))
-    updateCheckboxInput(session, 'mfx', value = getOption('app.mfx'))
-    updateNumericInput(session, 'reqall', value = getOption('app.req.all'))
-    updateCheckboxInput(session, 'meanval', value = getOption('app.meanval'))
-    updateCheckboxInput(session, 'geeq', value = getOption('app.geeq'))
-    updateNumericInput(session, 'min.tags', value = getOption('app.min.tags'))
-    updateNumericInput(session, 'distance', value = getOption('app.distance_cutoff'))
-    updateNumericInput(session, 'max.rows', value = getOption('app.max.rows'))
-    updateNumericInput(session, 'pv', value = getOption('app.pv'))
-    updateSliderInput(session, 'fc', value = c(getOption('app.fc_lower'), getOption('app.fc_upper')))
-    session$sendCustomMessage('fileUpload', F)
+    updateTextInput(session, 'sig', value = NULL)
+    
+    options <- getConfig()
+    for(mName in Filter(function(x) !(x %in% c('taxa', 'method', 'sig')), names(options))) {
+      do.update(session, options[[mName]], options[[mName]]$value)
+    }
   })
   
   # Search
@@ -84,17 +81,6 @@ server <- function(input, output, session) {
       })
     } else if(input$tabs == 'GO Enrichment' && !is.null(session$userData$plotData) && is.null(session$userData$goRendered)) {
       session$userData$goRendered <- T
-      
-      # We could precompute this but it seems to run rapidly and the other view is more convenient.
-      #annList <- DATA.HOLDER[[session$userData$plotData$taxa]]@go[, list(list(as.character(id))), as.character(entrez.ID)] %>%
-      #  lapply(c) %>% { `names<-`(.[[2]], .[[1]]) }
-      
-      #annotation <- makeAnnotation(
-      #  annList,
-      #  name = DATA.HOLDER[[session$userData$plotData$taxa]]@gene.meta[, .(entrez.ID, gene.Name)] %>%
-      #    as.data.frame %>% `rownames<-`(.[, 'entrez.ID']) %>%
-      #    .[names(annList), ]
-      #)
       
       output$results_go <- generateGOPage(ora(hitlist = session$userData$plotData$gene.Name,
                                               annotation = paste0('Generic_', session$userData$plotData$taxa))) # annotation))
@@ -122,17 +108,6 @@ server <- function(input, output, session) {
       })
     } else if(input$tabs == 'GO Enrichment') {
       session$userData$goRendered <- T
-      
-      # We could precompute this but it seems to run rapidly and the other view is more convenient.
-      #annList <- DATA.HOLDER[[session$userData$plotData$taxa]]@go[, list(list(as.character(id))), as.character(entrez.ID)] %>%
-      #  lapply(c) %>% { `names<-`(.[[2]], .[[1]]) }
-      
-      #annotation <- makeAnnotation(
-      #  annList,
-      #  name = DATA.HOLDER[[session$userData$plotData$taxa]]@gene.meta[, .(entrez.ID, gene.Name)] %>%
-      #    as.data.frame %>% `rownames<-`(.[, 'entrez.ID']) %>%
-      #    .[names(annList), ]
-      #)
       
       output$results_go <- generateGOPage(ora(hitlist = session$userData$plotData$gene.Name,
                                               annotation = paste0('Generic_', session$userData$plotData$taxa))) # annotation))
@@ -172,11 +147,6 @@ server <- function(input, output, session) {
     ), session)
     
     generatePlot <- function(value) {
-      #rownames(value$expr) <- merge(data.table(ID = rownames(value$expr)),
-      #                          data.table(ID = session$userData$plotData$gene.ID,
-      #                                     name = session$userData$plotData$gene.Name),
-      #                          by = 'ID', sort = F, all.x = T)[, name]
-      
       session$userData$plotData$processed <- value
       session$userData$plotData$queued <- NULL
       
@@ -248,21 +218,17 @@ server <- function(input, output, session) {
   #' @param genes The genes that were searched
   #' @param experiments The experiment rankings that were obtained
   #' @param conditions The condition rankings that were obtained
-  #' @param taxa The taxa scope that was queried
-  #' @param scope The ontology scope that was queried
   #' @param options Any additional options that were passed
-  endSuccess <- function(genes, experiments, conditions,
-                         taxa = getOption('app.taxa'), scope = getOption('app.ontology'),
-                         options = getOption('app.all_options')) {
+  endSuccess <- function(genes, experiments, conditions, options) {
     # Generate the results header
     if(exists('output'))
       output$results_header <- renderUI({
         generateResultsHeader(HTML(paste0('<div style="margin-bottom: 10px"><h2 style="display: inline">Found ',
                                           nrow(experiments), ' experiment', ifelse(nrow(experiments) > 1, 's', ''), ' differentially expressing ',
-                                          ifelse(ncol(experiments) == 2, colnames(experiments)[1],
+                                          ifelse(which(colnames(experiments) == 'score') == 2, colnames(experiments)[1],
                                                  paste0('<span data-toggle="tooltip" data-placement="top" title="',
-                                                        paste0(colnames(experiments)[1:(ncol(experiments) - 3)], collapse = ', '), '">',
-                                                        ncol(experiments) - 3, ' gene', ifelse(ncol(experiments) > 4, 's', ''), '</span>')),
+                                                        paste0(colnames(experiments)[1:(which(colnames(experiments) == 'score') - 1)], collapse = ', '), '">',
+                                                        which(colnames(experiments) == 'score') - 1, ' gene', ifelse(which(colnames(experiments) == 'score') > 2, 's', ''), '</span>')),
                                           '</h2><span class="timestamp">in ',
                                           format(difftime(Sys.time(), session$userData$startTime), digits = 3), '.</span></span>')))
       })
@@ -270,14 +236,14 @@ server <- function(input, output, session) {
     advanceProgress('Fetching Gemma data')
     
     # Compute experiments in scope
-    mCache <- getTags(taxa, scope, experiments$rn, options$distance) %>%
+    mCache <- getTags(options$taxa$value, options$scope$value, experiments$rn) %>%
       .[cf.BaseLongUri %in% conditions[, unique(cf.BaseLongUri)] & cf.ValLongUri %in% conditions[, unique(cf.ValLongUri)]] %>%
-      unique %>% merge(DATA.HOLDER[[taxa]]@experiment.meta[rsc.ID %in% experiments$rn, .(rsc.ID, ee.ID)], by = 'rsc.ID', sort = F, allow.cartesian = T) %>%
+      unique %>% merge(DATA.HOLDER[[options$taxa$value]]@experiment.meta[rsc.ID %in% experiments$rn, .(rsc.ID, ee.ID)], by = 'rsc.ID', sort = F, allow.cartesian = T) %>%
       .[, N := length(unique(ee.ID)), .(cf.BaseLongUri, cf.ValLongUri)] %>%
       merge(data.table(rsc.ID = experiments$rn, experiments[, !c('score', 'rn')]), by = 'rsc.ID')
     
     # @see[1] Currently only supporting visualizing conditions that are significant.
-    geneExpr <- mCache[paste0(cf.BaseLongUri, cf.ValLongUri) %in% conditions[pv.fisher <= options$pv, paste0(cf.BaseLongUri, cf.ValLongUri)]]
+    geneExpr <- mCache[paste0(cf.BaseLongUri, cf.ValLongUri) %in% conditions[1:5, paste0(cf.BaseLongUri, cf.ValLongUri)]]
     
     advanceProgress('Adding cross references')
     
@@ -288,17 +254,16 @@ server <- function(input, output, session) {
     geneScores <- geneScores[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, N, Evidence)] %>%
       merge(
         merge(geneScores[, !c('ee.ID', 'cf.Cat', 'Evidence', 'N', 'direction')] %>%
-                .[, lapply(.SD, function(x) paste0(head(round(x, 3), 100), collapse = ',')),
-                  .(cf.BaseLongUri, cf.ValLongUri)],
+                .[, lapply(.SD, function(x) paste0(head(round(x, 3), 100), collapse = ',')), .(cf.BaseLongUri, cf.ValLongUri)],
               geneScores[, .(cf.BaseLongUri, cf.ValLongUri, direction = ifelse(direction, 1, -1) * ifelse(reverse, -1, 1))] %>%
-                .[, lapply(.SD, function(x) paste(sum(x == 1), sum(x == -1), sep = ',')),
-                  .(cf.BaseLongUri, cf.ValLongUri)],
+                .[, lapply(.SD, function(x) paste(sum(x == 1), sum(x == -1), sep = ',')), .(cf.BaseLongUri, cf.ValLongUri)],
               by = c('cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T),
         by = c('cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T) %>% unique
     
     # Rename things and add the ES
-    conditions <- merge(conditions, geneScores, by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T) %>% setorder(pv.fisher) %>%
-      setnames(c('pv.fisher', 'C', 'direction'), c('P-value', 'Augmented Count', 'Direction')) %>%
+    conditions <- merge(conditions, geneScores, by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T) %>%
+      setorder(-stat, na.last = T) %>%
+      setnames(c('stat', 'C', 'direction'), c('Test Statistic', 'Augmented Count', 'Direction')) %>%
       .[, `Augmented Count` := round(`Augmented Count`, 2)]
     
     advanceProgress('Finishing up')
@@ -311,34 +276,34 @@ server <- function(input, output, session) {
   #' Call the processing function to handle searching and update the display.
   #'
   #' @param genes A character vector of entrez IDs
-  #' @param taxa The taxon of interest.
-  #' @param scope The ontology scope.
   #' @param options The search options
-  handleSearch <- function(genes, taxa = getOption('app.taxa'), scope = getOption('app.ontology'), options = getOption('app.all_options')) {
-    experiments <- search(genes, taxa, options)
+  handleSearch <- function(genes, options) {
+    tmp <<- options
+    tmp2 <<- genes
+    experiments <- search(genes, options)
     
     if(is.null(experiments))
       endFailure()
     else {
-      conditions <- enrich(experiments, taxa, scope, options)
+      conditions <- enrich(experiments, options)
       
       if(is.null(conditions))
         endEmpty()
-      else {
-        results <- endSuccess(genes, experiments, head(conditions, options$max.rows), taxa, scope, options)
+      else { # TODO lazy computation of x refs
+        results <- endSuccess(genes, experiments, head(conditions, 50), options)
         
-        output$results <- generateResults(results$results, taxa, options)
+        output$results <- generateResults(results$results, options)
         
         # Prepare some plotting information.
         session$userData$plotData <- list(
-          taxa = taxa,
+          taxa = options$taxa$value,
           gene.ID = genes,
-          gene.Name = DATA.HOLDER[[taxa]]@gene.meta[entrez.ID %in% genes, gene.Name],
-          # @see[1] Make sure to update this if we change the strategy to select viz-able
-          conditions = conditions[pv.fisher <= options$pv, paste(cf.BaseLongUri, 'vs.', cf.ValLongUri)],
+          gene.Name = DATA.HOLDER[[options$taxa$value]]@gene.meta[entrez.ID %in% genes, gene.Name],
+          # TODO @see[1] Make sure to update this if we change the strategy to select viz-able
+          conditions = conditions[1:5, paste(cf.BaseLongUri, 'vs.', cf.ValLongUri)],
           options = options,
           queued = results$expression %>%
-            merge(DATA.HOLDER[[taxa]]@experiment.meta[, .(rsc.ID, ee.ID, ee.NumSamples)],
+            merge(DATA.HOLDER[[options$taxa$value]]@experiment.meta[, .(rsc.ID, ee.ID, ee.NumSamples)],
                   by = c('rsc.ID', 'ee.ID'), all.x = T, sort = F) %>% {
                     if(nrow(.) == 0) return(NULL)
                     
@@ -358,57 +323,50 @@ server <- function(input, output, session) {
   #' perform the actual search and update the display.
   #'
   #' @param genes A character vector of genes (entrez ID, ensembl ID, name or keyword)
+  #' @param signature A DE signature to search
   #' @param taxa The taxon ([human|mouse|rat])
   #' @param scope The ontology scope
   #' @param update Whether or not to update the browser's query string.
   searchGenes <- function(genes = input$genes,
+                          signature = input$signature,
                           taxa = input$taxa,
                           scope = input$scope,
                           update = T) {
     session$userData$startTime <- as.POSIXct(Sys.time())
     setProgress(environment(), 0, 'Validating input', n.steps = getOption('max.progress.steps'))
     
-    options <- list(pv = input$pv,
-                    fc.lower = input$fc[1], fc.upper = input$fc[2],
-                    score.lower = input$score[1], score.upper = input$score[2],
-                    mfx = input$mfx,
-                    reqall = input$reqall,
-                    meanval = input$meanval,
-                    geeq = input$geeq,
-                    distance = input$distance,
-                    min.tags = input$min.tags,
-                    max.rows = input$max.rows,
-                    method = input$method)
+    options <- lapply(names(getConfig()), function(x) {
+      ret <- getConfig(x)
+      if(is.null(input[[x]]))
+        ret$value <- input[[x]]
+      ret
+    }) %>% `names<-`(names(getConfig()))
     
     # Update the query string
     if(update) {
-      query <- paste0('?genes=',
-                      switch(min(2, length(genes)), genes, paste0('[', paste0(genes, collapse = ','), ']')),
-                      switch((taxa == getOption('app.taxa')) + 1, paste0('&taxa=', taxa), ''),
-                      switch(identical(scope, getOption('app.ontology')) + 1,
-                             paste0('&scope=', switch(min(2, length(scope)), scope,
-                                                      paste0('[', paste0(scope, collapse = ','), ']'), ''))),
-                      switch((options$pv == getOption('app.pv')) + 1, paste0('&pv=', options$pv), ''),
-                      switch(isTRUE(all.equal(input$fc, c(getOption('app.fc_lower'), getOption('app.fc_upper')))) + 1,
-                             paste0('&fc=[', paste0(input$fc, collapse = ','), ']'), ''),
-                      switch((options$mfx == getOption('app.mfx')) + 1, paste0('&mfx=', options$mfx), ''),
-                      switch((options$reqall == getOption('app.req.all')) + 1, paste0('&required=', options$reqall), ''),
-                      switch((options$meanval == getOption('app.meanval')) + 1, paste0('&expr=', options$meanval), ''),
-                      switch((options$geeq == getOption('app.geeq')) + 1, paste0('&geeq=', options$geeq), ''),
-                      switch((options$min.tags == getOption('app.min.tags')) + 1, paste0('&min=', options$min.tags), ''),
-                      switch((options$max.rows == getOption('app.max.rows')) + 1, paste0('&rows=', options$max.rows), ''),
-                      switch((options$distance == getOption('app.distance_cutoff')) + 1, paste0('&distance=', options$distance), ''),
-                      switch((options$method == getOption('app.search_method')) + 1, paste0('&method=', options$method), ''))
+      query <- paste0('?genes=', switch(min(2, length(genes)), genes, paste0('[', paste0(genes, collapse = ','), ']')))
+      
+      extras <- lapply(names(getConfig()), function(x) {
+        if(!isTRUE(all.equal(input[[x]], getConfig(key = x)$value)) || length(input[[x]]) != length(getConfig(key = x)$value)) {
+          if(length(input[[x]]) > 1)
+            paste0(x, '=', paste0('[', paste0(input[[x]], collapse = ','), ']'))
+          else
+            paste0(x, '=', input[[x]])
+        }
+      }) %>% unlist %>% paste0(collapse = '&')
+      
+      if(nchar(extras) > 0)
+        query <- paste0(query, '&', extras)
+      
       updateQueryString(query, 'push')
     }
     
-    if(is.null(taxa)) taxa <- getOption('app.taxa')
-    if(is.null(scope)) scope <- getOption('app.ontology')
+    if(is.null(taxa)) taxa <- options$taxa$value
     
     tidyGenes <- function(genes, taxa) {
       if(taxa == 'any') {
-        taxOptions <- Filter(function(x) !(x %in% c('artificial', 'dope', 'any')), getOption('app.all_taxa'))
-        taxIDs <- c(human = 9606, mouse = 10090, rat = 10116)
+        taxOptions <- getConfig(key = 'taxa')$core
+        taxIDs <- getConfig(key = 'taxa')$mapping
         
         orthologs <- lapply(taxOptions, function(i) {
           lapply(taxOptions, function(j) {
@@ -439,7 +397,7 @@ server <- function(input, output, session) {
       }
       
       # Clean numerics (interpreted as entrez IDs) and remove them from further processing.
-      cleanGenes <- suppressWarnings(Filter(~!is.na(as.integer(.)), genes))
+      cleanGenes <- suppressWarnings(Filter(function(x) !is.na(as.integer(x)), genes))
       genes <- genes[!(genes %in% cleanGenes)]
       
       # If it matches (ENSG|ENSMUS|ENSRNO)\d{11}, it's an Ensembl ID (for human, mouse or rat).
@@ -485,9 +443,7 @@ server <- function(input, output, session) {
       cleanGenes
     }
     
-    cleanGenes <- tidyGenes(genes, taxa)
-    
     # Done processing, handle the search.
-    handleSearch(cleanGenes, taxa, scope, options)
+    handleSearch(tidyGenes(genes, taxa), options)
   }
 }

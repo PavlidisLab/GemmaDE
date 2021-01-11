@@ -32,6 +32,136 @@ DATA.HOLDER$rat <- NULL
 CACHE.BACKGROUND$human <- NULL
 CACHE.BACKGROUND$rat <- NULL
 
+dopeScores <- function(taxa,
+                       genes,
+                       geneIDs = NULL,
+                       examples,
+                       N_conditions = 1,
+                       mConditions = NULL,
+                       regularizer = 5, # Higher numbers make it more linear. Negative numbers make it reverse. 0 is linear
+                       seed = NULL) {
+  if(!is.null(seed))
+    set.seed(seed)
+  
+  # Select genes that we'll work with
+  nGenes <- nrow(DATA.HOLDER[[taxa]]@gene.meta)
+  
+  if(!is.null(geneIDs)) {
+    nSelected <- which(DATA.HOLDER[[taxa]]@gene.meta$entrez.ID %in% geneIDs)
+    genes <- length(nSelected)
+  } else
+    nSelected <- sample(1:nGenes, max(genes))
+  
+  mGenes <- DATA.HOLDER[[taxa]]@gene.meta[nSelected]
+  mGenes.dist <- DATA.HOLDER[[taxa]]@data$meanval[nSelected, ] %>% as.matrix %>% {
+    tmp <- .
+    # TODO Let's ignore this detail for now
+    #tmp <- switch(mData@experiment.meta$ee.Scale,
+    #               LOG2 = .,
+    #               LOG10 = . / log10(2),
+    #               LN = . / ln(2),
+    #               log2(. + 1)
+    #)
+    tmp[is.nan(tmp) | is.na(tmp)] <- 0
+    list(mean = rowMeans2(tmp, na.rm = T),
+         sd = Rfast::rowVars(tmp, na.rm = T, std = T))
+  }
+  
+  # Select our conditions
+  if(is.null(mConditions)) {
+    mConditions <- DATA.HOLDER[[taxa]]@experiment.meta[, .(cf.Cat, cf.CatLongUri, cf.Val,
+                                                           cf.ValLongUri, cf.Baseline, cf.BaseLongUri)] %>%
+      unique %>% .[sample(1:.N, N_conditions)]
+  }
+  
+  # Search ahead of time for N genes
+  message('Searching...')
+  searched <- lapply(genes, function(i) {
+    search(mGenes$entrez.ID[sample(1:nrow(mGenes), i)], taxa, verbose = F)
+  })
+  
+  list(data = lapply(examples, function(N_examples) {
+    message(paste0('Simulating ', N_examples, ' examples...'))
+    lapply(genes, function(N_genes) {
+      message(paste0('Simulating ', N_genes, ' genes...'))
+      
+      mSelected <- nSelected[1:N_genes]
+      
+      CACHE.BACKGROUND$dope <<- NULL
+      TAGS$dope <<- NULL
+      
+      mName <- taxa
+      searched2 <- searched
+      if(N_examples > 0) {
+        mData <- DATA.HOLDER[[taxa]]
+        mData@taxon <- 'dope'
+        mData@go <- data.table()
+        
+        experimentNames <- paste0('RSCID.DOPE.', 1:N_examples)
+        
+        mMeta <- data.table(ee.ID = mData@experiment.meta[, max(ee.ID) + 1] %>% seq(., length.out = N_examples),
+                            ee.qScore = 1,
+                            ee.sScore = 1,
+                            rsc.ID = experimentNames,
+                            ee.Troubled = F,
+                            ee.Public = T,
+                            ee.Name = paste0('DOPE', 1:N_examples),
+                            ee.Source = 'DOPE',
+                            ee.Scale = 'LOG2',
+                            ee.NumSamples = 1, # TODO These aren't used in search/enrich so we don't need them (yet)
+                            ee.TagLongUri = NA,
+                            ad.Name = 'DOPE',
+                            ad.Company = 'DOPE',
+                            ad.Sequencing = T,
+                            sf.Subset = F,
+                            sf.Cat = NA,
+                            sf.CatLongUri = NA,
+                            sf.ValLongUri = NA,
+                            mConditions[sample(1:N_conditions, N_examples, T)],
+                            n.DE = 1,
+                            mean.fc = 1)
+        
+        message('Precomputing cache...')
+        DATA.HOLDER$dope <<- mData
+        DATA.HOLDER$dope@experiment.meta <<- mMeta
+        CACHE.BACKGROUND$dope <<- precomputeTags('dope', heuristic = T, mGraph = mGraph, graphTerms = graphTerms)
+        TAGS$dope <<- getTags('dope')
+        
+        DATA.HOLDER$dope <<- mData
+        CACHE.BACKGROUND$dope <<- rbind(CACHE.BACKGROUND[[taxa]], CACHE.BACKGROUND$dope) %>% reorderTags
+        TAGS$dope <<- rbind(TAGS[[taxa]], TAGS$dope) %>% reorderTags2
+        mName <- 'dope'
+        
+        message('Spoofing scores...')
+        searched2 <- lapply(searched, function(search) {
+          mSelect <- sample(1:nrow(search), N_examples, T,
+                            prob = exp(-1/regularizer * 1:nrow(search)) %>% `/`(sum(.)))
+          message(paste0('Regularizer: ', regularizer, ' inserting at: ', paste0(mSelect, collapse = ', '), ' of ', nrow(search)))
+          rbind(search, copy(search)[mSelect] %>% .[, rn := experimentNames]) %>% setorder(-score)
+        })
+      }
+      
+      message('Enriching...')
+      enriched <- lapply(searched2, function(i) {
+        if(is.null(i) || nrow(i) == 0)
+          data.table()
+        else
+          enrich(i, mName, verbose = F)
+      })
+      
+      list(searched = searched2,
+           enriched = enriched,
+           N_examples = N_examples,
+           N_searched = genes,
+           N_genes = N_genes)
+    })
+  }),
+  genes = mGenes,
+  conditions = mConditions,
+  regularizer = regularizer,
+  N_conditions = N_conditions)
+}
+
 dope <- function(taxa,
                  genes,
                  geneIDs = NULL, # Specify how many genes or which gene IDs
@@ -110,9 +240,11 @@ dope <- function(taxa,
                                      rep(N_examples) %>%
                                      `*`(sample(c(1, dropout$fc_severity), N_genes * N_examples, T, c(1 - dropout$frequency, dropout$frequency))),
                                    ncol = N_examples)
+        
         mPV[mSelected, ] <- matrix(rnorm(N_genes * N_examples, pv$mean, pv$sd) +
                                      sample(c(0, dropout$p_severity), N_genes * N_examples, T, c(1 - dropout$frequency, dropout$frequency)),
                                    N_genes, N_examples) %>% pmax(0) %>% pmin(1)
+        
         mMean[mSelected, ] <- matrix(rnorm(N_genes * N_examples, mGenes.dist$mean[1:N_genes], mGenes.dist$sd[1:N_genes]), N_genes, N_examples)
         mZ[mSelected, ] <- (mFC[mSelected, ] - mData@gene.meta$dist.Mean[mSelected]) / mData@gene.meta$dist.SD[mSelected]
         mPVZ[mSelected, ] <- mZ[mSelected, ] %>% {
@@ -146,7 +278,7 @@ dope <- function(taxa,
         message('Precomputing cache...')
         DATA.HOLDER$dope <<- mData
         DATA.HOLDER$dope@experiment.meta <<- mMeta
-        CACHE.BACKGROUND$dope <<- precomputeTags('dope') %>% reorderTags
+        CACHE.BACKGROUND$dope <<- precomputeTags('dope', heuristic = T, mGraph = mGraph, graphTerms = graphTerms)
         TAGS$dope <<- getTags('dope')
         
         mData@experiment.meta <- rbind(mData@experiment.meta, mMeta)
@@ -159,7 +291,7 @@ dope <- function(taxa,
         DATA.HOLDER$dope <<- mData
         rm(mData, mMeta, mFC, mMean, mPV, mZ, mPVZ)
         CACHE.BACKGROUND$dope <<- rbind(CACHE.BACKGROUND[[taxa]], CACHE.BACKGROUND$dope) %>% reorderTags
-        TAGS$dope <<- rbind(TAGS[[taxa]], TAGS$dope)
+        TAGS$dope <<- rbind(TAGS[[taxa]], TAGS$dope) %>% reorderTags2
         mName <- 'dope'
       }
       
@@ -226,39 +358,32 @@ evalDope <- function(dopeResults, mTruthy = NULL) {
           tmp <- copy(genes$enriched[[N_genes]])[, I := .I]
           tmp2 <- copy(genes$searched[[N_genes]])[, I := .I]
           
-          matched <- tmp[cf.Cat %in% cond$cf.Cat &
+          matched <- tmp[cf.Cat == head(cond$cf.Cat, 1) &
                            as.character(cf.BaseLongUri) %in% mBaseOptions &
                            as.character(cf.ValLongUri) %in% mValOptions]
           matched2 <- tmp2[grepl('DOPE', rn, fixed = T)]
           
+          print(matched)
+          
           search_indices <- matched2[, I]
           search_indices_frac <- search_indices / nrow(tmp2)
+          
+          search_indices <- list(list(search_indices))
+          search_indices_frac <- list(list(search_indices_frac))
+          
           enrich_indices <- matched[, I]
+          enrich_indices[matched$A == 0] <- Inf
           enrich_indices_frac <- enrich_indices / nrow(tmp)
           pvals <- matched[, pv.fisher]
           
-          if(length(search_indices) > 1) {
-            search_indices <- list(list(search_indices))
-            search_indices_frac <- list(list(search_indices_frac))
-          }
-          
-          if(length(enrich_indices) > 1) {
-            enrich_indices <- list(list(enrich_indices))
-            enrich_indices_frac <- list(list(enrich_indices_frac))
-            pvals <- list(list(pvals))
-          }
-            
-          data.table(meanfc = dopeResults$fc$mean,
-                     meanpv = dopeResults$pv$mean,
-                     dropout = dopeResults$dropout$frequency,
-                     geeq = dopeResults$geeq$mean,
-                     n_examples_spiked = genes$N_examples, # Number of examples spiked in
-                     n_searched_genes = genes$N_searched[N_genes], # Number of genes searched in this quest
-                     n_total_genes = genes$N_genes,
+          data.table(n_total_genes = genes$N_genes,
+                     n_examples_spiked = genes$N_examples,
                      n_condition_found = matched$A,
                      n_other_found = matched$B,
                      n_condition_corpus = matched$C,
                      n_other_corpus = matched$D,
+                     baseline = matched$cf.BaseLongUri,
+                     contrast = matched$cf.ValLongUri,
                      search_indices = search_indices,
                      search_indices_frac = search_indices_frac,
                      enrich_indices = enrich_indices,
@@ -270,55 +395,12 @@ evalDope <- function(dopeResults, mTruthy = NULL) {
   }) %>% rbindlist
 }
 
-options(app.distance_cutoff = 2)
-options(app.mfx = T, app.geeq = F, app.meanval = F, app.min.tags = 1.5)
+options(app.distance_cutoff = Inf)
+options(app.mfx = T, app.geeq = F, app.meanval = F, app.min.tags = 0)
 updateOptions()
 
 geneFreqs <- DATA.HOLDER$mouse@gene.meta[, list(list(entrez.ID)), n.DE] %>% setorder(n.DE)
-condFreqs <- DATA.HOLDER$mouse@experiment.meta[, .N, .(cf.Cat, cf.CatLongUri, cf.Val, cf.ValLongUri, cf.Baseline, cf.BaseLongUri)] %>% setorder(N)
+condFreqs <- CACHE.BACKGROUND$mouse[, .N, .(distance, cf.Cat, cf.ValLongUri, cf.BaseLongUri)] %>% setorder(N)
 
-lapply(c(25, 20, 31, 10, 41, 5, 10, 50, 80), function(condN) {
-  while(TRUE) {
-    mCond <- condFreqs[N == condN] %>% .[sample(1:nrow(.), 1)] %>% .[, !'N'] %>%
-      .[, .(cf.Cat = as.character(cf.Cat),
-            cf.CatLongUri = as.character(cf.CatLongUri),
-            cf.Val, cf.Baseline,
-            cf.ValLongUri = as.character(cf.ValLongUri), cf.BaseLongUri = as.character(cf.BaseLongUri))]
-    
-    mID <- CACHE.BACKGROUND$mouse[cf.Cat == mCond$cf.Cat &
-                                    cf.ValLongUri == mCond$cf.Val &
-                                    cf.BaseLongUri == mCond$cf.Baseline,
-                                  data.table::first(as.character(rsc.ID))]
-    if(length(mID) != 0) {
-      mTruthy <- CACHE.BACKGROUND$mouse[rsc.ID == mID] %>%
-        .[, .(cf.Cat = as.character(cf.Cat),
-              cf.BaseLongUri = as.character(cf.BaseLongUri),
-              cf.ValLongUri = as.character(cf.ValLongUri))]
-      break
-    }
-  }
-  
-  lapply(c(20, 10, 5, 2, 50, 100), function(geneN) {
-    lapply(c(0.9, 0.95, 0.99), function(fc) {
-      lapply(c(0.001, 0.01, 0.05), function(pv) {
-        lapply(c(0.2, 0.3, 0.4, 0.5, 0.75, 0.8, 0.9), function(freq) {
-          lapply(intersect(c(1, 2, 5, 30, 50, 100, 300, 1000), geneFreqs$n.DE), function(i) {
-            g <- unlist(geneFreqs[n.DE == i, V1])
-            lapply(0:10, function(exN) {
-              dope('mouse', geneIDs = sample(g, min(length(g), geneN)), examples = exN,
-                   fc = list(mean = 1, sd = 0), pv = list(mean = pv, sd = 0),
-                   dropout = list(p_severity = 0, fc_severity = NA, quantile = fc, frequency = freq), seed = 206134, mConditions = mCond) %>%
-                evalDope(mTruthy) %>% cbind(n.DE = i)
-            }) %>% rbindlist
-          }) %>% rbindlist -> doped
-          
-          saveRDS(doped, paste0('/space/scratch/jsicherman/Thesis Work/data/bootstrap/condN_',
-                                condN, '_pv_', pv, '_freq_', freq, '_quantile_', fc, '_gene_', geneN, '.rds'))
-          rm(doped)
-          gc()
-          NULL
-        })
-      })
-    })
-  })
-})
+mGraph <- simplify(igraph::graph_from_data_frame(ONTOLOGIES[, .(ChildNode_Long, ParentNode_Long)]))
+graphTerms <- unique(ONTOLOGIES[, as.character(ChildNode_Long, ParentNode_Long)])

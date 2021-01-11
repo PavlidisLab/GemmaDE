@@ -28,18 +28,21 @@ ui <- fluidPage(style = 'height: 100%;',
                       # Search parameters
                       fluidRow(
                         # Gene entry
-                        column(5,
+                        column(4,
                                fluidRow(selectInput('genes', 'Input Gene(s) of Interest', list(`Enter query...` = ''), multiple = T)),
                                fluidRow(helpText(HTML('Examples: <a genes=\'["RPS4Y1","XIST","KDM5D"]\'>RPS4Y1, XIST, KDM5D</a>, <a genes=\'"ENSG00000121410"\'>ENSG00000121410</a>, <a style="color: #002145" genes=\'"random()"\'>I\'m feeling lucky</a>')))),
                         column(2, uiOutput('genes.csv.ui')),
                         
+                        # Signature entry
+                        column(2, textInput('sig', 'DE signature', placeholder = '(optional)')),
+                        
                         # Taxa entry
-                        column(2, selectInput('taxa', 'Taxon', getOption('app.all_taxa'))),
+                        column(2, selectInput('taxa', 'Taxon', getConfig('taxa')$choices, getConfig('taxa')$value)),
                         
                         # Ontology entry (with more options, as it's on the right)
-                        column(3,
-                               pickerInput('scope', 'Ontologies', ONTOLOGIES[, unique(as.character(OntologyScope))], selected = getOption('app.ontology'), multiple = T,
-                                              options = list(selectOnTab = T)),
+                        column(2,
+                               pickerInput('scope', 'Ontologies', getConfig('scope')$choices,
+                                           getConfig('scope')$value, multiple = T, options = list(selectOnTab = T)),
                                helpText(style = 'float: right;', HTML('<a data-toggle="collapse" data-target="#options">More options...</a>')))
                       ),
                       
@@ -47,17 +50,9 @@ ui <- fluidPage(style = 'height: 100%;',
                       wellPanel(class = 'collapse', id = 'options',
                                 fluidRow(style = 'display: flex; flex-direction: row;',
                                          column(6, wellPanel(`well-name` = 'Filtering',
-                                                             numericInput('distance', 'Ontology expansion limit', value = getOption('app.distance_cutoff'), step = 0.25, min = 0, max = 10),
-                                                             numericInput('min.tags', 'Minimum augmented tag count', value = getOption('app.min.tags'), step = 1, min = 1, max = 100000),
-                                                             numericInput('max.rows', 'Maximum contrasts to compute', value = getOption('app.max.rows'), step = 10, min = 10, max = 1000))),
+                                                             lapply(getConfig(category = 'Filtering'), as.input))),
                                          column(6, wellPanel(`well-name` = 'Scoring',
-                                                             selectInput('method', 'Scoring function', getOption('app.all_search_methods')),
-                                                             materialSwitch('mfx', 'Include multifunctionality', value = getOption('app.mfx'), right = T),
-                                                             materialSwitch('meanval', 'Include mean expression level', value = getOption('app.meanval'), right = T),
-                                                             materialSwitch('geeq', 'Include experiment quality (GEEQ)', value = getOption('app.geeq'), right = T),
-                                                             numericInput('pv', 'Significance threshold', value = getOption('app.pv'), step = 0.01, min = 0, max = 1),
-                                                             numericInput('reqall', 'Required number of differentially expressed genes', value = getOption('app.req.all'), step = 1, min = 1),
-                                                             sliderInput('fc', 'FC threshold', value = c(getOption('app.fc_lower'), getOption('app.fc_upper')), step = 0.1, min = 0, max = 100, ticks = F)))
+                                                             lapply(getConfig(category = 'Scoring'), as.input)))
                                 )),
                       
                       # Buttons

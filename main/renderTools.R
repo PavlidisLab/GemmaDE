@@ -18,7 +18,7 @@ generateResultsHeader <- function(title) {
 #' @param plot_conditions Conditions to visualize
 #' @param plot_type The plot type (heatmap, boxplot, etc.)
 #' @param plot_data The data to plot (gene expression data, etc.)
-generateResultsPlot <- function(genes, conditions, expr, options = getOption('app.all_options'),
+generateResultsPlot <- function(genes, conditions, expr, options = getConfig(),
                                 plot_genes, plot_conditions, plot_type, plot_data) {
   plot_conditions <- expr$metadata[grepl(paste0(gsub('([.|()\\^{}+$*?]|\\[|\\])', '\\\\\\1', unlist(strsplit(plot_conditions, ' vs. ', T))), collapse = '|'), baseline), name]
   
@@ -106,16 +106,15 @@ generateResultsPlot <- function(genes, conditions, expr, options = getOption('ap
 #' Make a pretty results table and render it
 #'
 #' @param conditions The condition rankings
-#' @param taxa The taxa that was searched
 #' @param options Any additional options that were used
-generateResults <- function(conditions, taxa = getOption('app.taxa'), options = getOption('app.all_options')) {
-  outputColumns <- c('Contrast', 'Direction', 'Evidence', 'Augmented Count', 'P-value')
+generateResults <- function(conditions, options = getConfig()) {
+  outputColumns <- c('Contrast', 'Direction', 'Evidence', 'Augmented Count', 'Test Statistic')
   
   conditions[, Evidence := paste0('<span data-toggle="popover" title="Experiments" data-html="true" data-content="',
                                   lapply(unlist(strsplit(Evidence, ',')), function(experiment) {
                                     paste0('<a target=_blank href=https://gemma.msl.ubc.ca/expressionExperiment/showExpressionExperiment.html?id=',
                                            experiment, '>',
-                                           DATA.HOLDER[[taxa]]@experiment.meta[ee.ID == experiment, unique(ee.Name)], '</a>')
+                                           DATA.HOLDER[[options$taxa$value]]@experiment.meta[ee.ID == experiment, unique(ee.Name)], '</a>')
                                   }) %>% paste0(collapse = ', '), '">', paste(N, paste0('Experiment', ifelse(N > 1, 's', '')), '<i class="fas fa-question-circle" style="cursor: pointer;"></i>'), '</span>'),
              .(cf.BaseLongUri, cf.ValLongUri)]
   
@@ -128,7 +127,7 @@ generateResults <- function(conditions, taxa = getOption('app.taxa'), options = 
                       filter = 'top',
                       options = list(pageLength = 10,
                                      order = list(
-                                       list(which(outputColumns == 'P-value'), 'asc')),
+                                       list(which(outputColumns == 'Test Statistic'), 'desc')),
                                      language = list(lengthMenu = 'Show _MENU_ conditions per page',
                                                      processing = '',
                                                      emptyTable = 'No matching conditions found.',
@@ -152,7 +151,7 @@ generateResults <- function(conditions, taxa = getOption('app.taxa'), options = 
                                             width = '15%',
                                             className = 'dt-right',
                                             searchable = F, orderable = F),
-                                       list(targets = which(outputColumns == 'P-value'),
+                                       list(targets = which(outputColumns == 'Test Statistic'),
                                             render = JS('asPval'),
                                             width = '10%',
                                             searchable = F),

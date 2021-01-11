@@ -10,6 +10,7 @@ library(shinyHeatmaply)
 library(shinypanels)
 library(RColorBrewer)
 library(stringr)
+library(bit)
 
 library(jsonlite)
 library(async)
@@ -23,6 +24,7 @@ library(data.table)
 library(gemmaAPI)
 library(ermineR)
 library(mygene)
+library(homologene)
 
 source('dependencies.R')
 
