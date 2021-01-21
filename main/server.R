@@ -1,7 +1,7 @@
 #' Server
 #'
 #' Query strings are supported as follows:
-#' ?genes=[list of genes]&taxa=[human|mouse|rat]&scope=[list of ontologies]...
+#' ?genes=[list of genes]&taxa=[human|mouse|rat]&...
 server <- function(input, output, session) {
   # On connect, observe the query string. Search if any genes are specified
   observeEvent(input$LOAD, {
@@ -13,25 +13,23 @@ server <- function(input, output, session) {
     
     genes <- query$genes %>% jsonify
     
-    scope <- switch(is.null(query$scope) + 1, jsonify(query$scope), options$scope$value)
     sig <- switch(is.null(query$sig) + 1, jsonify(query$sig), options$sig$value)
     fc <- switch(is.null(query$fc) + 1, jsonify(query$fc) %>% as.numeric, options$fc$value)
     
     updateSelectizeInput(session, 'genes', options = list(persist = F, create = T, createOnBlur = T))
     session$sendCustomMessage('querySet', genes)
     
-    updatePickerInput(session, 'scope', selected = scope)
     updateTextInput(session, 'sig', value = sig) # TODO This is gonna need work since it's not a vector
     updateSliderInput(session, 'fc', value = fc)
     
-    for(mName in Filter(function(x) !(x %in% c('scope', 'sig', 'fc')), names(options))) {
+    for(mName in Filter(function(x) !(x %in% c('sig', 'fc')), names(options))) {
       do.update(session, options[[mName]], ifelse(is.null(query[[mName]]), options[[mName]]$value, query[[mName]]))
     }
 
     # Search if any genes are specified. Specify parameters to make sure no reactives.
     # Run it next ms to give the server time to propagate layout changes.
     if(!is.null(query$genes))
-      shinyjs::delay(1, searchGenes(genes, sig, query$taxa, scope, update = F))
+      shinyjs::delay(1, searchGenes(genes, sig, query$taxa, update = F))
   }, once = T, ignoreNULL = T)
   
   observeEvent(input$genes.csv, {
@@ -67,14 +65,14 @@ server <- function(input, output, session) {
     searchGenes(genes)
   })
   
-  # Open gene or GO tab
+  # Open other tabs
   observeEvent(input$tabs, {
     if(input$tabs == 'Gene Info' && !is.null(session$userData$plotData) && is.null(session$userData$genesRendered)) {
       session$userData$genesRendered <- T
       
       synchronise({
         geneEvidence(session$userData$plotData$gene.ID,
-                     session$userData$plotData$taxa)$
+                     session$userData$plotData$options$taxa$value)$
           then(function(evidence) {
             output$results_genes <- generateGenePage(evidence)
           })
@@ -83,7 +81,11 @@ server <- function(input, output, session) {
       session$userData$goRendered <- T
       
       output$results_go <- generateGOPage(ora(hitlist = session$userData$plotData$gene.Name,
-                                              annotation = paste0('Generic_', session$userData$plotData$taxa))) # annotation))
+                                              annotation = paste0('Generic_', session$userData$plotData$options$taxa$value)))
+    } else if(input$tabs == 'Hierarchical View (beta)' && !is.null(session$userData$plotData) && is.null(session$userData$treeRendered)) {
+      session$userData$treeRendered <- T
+      
+      output$results_tree <- generateResultsTree(session$userData$plotData$conditions, session$userData$plotData$options)
     }
   })
   
@@ -91,6 +93,7 @@ server <- function(input, output, session) {
   observeEvent(input$UPDATED, {
     session$userData$genesRendered <- NULL
     session$userData$goRendered <- NULL
+    #session$userData$treeRendered <- NULL
 
     if(input$tabs == 'Gene Info') {
       shinyjs::delay(100, {
@@ -98,8 +101,8 @@ server <- function(input, output, session) {
           session$userData$genesRendered <- T
           
           synchronise({
-            geneEvidence(session$userData$plotData$gene.ID,
-                         session$userData$plotData$taxa)$
+            geneEvidence(session$userData$plotData$gene.ID, # TODO for "any"
+                         session$userData$plotData$options$taxa$value)$
               then(function(evidence) {
                 output$results_genes <- generateGenePage(evidence)
               })
@@ -109,8 +112,12 @@ server <- function(input, output, session) {
     } else if(input$tabs == 'GO Enrichment') {
       session$userData$goRendered <- T
       
-      output$results_go <- generateGOPage(ora(hitlist = session$userData$plotData$gene.Name,
-                                              annotation = paste0('Generic_', session$userData$plotData$taxa))) # annotation))
+      output$results_go <- generateGOPage(ora(hitlist = session$userData$plotData$gene.Name, # TODO for "any"
+                                              annotation = paste0('Generic_', session$userData$plotData$options$taxa$value)))
+    } else if(input$tabs == 'Hierarchical View (beta)') {
+      session$userData$treeRendered <- T
+      
+      output$results_tree <- generateResultsTree(session$userData$plotData$conditions, session$userData$plotData$options)
     }
   })
   
@@ -147,46 +154,59 @@ server <- function(input, output, session) {
     ), session)
     
     generatePlot <- function(value) {
-      session$userData$plotData$processed <- value
-      session$userData$plotData$queued <- NULL
+      session$userData$plotData$exprInfo <- value
       
       updatePickerInput(session, 'plot_genes',
                         choices = as.list(intersect(session$userData$plotData$gene.Name, rownames(value$expr))),
                         selected = intersect(session$userData$plotData$gene.Name, rownames(value$expr)))
-      updatePickerInput(session, 'plot_conditions',
-                        choices = as.list(session$userData$plotData$conditions),
-                        selected = data.table::first(session$userData$plotData$conditions))
+      updatePickerInput(session, 'plot_conditions', # TODO Selection strategy
+                        choices = as.list(session$userData$plotData$conditions[`Ontology Steps` == 0] %>% .[1:5, paste0(cf.BaseLongUri, ' vs. ', cf.ValLongUri)]),
+                        selected = data.table::first(session$userData$plotData$conditions[`Ontology Steps` == 0] %>% .[1:5, paste0(cf.BaseLongUri, ' vs. ', cf.ValLongUri)]))
       
       output$plot <- renderPlotly({
         generateResultsPlot(session$userData$plotData$gene.Name,
-                            session$userData$plotData$conditions,
+                            session$userData$plotData$conditions[`Ontology Steps` == 0] %>% .[1:5, paste0(cf.BaseLongUri, ' vs. ', cf.ValLongUri)],
                             value,
                             session$userData$plotData$options,
                             input$plot_genes, input$plot_conditions, input$plot_type, input$plot_data)
       })
     }
     
-    if(is.null(session$userData$plotData$processed)) {
-      # If we didn't already process we need to give the UI a tick to update and then
-      # fetch the data.
-      if(!is.null(session$userData$plotData$queued)) {
-        shinyjs::delay(1, {
-          synchronise(session$userData$plotData$queued %>% {
-            geneExpression(.[, unique(ee.ID)],
-                           .[, unique(rsc.ID)],
-                           session$userData$plotData$taxa,
-                           session$userData$plotData$gene.ID)$then(generatePlot)
-          })
+    if(is.null(session$userData$plotData$exprInfo)) {
+      # If we didn't already process we need to give the UI a tick to update and then fetch the data.
+      if(!is.null(session$userData$plotData$conditions)) {
+        shinyjs::delay(1, { # TODO for "any" 
+          synchronise(getTags(session$userData$plotData$options$taxa$value,
+                              session$userData$plotData$experiments) %>% # TODO Selection strategy
+                        .[cf.Cat %in% (session$userData$plotData$conditions[`Ontology Steps` == 0] %>% .[1:5, unique(cf.Cat)]) &
+                            cf.BaseLongUri %in% (session$userData$plotData$conditions[`Ontology Steps` == 0] %>% .[1:5, unique(cf.BaseLongUri)]) &
+                            cf.ValLongUri %in% (session$userData$plotData$conditions[`Ontology Steps` == 0] %>% .[1:5, unique(cf.ValLongUri)])] %>%
+                        unique %>% # TODO for "any"
+                        merge(DATA.HOLDER[[session$userData$plotData$options$taxa$value]]@experiment.meta[rsc.ID %in% session$userData$plotData$experiments, .(rsc.ID, ee.ID, ee.NumSamples)],
+                              by = 'rsc.ID', sort = F, allow.cartesian = T) %>% {
+                          if(nrow(.) == 0) return(NULL)
+                          
+                          # Select some samples to queue for gene expression visualization
+                          while((tmp <- .[sample(1:nrow(.))])[1, ee.NumSamples] > getOption('max.gemma')) {
+                          }
+                          
+                          tmp[cumsum(ee.NumSamples) <= getOption('max.gemma')]
+                        } %>% {
+                          geneExpression(.[, unique(ee.ID)],
+                                         .[, unique(rsc.ID)], # TODO for "any"
+                                         session$userData$plotData$options$taxa$value,
+                                         session$userData$plotData$gene.ID)$then(generatePlot)
+                        })
         })
       }
     } else {
-      # If we already processed then we can just display
+      # If we already processed then we can just display it
       output$plot <- renderPlotly({
         generateResultsPlot(session$userData$plotData$gene.Name,
-                            session$userData$plotData$conditions,
-                            session$userData$plotData$processed,
+                            session$userData$plotData$conditions[`Ontology Steps` == 0] %>% .[1:5, paste0(cf.BaseLongUri, ' vs. ', cf.ValLongUri)],
+                            session$userData$plotData$exprInfo,
                             session$userData$plotData$options,
-                            input$plot_genes, input$plot_type, input$plot_data)
+                            input$plot_genes, input$plot_conditions, input$plot_type, input$plot_data)
       })
     }
   })
@@ -223,52 +243,52 @@ server <- function(input, output, session) {
     # Generate the results header
     if(exists('output'))
       output$results_header <- renderUI({
-        generateResultsHeader(HTML(paste0('<div style="margin-bottom: 10px"><h2 style="display: inline">Found ',
-                                          nrow(experiments), ' experiment', ifelse(nrow(experiments) > 1, 's', ''), ' differentially expressing ',
+        generateResultsHeader(HTML(paste0('<div style="margin-bottom: 10px"><h2 style="display: inline">EnriChed ',
+                                          nrow(experiments), ' experiment', ifelse(nrow(experiments) > 1, 's', ''), ' for ',
                                           ifelse(which(colnames(experiments) == 'score') == 2, colnames(experiments)[1],
                                                  paste0('<span data-toggle="tooltip" data-placement="top" title="',
                                                         paste0(colnames(experiments)[1:(which(colnames(experiments) == 'score') - 1)], collapse = ', '), '">',
                                                         which(colnames(experiments) == 'score') - 1, ' gene', ifelse(which(colnames(experiments) == 'score') > 2, 's', ''), '</span>')),
                                           '</h2><span class="timestamp">in ',
-                                          format(difftime(Sys.time(), session$userData$startTime), digits = 3), '.</span></span>')))
+                                          format(difftime(session$userData$endTime, session$userData$startTime), digits = 3), '.</span></span>')))
       })
     
-    advanceProgress('Fetching Gemma data')
+    conditions[, Contrast := paste0('<b>', cf.BaseLongUri, '</b> vs. <b>', cf.ValLongUri, '</b>')]
     
-    # Compute experiments in scope
-    mCache <- getTags(options$taxa$value, options$scope$value, experiments$rn) %>%
-      .[cf.BaseLongUri %in% conditions[, unique(cf.BaseLongUri)] & cf.ValLongUri %in% conditions[, unique(cf.ValLongUri)]] %>%
-      unique %>% merge(DATA.HOLDER[[options$taxa$value]]@experiment.meta[rsc.ID %in% experiments$rn, .(rsc.ID, ee.ID)], by = 'rsc.ID', sort = F, allow.cartesian = T) %>%
-      .[, N := length(unique(ee.ID)), .(cf.BaseLongUri, cf.ValLongUri)] %>%
-      merge(data.table(rsc.ID = experiments$rn, experiments[, !c('score', 'rn')]), by = 'rsc.ID')
+    advanceProgress('Cross linking')
     
-    # @see[1] Currently only supporting visualizing conditions that are significant.
-    geneExpr <- mCache[paste0(cf.BaseLongUri, cf.ValLongUri) %in% conditions[1:5, paste0(cf.BaseLongUri, cf.ValLongUri)]]
+    conditions <- conditions %>% setorder(distance) %>% .[, head(.SD, 1), stat] %>%
+      .[abs(stat) >= 1]
     
-    advanceProgress('Adding cross references')
+    tmp <- getTags(options$taxa$value, experiments$rn) %>%
+      .[cf.Cat %in% conditions[, unique(cf.Cat)] &
+          cf.BaseLongUri %in% conditions[, unique(cf.BaseLongUri)] &
+          cf.ValLongUri %in% conditions[, unique(cf.ValLongUri)]] %>% # TODO for "any"
+      merge(DATA.HOLDER[[options$taxa$value]]@experiment.meta[rsc.ID %in% experiments$rn, .(rsc.ID, ee.ID, ee.Name)],
+            by = 'rsc.ID', sort = F, allow.cartesian = T) %>%
+      .[, N := length(unique(ee.ID)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
     
-    geneScores <- data.table(conditions[, .(cf.BaseLongUri, cf.ValLongUri)]) %>%
-      merge(mCache[, !'rsc.ID'], by = c('cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T) %>%
-      .[, Evidence := paste0(unique(ee.ID), collapse = ','), .(cf.BaseLongUri, cf.ValLongUri)]
+    # This chunk is costly, but associates all Gemma linkages. It would be great if we could defer this
+    # but I don't know how to :(
+    # It's much faster to not query ee.Name though
+    if(options$gemmaLink$value) {
+      tmp[, Evidence :=
+          paste0('<span data-toggle="popover" title="Experiments" data-html="true" data-content="',
+                 paste0('<a target=_blank href=https://gemma.msl.ubc.ca/expressionExperiment/showExpressionExperiment.html?id=', unique(ee.ID), '>', unique(ee.ID), '</a>') %>% paste0(collapse = ', '),
+                 '">',
+                 paste(N, paste0('Experiment', ifelse(N > 1, 's', '')), '<i class="fas fa-question-circle" style="cursor: pointer;"></i>'),
+                 '</span>'),
+        .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
+    } else
+      tmp[, Evidence := paste(N, paste0('Experiment', ifelse(N > 1, 's', ''))), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
     
-    geneScores <- geneScores[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, N, Evidence)] %>%
-      merge(
-        merge(geneScores[, !c('ee.ID', 'cf.Cat', 'Evidence', 'N', 'direction')] %>%
-                .[, lapply(.SD, function(x) paste0(head(round(x, 3), 100), collapse = ',')), .(cf.BaseLongUri, cf.ValLongUri)],
-              geneScores[, .(cf.BaseLongUri, cf.ValLongUri, direction = ifelse(direction, 1, -1) * ifelse(reverse, -1, 1))] %>%
-                .[, lapply(.SD, function(x) paste(sum(x == 1), sum(x == -1), sep = ',')), .(cf.BaseLongUri, cf.ValLongUri)],
-              by = c('cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T),
-        by = c('cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T) %>% unique
-    
-    # Rename things and add the ES
-    conditions <- merge(conditions, geneScores, by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T) %>%
+    tmp %>%
+      .[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, N, Evidence)] %>%
+      unique %>%
+      merge(conditions, by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), sort = F) %>%
       setorder(-stat, na.last = T) %>%
-      setnames(c('stat', 'C', 'direction'), c('Test Statistic', 'Augmented Count', 'Direction')) %>%
-      .[, `Augmented Count` := round(`Augmented Count`, 2)]
-    
-    advanceProgress('Finishing up')
-    
-    list(results = conditions, expression = geneExpr)
+      setnames(c('stat', 'C', 'distance'), c('Test Statistic', 'Observations', 'Ontology Steps')) %>%
+      .[, Observations := round(Observations, 2)]
   }
   
   #' Handle Search
@@ -278,40 +298,31 @@ server <- function(input, output, session) {
   #' @param genes A character vector of entrez IDs
   #' @param options The search options
   handleSearch <- function(genes, options) {
-    tmp <<- options
-    tmp2 <<- genes
     experiments <- search(genes, options)
     
     if(is.null(experiments))
       endFailure()
     else {
       conditions <- enrich(experiments, options)
+      session$userData$endTime <- Sys.time()
       
       if(is.null(conditions))
         endEmpty()
-      else { # TODO lazy computation of x refs
-        results <- endSuccess(genes, experiments, head(conditions, 50), options)
+      else {
+        conditions <- endSuccess(genes, experiments, conditions, options)
         
-        output$results <- generateResults(results$results, options)
+        # TODO for "any"
+        geneInfo <- DATA.HOLDER[[options$taxa$value]]@gene.meta[entrez.ID %in% genes, .(entrez.ID, gene.Name)]
+        
+        output$results <- generateResults(conditions)
         
         # Prepare some plotting information.
         session$userData$plotData <- list(
-          taxa = options$taxa$value,
-          gene.ID = genes,
-          gene.Name = DATA.HOLDER[[options$taxa$value]]@gene.meta[entrez.ID %in% genes, gene.Name],
-          # TODO @see[1] Make sure to update this if we change the strategy to select viz-able
-          conditions = conditions[1:5, paste(cf.BaseLongUri, 'vs.', cf.ValLongUri)],
           options = options,
-          queued = results$expression %>%
-            merge(DATA.HOLDER[[options$taxa$value]]@experiment.meta[, .(rsc.ID, ee.ID, ee.NumSamples)],
-                  by = c('rsc.ID', 'ee.ID'), all.x = T, sort = F) %>% {
-                    if(nrow(.) == 0) return(NULL)
-                    
-                    # Select some samples to queue for gene expression visualization
-                    while((tmp <- .[sample(1:nrow(.))])[1, ee.NumSamples] > getOption('max.gemma')) {
-                    }
-                    tmp[cumsum(ee.NumSamples) <= getOption('max.gemma')]
-                  }
+          gene.ID = geneInfo$entrez.ID,
+          gene.Name = geneInfo$gene.Name,
+          experiments = experiments$rn,
+          conditions = conditions[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, `Test Statistic`, `Ontology Steps`)]
         )
       }
     }
@@ -325,19 +336,17 @@ server <- function(input, output, session) {
   #' @param genes A character vector of genes (entrez ID, ensembl ID, name or keyword)
   #' @param signature A DE signature to search
   #' @param taxa The taxon ([human|mouse|rat])
-  #' @param scope The ontology scope
   #' @param update Whether or not to update the browser's query string.
   searchGenes <- function(genes = input$genes,
                           signature = input$signature,
                           taxa = input$taxa,
-                          scope = input$scope,
                           update = T) {
     session$userData$startTime <- as.POSIXct(Sys.time())
     setProgress(environment(), 0, 'Validating input', n.steps = getOption('max.progress.steps'))
     
     options <- lapply(names(getConfig()), function(x) {
       ret <- getConfig(x)
-      if(is.null(input[[x]]))
+      if(!is.null(input[[x]]))
         ret$value <- input[[x]]
       ret
     }) %>% `names<-`(names(getConfig()))
@@ -435,7 +444,7 @@ server <- function(input, output, session) {
       # If anything is left, try to match it to gene aliases.
       if(length(genes) > 0) {
         aliases <- DATA.HOLDER[[taxa]]@gene.meta[, parseListEntry(alias.Name), entrez.ID] %>%
-          .[grepl(genes, V1)]
+          .[grepl(paste0(genes, collapse = '|'), V1)]
         if(nrow(aliases) > 0)
           cleanGenes <- c(cleanGenes, aliases[, unique(entrez.ID)])
       }

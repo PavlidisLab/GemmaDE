@@ -20,6 +20,9 @@ generateResultsHeader <- function(title) {
 #' @param plot_data The data to plot (gene expression data, etc.)
 generateResultsPlot <- function(genes, conditions, expr, options = getConfig(),
                                 plot_genes, plot_conditions, plot_type, plot_data) {
+  if(is.null(expr) || is.null(plot_conditions))
+    return(NULL)
+  
   plot_conditions <- expr$metadata[grepl(paste0(gsub('([.|()\\^{}+$*?]|\\[|\\])', '\\\\\\1', unlist(strsplit(plot_conditions, ' vs. ', T))), collapse = '|'), baseline), name]
   
   expr$expr <- expr$expr[plot_genes, plot_conditions]
@@ -101,33 +104,83 @@ generateResultsPlot <- function(genes, conditions, expr, options = getConfig(),
   }
 }
 
+generateResultsTree <- function(data, options) {
+  mTag <- getTags(options$taxa$value) %>%
+    .[cf.Cat %in% data[, unique(cf.Cat)] &
+        cf.BaseLongUri %in% data[, unique(cf.BaseLongUri)] &
+        cf.ValLongUri %in% data[, unique(cf.ValLongUri)]] %>%
+    .[, Contrast := paste0(cf.BaseLongUri, ' vs. ', cf.ValLongUri)] %>%
+    .[, .(rsc.ID = as.integer(as.factor(rsc.ID)), cf.Cat, Contrast, distance)] %>%
+    .[distance == 0, N := .N, Contrast] %>% .[N > 1, rsc.ID := head(.SD$rsc.ID, 1), .(cf.Cat, Contrast)] %>%
+    .[, distance := mean(distance), .(rsc.ID, Contrast)] %>%
+    .[, unique(.SD[, !'N']), rsc.ID] %>%
+    .[, setorder(.SD, distance), rsc.ID] %>%
+    .[, .(level = as.integer(distance / max(distance) * length(unique(distance)) - min(distance)), cf.Cat, Contrast), rsc.ID] %>%
+    .[, parent := level - 1] %>%
+    .[, Parent := factor(parent, levels = unique(parent),
+                         labels = c(NA, .SD[level < max(level), .(Contrast = head(Contrast, 1)), level][, Contrast])) %>%
+        as.character, rsc.ID] %>% .[, .(cf.Cat, Parent, Contrast)] %>%
+    .[is.na(Parent), Parent := cf.Cat] %>% unique %>%
+    merge(data[`Test Statistic` > 0, .(cf.Cat, Contrast = paste0(cf.BaseLongUri, ' vs. ', cf.ValLongUri), `Test Statistic`)],
+          by = c('cf.Cat', 'Contrast'), all = T) %>% {
+      rbind(data.table(Parent = NA, Contrast = 'Data', `Test Statistic` = NA, children = NA),
+            rbind(.[, .(Parent = 'Data', Contrast = unique(cf.Cat), `Test Statistic` = NA, children = NA)],
+                  .[is.na(Parent), Parent := cf.Cat] %>%
+                    .[, children := .N, cf.Cat] %>%
+                    .[, .(Parent, Contrast, `Test Statistic`, children)]))
+    }
+
+  mGraph <- suppressWarnings(
+    igraph::graph_from_data_frame(mTag[, .(Parent, Contrast, weight = 1 / (`Test Statistic` + abs(min(`Test Statistic`) + 1)))] %>%
+                                    .[is.na(weight), weight := 1]) %>%
+      simplify(edge.attr.comb = 'sum')
+  )
+
+  if(!igraph::is_dag(mGraph))
+    mGraph <- suppressWarnings(igraph::induced_subgraph(mGraph, igraph::topo_sort(mGraph)))
+   
+   vertices <- mTag[, .(`Test Statistic`, Contrast)] %>% .[, head(.SD, 1), `Test Statistic`] %>%
+     setorder(-`Test Statistic`, na.last = T) %>% .[, Contrast] %>% intersect(names(igraph::V(mGraph))) %>%
+     head(500)
+   
+   paths <- shortest_paths(mGraph, from = 'NA',
+                           to = vertices,
+                           mode = 'out')$vpath %>% unlist %>% unique
+   
+   mSimpleGraph <- igraph::induced_subgraph(mGraph, paths)
+   dGraph <- igraph::as_data_frame(mSimpleGraph)
+   
+   mCircle <- mTag[is.na(Parent) | (Parent %in% dGraph$from & Contrast %in% dGraph$to)] %>%
+     .[Contrast %in% Parent & !(Contrast %in% vertices), `Test Statistic` := NA] %>%
+     .[, `Test Statistic` := `Test Statistic` / children] %>%
+     .[, .(Parent, Contrast, `Test Statistic`)] %>%
+     as.data.frame %>% .[!is.na(.[, 1]), ] %>%
+     data.tree::FromDataFrameNetwork() %>%
+     circlepackeR(size = 'Test Statistic',
+                  color_max = 'hsl(211, 100%, 14%)',
+                  color_min = 'hsl(210, 53%, 74%)')
+   
+   renderCirclepackeR(mCircle)
+}
+
 #' Generate Results
 #' 
 #' Make a pretty results table and render it
 #'
-#' @param conditions The condition rankings
-#' @param options Any additional options that were used
-generateResults <- function(conditions, options = getConfig()) {
-  outputColumns <- c('Contrast', 'Direction', 'Evidence', 'Augmented Count', 'Test Statistic')
+#' @param session The Shiny session storing our data
+generateResults <- function(data) {
+  outputColumns <- c('Contrast', 'Evidence', 'Observations', 'Ontology Steps', 'Test Statistic')
   
-  conditions[, Evidence := paste0('<span data-toggle="popover" title="Experiments" data-html="true" data-content="',
-                                  lapply(unlist(strsplit(Evidence, ',')), function(experiment) {
-                                    paste0('<a target=_blank href=https://gemma.msl.ubc.ca/expressionExperiment/showExpressionExperiment.html?id=',
-                                           experiment, '>',
-                                           DATA.HOLDER[[options$taxa$value]]@experiment.meta[ee.ID == experiment, unique(ee.Name)], '</a>')
-                                  }) %>% paste0(collapse = ', '), '">', paste(N, paste0('Experiment', ifelse(N > 1, 's', '')), '<i class="fas fa-question-circle" style="cursor: pointer;"></i>'), '</span>'),
-             .(cf.BaseLongUri, cf.ValLongUri)]
-  
-  conditions[, Contrast := paste0('<b>', cf.BaseLongUri, '</b> vs. <b>', cf.ValLongUri, '</b>')]
-  
-  mTable <- datatable(conditions[, outputColumns, with = F] %>% as.data.frame,
+  mTable <- datatable(data[, outputColumns, with = F] %>% as.data.frame,
                       extensions = 'Buttons',
-                      rownames = conditions[, cf.Cat],
+                      rownames = data[, cf.Cat],
                       escape = -(c(which(outputColumns == 'Contrast'), which(outputColumns == 'Evidence')) + 1),
                       filter = 'top',
                       options = list(pageLength = 10,
                                      order = list(
-                                       list(which(outputColumns == 'Test Statistic'), 'desc')),
+                                       list(which(outputColumns == 'Test Statistic'), 'desc'),
+                                       list(which(outputColumns == 'Ontology Steps'), 'asc'),
+                                       list(which(outputColumns == 'Observations'), 'desc')),
                                      language = list(lengthMenu = 'Show _MENU_ conditions per page',
                                                      processing = '',
                                                      emptyTable = 'No matching conditions found.',
@@ -139,29 +192,34 @@ generateResults <- function(conditions, options = getConfig()) {
                                      drawCallback = JS('onTableDraw'),
                                      dom = 'lBfrtip',
                                      autoWidth = T,
+                                     deferRender = T,
+                                     serverSide = T,
                                      columnDefs = list(
                                        list(targets = 0,
                                             width = '10%',
                                             searchable = T,
                                             className = 'cf-cat'),
                                        list(targets = which(outputColumns == 'Contrast'),
-                                            width = '60%',
+                                            width = '50%',
                                             searchable = T, orderable = F),
                                        list(targets = which(outputColumns == 'Evidence'),
-                                            width = '15%',
+                                            width = '10%',
                                             className = 'dt-right',
                                             searchable = F, orderable = F),
                                        list(targets = which(outputColumns == 'Test Statistic'),
                                             render = JS('asPval'),
                                             width = '10%',
                                             searchable = F),
-                                       list(targets = which(outputColumns == 'Augmented Count'),
-                                            searchable = F),
-                                       list(targets = which(outputColumns == 'Direction'),
+                                       list(targets = which(outputColumns == 'Observations'),
                                             width = '5%',
-                                            render = JS('asSparkline2'), width = '1px', className = 'dt-center', searchable = F, orderable = F)#,
+                                            searchable = F),
+                                       list(targets = which(outputColumns == 'Ontology Steps'),
+                                            width = '5%')#,
+                                       #list(targets = which(outputColumns == 'Direction'),
+                                       #     width = '5%',
+                                       #     render = JS('asSparkline2'), width = '1px', className = 'dt-center', searchable = F, orderable = F)#,
                                        #list(targets = (which(outputColumns == 'P-value') + 1):length(outputColumns),
-                                      #      render = JS('asSparkline'), width = '1px', className = 'dt-center', searchable = F, orderable = F)
+                                       #     render = JS('asSparkline'), width = '1px', className = 'dt-center', searchable = F, orderable = F)
                                      ),
                                      search = list(
                                        list(regex = T),
@@ -173,14 +231,14 @@ generateResults <- function(conditions, options = getConfig()) {
                                             action = JS('plotData')),
                                        list(extend = 'csvHtml5',
                                             text = 'Download',
-                                            title = 'data',
-                                            exportOptions = list(
-                                              format = list(
-                                                body = JS('unformatSpark')
-                                                # TODO Will eventually need to fix this so html data is fixed
-                                                #customizeData = JS('function(data) { console.log(data); }')
-                                              )
-                                            )
+                                            title = 'data'#,
+                                            #exportOptions = list(
+                                            #  format = list(
+                                            #body = JS('unformatSpark')
+                                            # TODO Will eventually need to fix this so html data is fixed
+                                            #customizeData = JS('function(data) { console.log(data); }')
+                                            #  )
+                                            #)
                                        )
                                      )
                       )
@@ -200,7 +258,8 @@ generateGOPage <- function(ora) {
                       filter = 'top',
                       options = list(pageLength = 10,
                                      order = list(
-                                       list(2, 'asc')),
+                                       list(2, 'asc')
+                                     ),
                                      language = list(lengthMenu = 'Show _MENU_ enrichments per page',
                                                      processing = '',
                                                      emptyTable = 'No matching enrichments found.',

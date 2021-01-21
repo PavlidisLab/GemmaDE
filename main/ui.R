@@ -28,21 +28,17 @@ ui <- fluidPage(style = 'height: 100%;',
                       # Search parameters
                       fluidRow(
                         # Gene entry
-                        column(4,
+                        column(6,
                                fluidRow(selectInput('genes', 'Input Gene(s) of Interest', list(`Enter query...` = ''), multiple = T)),
-                               fluidRow(helpText(HTML('Examples: <a genes=\'["RPS4Y1","XIST","KDM5D"]\'>RPS4Y1, XIST, KDM5D</a>, <a genes=\'"ENSG00000121410"\'>ENSG00000121410</a>, <a style="color: #002145" genes=\'"random()"\'>I\'m feeling lucky</a>')))),
+                               fluidRow(helpText(HTML('Examples: <a genes=\'["RPS4Y1","EIF1AY","DDX3Y","KDM5D","XIST"]\'>RPS4Y1, EIF1AY, DDX3Y, KDM5D, XIST</a>, <a genes=\'["ENSG00000131095","ENSG00000110436"]\'>ENSG00000131095, ENSG00000110436</a>, <a style="color: #002145" genes=\'"random()"\'>I\'m feeling lucky</a>')))),
                         column(2, uiOutput('genes.csv.ui')),
                         
                         # Signature entry
                         column(2, textInput('sig', 'DE signature', placeholder = '(optional)')),
                         
                         # Taxa entry
-                        column(2, selectInput('taxa', 'Taxon', getConfig('taxa')$choices, getConfig('taxa')$value)),
-                        
-                        # Ontology entry (with more options, as it's on the right)
                         column(2,
-                               pickerInput('scope', 'Ontologies', getConfig('scope')$choices,
-                                           getConfig('scope')$value, multiple = T, options = list(selectOnTab = T)),
+                               selectInput('taxa', 'Taxon', getConfig('taxa')$choices, getConfig('taxa')$value),
                                helpText(style = 'float: right;', HTML('<a data-toggle="collapse" data-target="#options">More options...</a>')))
                       ),
                       
@@ -71,9 +67,10 @@ ui <- fluidPage(style = 'height: 100%;',
                       column(12, htmlOutput('results_header')),
                       mainPanel(
                         tabsetPanel(id = 'tabs',
-                          tabPanel('Conditions', column(12, style = 'margin-top: 16px', dataTableOutput('results') %>% withSpinner)),
-                          tabPanel('Gene Info', column(12, style = 'margin-top: 16px', htmlOutput('results_genes') %>% withSpinner)),
-                          tabPanel('GO Enrichment', column(12, style = 'margin-top: 16px', dataTableOutput('results_go') %>% withSpinner))
+                                    tabPanel('Conditions', column(12, style = 'margin-top: 16px', dataTableOutput('results') %>% withSpinner)),
+                                    tabPanel('Hierarchical View (beta)', column(12, style = 'margin-top: 16px', circlepackeROutput('results_tree', height = '90vh') %>% withSpinner)),
+                                    tabPanel('Gene Info', column(12, style = 'margin-top: 16px', htmlOutput('results_genes') %>% withSpinner)),
+                                    tabPanel('GO Enrichment', column(12, style = 'margin-top: 16px', dataTableOutput('results_go') %>% withSpinner))
                         ),
                         width = 12
                       )

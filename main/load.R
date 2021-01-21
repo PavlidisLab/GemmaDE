@@ -24,8 +24,55 @@ parseListEntry <- function(entry) {
   ifelse('NA' == cleaned, NA, cleaned)
 }
 
-isDataLoaded <- function() {
-  exists('ONTOLOGIES') & exists('ONTOLOGIES.DEFS')
+fixOntoGenes <- function() {
+  lapply(getConfig(key = 'taxa')$core, function(taxa) {
+    matches <- do.call(rbind,
+                       str_match_all(DATA.HOLDER[[taxa]]@experiment.meta[, c(as.character(cf.BaseLongUri),
+                                                                             as.character(cf.ValLongUri))],
+                                     'http://purl.org/commons/record/ncbi_gene/(\\d*)')) %>% unique
+    
+    matches[, 2] <- lapply(getConfig(key = 'taxa')$core, function(taxa) {
+      DATA.HOLDER[[taxa]]@gene.meta[entrez.ID %in% matches[, 2],
+                                    .(entrez.ID, gene.Name = paste0(gene.Name, ' [', taxa, ']'))]
+    }) %>% rbindlist %>% unique(by = 'entrez.ID') %>% .[match(matches[, 2], entrez.ID), gene.Name]
+    
+    data.table(Node_Long = matches[, 1], Definition = matches[, 2], OntologyScope = 'TGEMO')
+  }) %>% rbindlist %>% {
+    rbind(ONTOLOGIES.DEFS[, .(Node_Long = as.character(Node_Long),
+                              Definition = as.character(Definition),
+                              OntologyScope = as.character(OntologyScope))], .) %>%
+      .[, c('Node_Long', 'Definition', 'OntologyScope') := list(as.factor(Node_Long),
+                                                                as.factor(Definition),
+                                                                as.factor(OntologyScope))]
+  }
+}
+
+loadDrugbank <- function() {
+  if(file.exists('/space/scratch/jsicherman/Thesis Work/data/drugbank/drugbank.rds'))
+    return(readRDS('/space/scratch/jsicherman/Thesis Work/data/drugbank/drugbank.rds'))
+  
+  dbank <- xmlParse('/space/scratch/jsicherman/Thesis Work/data/drugbank/full database.xml')
+  droot <- xmlRoot(dbank)
+  dsize <- xmlSize(droot)
+  
+  tmp <- lapply(1:dsize, function(i) {
+    droot[[i]] %>% xmlToList %>%
+      .[c('name', 'synonyms', 'categories', 'targets')] %>%
+      rbind %>% as.data.table
+  }) %>% rbindlist(fill = T)
+  
+  tmp[, I := .I]
+  
+  tmp[, name := unlist(name)]
+  tmp <- tmp[, .(name,
+                 synonym = unlist(synonyms, F) %>% sapply('[[', 'text') %>% unname %>% list,
+                 category = unlist(categories, F) %>% sapply('[[', 'category') %>% unname %>% list,
+                 target = unlist(targets, F) %>% sapply('[[', 'name') %>% unname %>% list), I] %>%
+    .[, !'I']
+  
+  saveRDS(tmp, '/space/scratch/jsicherman/Thesis Work/data/drugbank/drugbank.rds')
+  
+  tmp
 }
 
 setClass('EData', representation(taxon = 'character', data = 'list',
@@ -33,7 +80,7 @@ setClass('EData', representation(taxon = 'character', data = 'list',
                                  go = 'data.table'))
 
 # Load the data into the global environment
-if(!isDataLoaded()) {
+if(!exists('ONTOLOGIES') || !exists('ONTOLOGIES.DEFS')) {
   ONTOLOGIES <- fread('/space/grp/nlim/CronGemmaDump/Ontology/Ontology_Dump_MERGED.TSV')
   ONTOLOGIES.DEFS <- fread('/space/grp/nlim/CronGemmaDump/Ontology/Ontology_Dump_MERGED_DEF.TSV')
   
@@ -140,11 +187,11 @@ if(!exists('DATA.HOLDER')) {
       # Split into 500 ee.ID chunks (so the URI doesn't get too long) and fetch quality scores 
       # from Gemma for all experiments.
       metaData <- rbindlist(lapply(lapply(metaData$ee.ID %>% unique %>% split(ceiling(seq_along(.[]) / 500)),
-                                               datasetInfo, memoized = T) %>% unlist(recursive = F), function(ee.ID) {
-                                                 data.table(ee.ID = ee.ID$id,
-                                                            ee.qScore = ee.ID$geeq$publicQualityScore,
-                                                            ee.sScore = ee.ID$geeq$publicSuitabilityScore)
-                                                 })) %>% merge(metaData, by = 'ee.ID', all.y = T)
+                                          datasetInfo, memoized = T) %>% unlist(recursive = F), function(ee.ID) {
+                                            data.table(ee.ID = ee.ID$id,
+                                                       ee.qScore = ee.ID$geeq$publicQualityScore,
+                                                       ee.sScore = ee.ID$geeq$publicSuitabilityScore)
+                                          })) %>% merge(metaData, by = 'ee.ID', all.y = T)
       forgetGemmaMemoised()
       
       metaData$ee.Name <- metaData$ee.Name %>% as.factor
@@ -182,27 +229,10 @@ if(!exists('DATA.HOLDER')) {
     saveRDS(DATA.HOLDER, '/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER.rds')
   }
   
-  lapply(getConfig(key = 'taxa')$core, function(taxa) {
-    matches <- do.call(rbind,
-                       str_match_all(DATA.HOLDER[[taxa]]@experiment.meta[, c(as.character(cf.BaseLongUri),
-                                                                                  as.character(cf.ValLongUri))],
-                                     'http://purl.org/commons/record/ncbi_gene/(\\d*)')) %>% unique
-    
-    matches[, 2] <- lapply(getConfig(key = 'taxa')$core, function(taxa) {
-      DATA.HOLDER[[taxa]]@gene.meta[entrez.ID %in% matches[, 2],
-                                    .(entrez.ID, gene.Name = paste0(gene.Name, ' [', taxa, ']'))]
-    }) %>% rbindlist %>% unique(by = 'entrez.ID') %>% .[match(matches[, 2], entrez.ID), gene.Name]
-    
-    data.table(Node_Long = matches[, 1], Definition = matches[, 2], OntologyScope = 'TGEMO')
-  }) %>% rbindlist %>% {
-    rbind(ONTOLOGIES.DEFS[, .(Node_Long = as.character(Node_Long),
-                              Definition = as.character(Definition),
-                              OntologyScope = as.character(OntologyScope))], .) %>%
-      .[, c('Node_Long', 'Definition', 'OntologyScope') := list(as.factor(Node_Long),
-                                                                as.factor(Definition),
-                                                                as.factor(OntologyScope))]
-  } -> ONTOLOGIES.DEFS
-  
+  ONTOLOGIES.DEFS <- fixOntoGenes()
+}
+
+if(!exists('CACHE.BACKGROUND')) {
   # Pre-load all ontology expansions
   if(file.exists('/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND.rds'))
     CACHE.BACKGROUND <- readRDS('/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND.rds')
@@ -212,25 +242,33 @@ if(!exists('DATA.HOLDER')) {
     
     saveRDS(CACHE.BACKGROUND, '/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND.rds')
   }
-  
+}
+
+if(!exists('TAGS')) {
   TAGS <- lapply(names(CACHE.BACKGROUND), getTags) %>% `names<-`(names(CACHE.BACKGROUND))
-  
+}
+
+if(!exists('NULLS')) {
   mFiles <- list.files('/space/scratch/jsicherman/Thesis Work/data/nulls')
-  NULLS <- lapply(names(DATA.HOLDER), function(taxa) {
+  NULLS <- lapply(c('any', names(DATA.HOLDER)), function(taxa) {
     mDT <- NULL
     for(f in mFiles[startsWith(mFiles, taxa)]) {
       message(paste('Loading', f))
       N <- gsub(paste0(taxa, '_(\\d+)\\.rds'), '\\1', f)
       dt <- readRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/nulls/', f)) %>%
-        .[, list(list(.SD[, .(st.mean, st.sd)])) %>% `names<-`(paste0('C', N)), .(cf.BaseLongUri, cf.ValLongUri)]
+        .[, .(st.mean, st.sd), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
+        setnames(4:5, paste0(c('M', 'S'), N))
       if(is.null(mDT))
         mDT <- dt
       else
-        mDT <- merge(mDT, dt, by = c('cf.BaseLongUri', 'cf.ValLongUri'), all = T)
+        mDT <- merge(mDT, dt, by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), all = T, sort = F)
     }
+    
     mDT
-  }) %>% `names<-`(names(DATA.HOLDER))
+  }) %>% `names<-`(c('any', names(DATA.HOLDER)))
   rm(mFiles)
 }
 
-rm(isDataLoaded)
+if(!exists('DRUGBANK')) {
+  DRUGBANK <- loadDrugbank()
+}

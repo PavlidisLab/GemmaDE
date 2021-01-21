@@ -5,7 +5,7 @@ options(app.author = 'Jordan Sicherman (jordan.sicherman@msl.ubc.ca)')
 options(spinner.color = '#002145')
 options(spinner.type = 6)
 
-options(max.progress.steps = 7)
+options(max.progress.steps = 5)
 options(max.gemma = 1000)
 
 addConfig <- function(description, category, extras = NULL, ...) {
@@ -51,7 +51,7 @@ as.input <- function(entry) {
                    min = entry$min, max = entry$max, step = entry$step)
     else
       sliderInput(entry$name, entry$description, value = entry$value,
-                  min = entry$step, max = entry$max, step = entry$step, ticks = entry$ticks)
+                  min = entry$min, max = entry$max, step = entry$step, ticks = entry$ticks)
   } else if(is.character(entry$value))
     selectInput(entry$name, entry$description, entry$choices, entry$value)
   else if(is.logical(entry$value))
@@ -77,6 +77,7 @@ addConfig(fc = c(0, 100), description = 'Fold-change threshold', category = 'Fil
 addConfig(mfx = T, description = 'Score multifunctionality', category = 'Scoring')
 addConfig(geeq = T, description = 'Score experiment quality (GEEQ)', category = 'Scoring')
 addConfig(method = 'diff', description = 'Scoring function', category = 'Scoring', extras = list(choices = list(`M-VSM` = 'mvsm', `Difference` = 'diff', `Correlation` = 'cor')))
+addConfig(gemmaLink = F, description = 'Add links to Gemma', category = 'Filtering')
 
 addConfig(taxa = 'human', description = NA, category = NA,
           extras = list(choices = list(`H. sapiens` = 'human',
@@ -93,5 +94,3 @@ source('/home/jsicherman/Thesis Work/main/progress.R')
 source('/home/jsicherman/Thesis Work/main/renderTools.R')
 source('/home/jsicherman/Thesis Work/main/gemmaAPI.R')
 source('/home/jsicherman/Thesis Work/main/load.R')
-
-addConfig(scope = ONTOLOGIES[, unique(as.character(OntologyScope))], description = NA, category = NA, extras = list(choices = ONTOLOGIES[, unique(as.character(OntologyScope))]))

@@ -39,11 +39,9 @@ search <- function(genes, options = getConfig(), verbose = T) {
   
   if(options$taxa$value == 'any') {
     mData <- new('EData')
-    taxOptions <- getConfig(key = 'taxa')$core
-    taxIDs <- getConfig(key = 'taxa')$mapping
     
-    for(x in taxOptions) {
-      ID <- paste0(unname(taxIDs[x]), '_ID')
+    for(x in options$taxa$core) {
+      ID <- paste0(unname(options$taxa$mapping[x]), '_ID')
       IDs <- genes[, ..ID] %>% unlist %>% unname
       
       gMeta <- DATA.HOLDER[[x]]@gene.meta %>% copy %>% .[, I := .I]
@@ -58,20 +56,28 @@ search <- function(genes, options = getConfig(), verbose = T) {
       fcData <- DATA.HOLDER[[x]]@data$fc[gMap$I, ] %>% `rownames<-`(gMap$key)
       fcData[is.na(fcData)] <- 0
       
+      zScoreData <- DATA.HOLDER[[x]]@data$zscore[gMap$I, ] %>% `rownames<-`(gMap$key)
+      zScoreData[is.na(zScoreData)] <- 0
+      
       mData@experiment.meta <- rbind(mData@experiment.meta, DATA.HOLDER[[x]]@experiment.meta)
       
       if(is.null(mData@data$adj.pv)) {
         mData@data$adj.pv <- pvData
         mData@data$fc <- fcData
+        mData@data$zscore <- zScoreData
 
         mData@gene.meta <- gMeta[gMap$I, ] %>% .[, entrez.ID := gMap$key]
       } else {
         mData@data$adj.pv <- merge(mData@data$adj.pv, pvData, by = 0, all = T) %>% `rownames<-`(.[, 1]) %>% .[, -1]
         mData@data$fc <- merge(mData@data$fc, fcData, by = 0, all = T) %>% `rownames<-`(.[, 1]) %>% .[, -1]
+        mData@data$zscore <- merge(mData@data$zscore, zScoreData, by = 0, all = T) %>% `rownames<-`(.[, 1]) %>% .[, -1]
 
         mData@gene.meta$gene.Name <- coalesce(mData@gene.meta$gene.Name, gMeta[gMap$I, gene.Name])
         mData@gene.meta$mfx.Rank <- rowMeans2(cbind(mData@gene.meta$mfx.Rank, gMeta[gMap$I, mfx.Rank]), na.rm = T)
       }
+      
+      if(verbose)
+        message(paste('Processed', x))
     }
     
     genes <- genes$key
@@ -85,7 +91,8 @@ search <- function(genes, options = getConfig(), verbose = T) {
   
   n.genes <- length(geneMask)
   if(n.genes == 0) {
-    setProgress(T)
+    if(verbose)
+      setProgress(T)
     return(NULL)
   }
   
@@ -102,15 +109,20 @@ search <- function(genes, options = getConfig(), verbose = T) {
   experimentN <- Rfast::colsums(pv <= options$pv$value) %>% as.integer
   experimentMask <- Rfast::colsums(pv <= options$pv$value) >= min(options$req$value, n.genes) %>% as.bit
   logFC <- mData@data$fc[geneMask, ]
+  zScore <- mData@data$zscore[geneMask, ]
   
-  if(options$taxa$value != 'any')
+  if(options$taxa$value != 'any') {
     logFC[is.na(logFC)] <- 0
+    zScore[is.na(zScore)] <- 0
+  }
   
   if(n.genes == 1) {
     logFC <- t(logFC)
+    zScore <- t(zScore)
   }
   
   logFC <- logFC %>% as.data.table
+  zScore <- zScore %>% as.data.table
   pv <- pv %>% as.data.table
   
   # Mask experiments that have at least n of the GOI with threshold_u > abs(logFC) > threshold_l
@@ -126,7 +138,8 @@ search <- function(genes, options = getConfig(), verbose = T) {
   # Fail if 0 experiments show these genes as DE
   # TODO Not technically necessary anymore?
   if(sum(experimentMask) == 0) {
-    setProgress(T)
+    if(verbose)
+      setProgress(T)
     return(NULL)
   }
   
@@ -144,35 +157,36 @@ search <- function(genes, options = getConfig(), verbose = T) {
     experimentMeta$ee.qScore <- 2
   else
     experimentMeta$ee.qScore <- pmax(experimentMeta$ee.qScore + 1, 0, na.rm = T)
-  experimentMeta$ee.qScore <- experimentMeta$ee.qScore / 2
+  experimentMeta$ee.qScore <- sqrt(experimentMeta$ee.qScore / 2)
   
   # TODO Improve this
   directions <- ifelse(Rfast::colmeans(logFC %>% as.matrix) < 0, F, T)
 
   query <- options$sig$value %>% { gsub(' ', '', ., fixed = T) } %>% strsplit(',') %>% as.numeric
   if(is.na(query)) {
-    logFC <- abs(logFC)
-    query <- Rfast::rowMaxs(logFC %>% as.matrix %>% .[, as.which(experimentMask)], value = T)
-  }
+    zScore <- abs(zScore)
+    query <- Rfast::rowMaxs(zScore %>% as.matrix %>% .[, as.which(experimentMask)], value = T) # TODO maybe this should come after pv weight
+  } else
+    zScore <- logFC # Doesn't make sense to query a z-score
   
   if(options$mfx$value)
     MFX_WEIGHT <- 1 - mData@gene.meta$mfx.Rank[geneMask]
   else
     MFX_WEIGHT <- rep(1, n.genes)
   
-  logFC <- logFC * (1 - pv)
+  zScore <- zScore * -log10(pv)
   
   if(options$method$value == 'diff') {
-    ret <- (logFC - query) %>% t %>% as.data.table %>%
+    ret <- (zScore - query) %>% t %>% as.data.table %>%
       .[, score := Rfast::rowsums(as.matrix(. * MFX_WEIGHT))]
   } else if(options$method$value == 'cor') {
-    ret <- logFC %>% t %>% as.data.table %>%
-      .[, score := abs(cor.wt(logFC %>% as.matrix, query, MFX_WEIGHT))] %>% # TODO abs?
+    ret <- zScore %>% t %>% as.data.table %>%
+      .[, score := abs(cor.wt(zScore %>% as.matrix, query, MFX_WEIGHT))] %>% # TODO abs?
       .[is.nan(score), score := 0]
   } else if(options$method$value == 'mvsm') {
     idf <- Rfast::Log(1 / MFX_WEIGHT) + 1
-    logFC[, query := query]
-    tfidf <- logFC * idf
+    zScore[, query := query]
+    tfidf <- zScore * idf
     
     # Extract the query
     query <- tfidf[, query]
@@ -192,14 +206,14 @@ search <- function(genes, options = getConfig(), verbose = T) {
   }
   
   ret %>% setnames(c(mData@gene.meta$gene.Name[geneMask], 'score')) %>%
-    .[, is.passing := experimentMask %>% as.booltype] %>% # Old version of bit as.logical.bit] %>%
+    .[, is.passing := experimentMask %>% as.booltype] %>%
     .[, f.IN := experimentN / n.genes] %>%
     .[, f.OUT := pmax(0, experimentMeta$n.DE - experimentN) / experimentMeta$n.detect] %>%
     .[, ee.q := experimentMeta$ee.qScore] %>%
-    .[, score := (score + abs(min(score))) * ee.q * (1 + f.IN) / (1 + log1p(f.OUT))] %>%
+    .[, score := (score + abs(min(score))) * ee.q * (1 + f.IN) / (1 + 10^(f.OUT))] %>%
     .[, score := score / max(score)] %>%
     .[, direction := directions] %>%
-    .[, rn := colnames(logFC)] %>%
+    .[, rn := colnames(zScore)] %>%
     setorder(-score)
 }
 
@@ -207,12 +221,11 @@ search <- function(genes, options = getConfig(), verbose = T) {
 #' 
 #' Expand the specified ontology for the specified experiments.
 #'
-#' @param taxa A taxa scope. Can be one of [human, mouse, rat].
-#' @param scope The ontology scope.
+#' @param taxa A taxa scope. Can be one of [human, mouse, rat, any].
 #' @param rsc.IDs A list of experiment rsc IDs or NULL for everything
 #' @param max.distance The maximum tree traversal distance to include
 #' @param inv Whether or not to inverse the selected rscs
-getTags <- function(taxa = getConfig(key = 'taxa')$value, scope = getConfig(key = 'scope')$value,
+getTags <- function(taxa = getConfig(key = 'taxa')$value,
                     rsc.IDs = NULL, max.distance = Inf, inv = F) {
   if(is.null(rsc.IDs))
     rsc.IDs <- CACHE.BACKGROUND[[taxa]][, unique(as.character(rsc.ID))]
@@ -220,16 +233,14 @@ getTags <- function(taxa = getConfig(key = 'taxa')$value, scope = getConfig(key 
   if(inv)
     rsc.IDs <- CACHE.BACKGROUND[[taxa]][!(rsc.ID %in% rsc.IDs), unique(as.character(rsc.ID))]
   
-  graphTerms <- ONTOLOGIES.DEFS[!(OntologyScope %in% scope), as.character(Definition)]
-  
   if(exists('TAGS') && !is.null(TAGS[[taxa]]))
-    return(TAGS[[taxa]][rsc.ID %in% rsc.IDs & !(cf.BaseLongUri %in% graphTerms) & !(cf.ValLongUri %in% graphTerms)])
+    return(TAGS[[taxa]][rsc.ID %in% rsc.IDs])
     
   CACHE.BACKGROUND[[taxa]] %>%
     .[distance <= max.distance] %>%
     .[, .(rsc.ID = as.character(rsc.ID), cf.Cat = as.character(cf.Cat), cf.BaseLongUri = as.character(cf.BaseLongUri),
           cf.ValLongUri = as.character(cf.ValLongUri), distance, reverse)] %>%
-    .[rsc.ID %in% rsc.IDs & !(cf.BaseLongUri %in% graphTerms) & !(cf.ValLongUri %in% graphTerms)] %>%
+    .[rsc.ID %in% rsc.IDs] %>%
     .[as.character(cf.BaseLongUri) != as.character(cf.ValLongUri)] %>%
     .[, .(distance = mean(distance), reverse = data.table::first(reverse)),
       .(rsc.ID, cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>% setorder(distance, rsc.ID)
@@ -239,7 +250,7 @@ getTags <- function(taxa = getConfig(key = 'taxa')$value, scope = getConfig(key 
 #' 
 #' Get all the expanded ontology tags within a given taxon.
 #'
-#' @param taxa A taxa scope. Can be one of [human, mouse, rat].
+#' @param taxa A taxa scope. Can be one of [human, mouse, rat, any].
 #' @param heuristic Whether or not to speed up by guessing ontology terms
 #' @param mGraph The igraph form of the ontologies. Computes internally if not supplied
 #' @param graphTerms The unique ontology terms. Computes internally if not supplied
@@ -420,23 +431,21 @@ enrich <- function(rankings, options = getConfig(), verbose = T, inprod = T) {
     advanceProgress('Looking up ontology terms')
   
   if(options$taxa$value == 'any') { # TODO This will include even species for which there were no homologs
-    taxOptions <- options$taxa$core
-    
-    mMaps <- list(rbindlist(lapply(taxOptions, function(x) getTags(x, options$scope$value, NULL))),
-                  rbindlist(lapply(taxOptions, function(x) getTags(x, options$scope$value, rankings$rn))))
+    mMaps <- list(rbindlist(lapply(options$taxa$core, function(x) getTags(x, NULL))),
+                  rbindlist(lapply(options$taxa$core, function(x) getTags(x, rankings$rn))))
   } else
-    mMaps <- list(getTags(options$taxa$value, options$scope$value, NULL),
-                  getTags(options$taxa$value, options$scope$value, rankings$rn))
+    mMaps <- list(getTags(options$taxa$value, NULL),
+                  getTags(options$taxa$value, rankings$rn))
   
-  mMaps[[2]] <- mMaps[[2]] %>%
-    merge(rankings[, .(rsc.ID = rn, score, direction)],
-          by = 'rsc.ID', sort = F, allow.cartesian = T)
+  mMaps[[2]] <- mMaps[[2]] %>% merge(rankings[, .(rsc.ID = rn, score)],
+                                     by = 'rsc.ID', sort = F, allow.cartesian = T)
   
   aprior <- function() {
-    tmp <- mMaps[[2]][, .(A = sum(score, na.rm = T) / (1 + sum(distance, na.rm = T))),
+    tmp <- mMaps[[2]][, .(distance = round(mean(distance, na.rm = T), 2),
+                          A = sum(score, na.rm = T) / (1 + sum(distance, na.rm = T))),
                       .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)][, B := sum(A, na.rm = T)] %>%
       merge(mMaps[[1]][, .(C = .N / (1 + sum(distance, na.rm = T))),
-                       .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)][, D := sum(C, na.rm = T)],
+                       .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)],#[, D := sum(C, na.rm = T)],
             by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), sort = F, all = T, allow.cartesian = T)
     
     tmp[is.na(tmp)] <- 0
@@ -448,17 +457,33 @@ enrich <- function(rankings, options = getConfig(), verbose = T, inprod = T) {
       advanceProgress('Running tests')
     
     if(inprod && exists('NULLS')) {
-      input[, stat := A / B] %>%
-        merge(NULLS[[options$taxa$value]] %>%
-                .[, .(eval(str2lang(paste0('rbindlist(C', which(colnames(rankings) == 'score') - 1, ')'))),
-                      cf.BaseLongUri, cf.ValLongUri)],
-              by = c('cf.BaseLongUri', 'cf.ValLongUri'), all = T, sort = F) %>%
-        .[, stat := (stat - st.mean) / st.sd]
+      whichCols <- c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri',
+                     paste0(c('M', 'S'), which(colnames(rankings) == 'score') - 1))
+      
+      input[, stat := A / B]
+      
+      #if(options$taxa$value == 'any') {
+      #  for(tax in options$taxa$core) {
+      #    input <- input %>%
+      #      merge(NULLS[[tax]][, whichCols, with = F],
+      #            by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), all = T, sort = F)
+      #  }
+        
+      #  sdCols <- grepl('S\\d+', colnames(input))
+      #  mnCols <- grepl('M\\d+', colnames(input))
+      #  sdPooled <- (input[, sdCols, with = F] %>% as.matrix %>% rowSums2) / sum(sdCols)
+      #  mnPooled <- (input[, mnCols, with = F] %>% as.matrix %>% rowSums2) / sum(mnCols)
+        
+      #  input[, 1:8] %>% .[, c('M', 'S') := list(mnPooled, sdPooled)] %>% .[, stat := (stat - M) / S]
+      #} else {
+      input %>%
+        merge(NULLS[[options$taxa$value]][, whichCols, with = F],
+              by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), all = T, sort = F) %>%
+        .[, stat := (stat - .SD[, 9]) / .SD[, 10]]
+      #}
     } else
-      input[, stat := suppressWarnings(phyper(A - 1, B, D, C + A, F)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
+      input[, stat := A / B] # suppressWarnings(phyper(A - 1, B, D, C + A, F)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)
   }
   
-  ret <- aprior() %>% enrichTest
-  
-  ret %>% setorder(-stat, na.last = T)
+  aprior() %>% enrichTest %>% .[is.finite(stat)] %>% setorder(-stat)
 }

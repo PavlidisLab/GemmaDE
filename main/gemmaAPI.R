@@ -40,7 +40,7 @@ geneEvidence <- async(function(genes, taxa = getOption('app.taxa')) {
 #' @param taxa The taxa scope
 #' @param genes Genes to search for
 #' @param keepNonSpecific, consolidate Options passed on to Gemma
-geneExpression <- async(function(ee.IDs, rsc.IDs, taxa = getOption('app.taxa'), genes, keepNonSpecific = T, consolidate = 'average') {
+geneExpression <- async(function(ee.IDs, rsc.IDs, taxa = getConfig('taxa')$value, genes, keepNonSpecific = T, consolidate = 'average') {
   parse <- function(content, json, meta) {
     mJson <- parse_json(rawToChar(content))
     
