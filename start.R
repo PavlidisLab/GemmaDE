@@ -39,6 +39,3 @@ source('dependencies.R')
 runApp('main', port = 18232, launch.browser = F)
 
 # TODO consider memoise::memoise -ing things
-
-# Can trim terms right after generation by only keeping those with
-# terms[, .N, term pair] %>% .[distance == 0 | N > 1]

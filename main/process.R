@@ -35,8 +35,6 @@ search <- function(genes, options = getConfig(), verbose = T) {
   if(verbose)
     advanceProgress('Loading experiments')
   
-  # Data Extraction ---------------------------------------------------------
-  
   if(options$taxa$value == 'any') {
     mData <- new('EData')
     
@@ -96,6 +94,14 @@ search <- function(genes, options = getConfig(), verbose = T) {
     return(NULL)
   }
   
+  query <- suppressWarnings(options$sig$value %>% as.numeric)
+  if(length(query) > 1 && length(query) != n.genes) {
+    # TODO Should signal why it stopped (mismatch of signature length)
+    if(verbose)
+      setProgress(T)
+    return(NULL)
+  }
+  
   # P-values for only the GOI
   pv <- mData@data$adj.pv[geneMask, ]
   
@@ -143,13 +149,12 @@ search <- function(genes, options = getConfig(), verbose = T) {
     return(NULL)
   }
   
-  # Data Processing ---------------------------------------------------------
   if(verbose)
     advanceProgress('Ranking')
   
   # Number of DEGs for experiments that pass thresholds
   experimentMeta <- mData@experiment.meta %>% copy %>% as.data.frame %>%
-    `rownames<-`(.[, 'rsc.ID']) %>% .[, c('ee.qScore', 'n.DE', 'ee.Scale', 'n.detect')]
+    `rownames<-`(.[, 'rsc.ID']) %>% .[, c('ee.qScore', 'n.DE', 'n.detect')]
   
   experimentMeta$n.DE[is.na(experimentMeta$n.DE)] <- 0
   
@@ -158,16 +163,14 @@ search <- function(genes, options = getConfig(), verbose = T) {
   else
     experimentMeta$ee.qScore <- pmax(experimentMeta$ee.qScore + 1, 0, na.rm = T)
   experimentMeta$ee.qScore <- sqrt(experimentMeta$ee.qScore / 2)
-  
-  # TODO Improve this
-  directions <- ifelse(Rfast::colmeans(logFC %>% as.matrix) < 0, F, T)
 
-  query <- options$sig$value %>% { gsub(' ', '', ., fixed = T) } %>% strsplit(',') %>% as.numeric
-  if(is.na(query)) {
+  if(any(is.na(query))) {
+    # TODO Consider warning if length(query) > 1 (some number was invalid)
     zScore <- abs(zScore)
     query <- Rfast::rowMaxs(zScore %>% as.matrix %>% .[, as.which(experimentMask)], value = T) # TODO maybe this should come after pv weight
   } else
     zScore <- logFC # Doesn't make sense to query a z-score
+  # TODO it might if we only care about directionality
   
   if(options$mfx$value)
     MFX_WEIGHT <- 1 - mData@gene.meta$mfx.Rank[geneMask]
@@ -186,25 +189,30 @@ search <- function(genes, options = getConfig(), verbose = T) {
   } else if(options$method$value == 'mvsm') {
     idf <- Rfast::Log(1 / MFX_WEIGHT) + 1
     zScore[, query := query]
-    tfidf <- zScore * idf
+    zScore <- zScore * idf
     
     # Extract the query
-    query <- tfidf[, query]
-    tfidf[, query := NULL]
+    query <- zScore[, query]
+    zScore[, query := NULL]
     
     # Cosine similarity
-    tfidf <- as.matrix(tfidf)
+    zScore <- as.matrix(zScore)
     
     cross_x <- crossprod(query)
-    scores <- sapply(1:ncol(tfidf), function(i) {
-      cross_q <- crossprod(query, tfidf[, i])
+    scores <- sapply(1:ncol(zScore), function(i) {
+      cross_q <- crossprod(query, zScore[, i])
       if(cross_q == 0) 0
-      else cross_q / sqrt(cross_x * crossprod(tfidf[, i]))
+      else cross_q / sqrt(cross_x * crossprod(zScore[, i]))
     })
     
-    ret <- rbind(tfidf, abs(scores)) %>% t %>% as.data.table
+    ret <- zScore %>% t %>% as.data.table %>%
+      .[, score := abs(scores)] %>%
+      .[is.nan(score), score := 0]
   }
   
+  # TODO it may be more appropriate to add and divide by constants
+  # (ie. 1e5, sufficiently large enough to guarantee it's always positive)
+  # to prevent imprudent score deviations
   ret %>% setnames(c(mData@gene.meta$gene.Name[geneMask], 'score')) %>%
     .[, is.passing := experimentMask %>% as.booltype] %>%
     .[, f.IN := experimentN / n.genes] %>%
@@ -212,7 +220,6 @@ search <- function(genes, options = getConfig(), verbose = T) {
     .[, ee.q := experimentMeta$ee.qScore] %>%
     .[, score := (score + abs(min(score))) * ee.q * (1 + f.IN) / (1 + 10^(f.OUT))] %>%
     .[, score := score / max(score)] %>%
-    .[, direction := directions] %>%
     .[, rn := colnames(zScore)] %>%
     setorder(-score)
 }

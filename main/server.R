@@ -19,7 +19,7 @@ server <- function(input, output, session) {
     updateSelectizeInput(session, 'genes', options = list(persist = F, create = T, createOnBlur = T))
     session$sendCustomMessage('querySet', genes)
     
-    updateTextInput(session, 'sig', value = sig) # TODO This is gonna need work since it's not a vector
+    updateTextInput(session, 'sig', value = sig)
     updateSliderInput(session, 'fc', value = fc)
     
     for(mName in Filter(function(x) !(x %in% c('sig', 'fc')), names(options))) {
@@ -184,7 +184,7 @@ server <- function(input, output, session) {
     if(is.null(session$userData$plotData$exprInfo)) {
       # If we didn't already process we need to give the UI a tick to update and then fetch the data.
       if(!is.null(session$userData$plotData$conditions)) {
-        shinyjs::delay(1, { # TODO for "any" 
+        shinyjs::delay(1, { 
           synchronise(getTags(session$userData$plotData$options$taxa$value,
                               session$userData$plotData$experiments) %>% # TODO Selection strategy
                         .[cf.Cat %in% (session$userData$plotData$conditions[`Ontology Steps` == 0] %>% .[1:5, unique(cf.Cat)]) &
@@ -356,10 +356,17 @@ server <- function(input, output, session) {
     session$userData$startTime <- as.POSIXct(Sys.time())
     setProgress(environment(), 0, 'Validating input', n.steps = getOption('max.progress.steps'))
     
+    signature <- unlist(strsplit(gsub(' ', ',', gsub('(;|,( ?))', ',', signature)), ','))
+    
     options <- lapply(names(getConfig()), function(x) {
       ret <- getConfig(x)
-      if(!is.null(input[[x]]))
-        ret$value <- input[[x]]
+      if(x == 'sig')
+        v <- signature
+      else
+        v <- input[[x]]
+      
+      if(!is.null(v))
+        ret$value <- v
       ret
     }) %>% `names<-`(names(getConfig()))
     
@@ -368,11 +375,16 @@ server <- function(input, output, session) {
       query <- paste0('?genes=', switch(min(2, length(genes)), genes, paste0('[', paste0(genes, collapse = ','), ']')))
       
       extras <- lapply(names(getConfig()), function(x) {
-        if(!isTRUE(all.equal(input[[x]], getConfig(key = x)$value)) || length(input[[x]]) != length(getConfig(key = x)$value)) {
-          if(length(input[[x]]) > 1)
-            paste0(x, '=', paste0('[', paste0(input[[x]], collapse = ','), ']'))
+        if(x == 'sig')
+          v <- signature
+        else
+          v <- input[[x]]
+        
+        if(!isTRUE(all.equal(v, getConfig(key = x)$value)) || length(v) != length(getConfig(key = x)$value)) {
+          if(length(v) > 1)
+            paste0(x, '=', paste0('[', paste0(v, collapse = ','), ']'))
           else
-            paste0(x, '=', input[[x]])
+            paste0(x, '=', v)
         }
       }) %>% unlist %>% paste0(collapse = '&')
       
@@ -417,8 +429,11 @@ server <- function(input, output, session) {
         return(orthologs)
       }
       
+      oGenes <- genes
       # Clean numerics (interpreted as entrez IDs) and remove them from further processing.
       cleanGenes <- suppressWarnings(Filter(function(x) !is.na(as.integer(x)), genes))
+      idMap <- sapply(as.character(cleanGenes), function(x) which(goGenes == x), USE.NAMES = F)
+      
       genes <- genes[!(genes %in% cleanGenes)]
       
       # If it matches (ENSG|ENSMUS|ENSRNO)\d{11}, it's an Ensembl ID (for human, mouse or rat).
@@ -429,6 +444,8 @@ server <- function(input, output, session) {
           # Extract genes with a matching Ensembl ID and clean them too.
           ensembls <- DATA.HOLDER[[taxa]]@gene.meta[ensembl.ID %in% ensembl, .(entrez.ID, ensembl.ID)]
           cleanGenes <- c(cleanGenes, ensembls[, entrez.ID])
+          idMap <- c(idMap, sapply(ensembls[, ensembl.ID], function(x) which(oGenes == x), USE.NAMES = F))
+          
           genes <- genes[!(genes %in% ensembls[, ensembl.ID])]
         }
       }
@@ -437,34 +454,40 @@ server <- function(input, output, session) {
         go <- grep('(GO:)\\d{7}', genes, value = T)
         
         if(length(go) != 0) {
-          gos <- DATA.HOLDER[[taxa]]@go[id %in% go, entrez.ID]
-          cleanGenes <- c(cleanGenes, gos)
-          genes <- genes[!(genes %in% go)]
+          gos <- DATA.HOLDER[[taxa]]@go[id %in% go, .(id, entrez.ID)]
+          cleanGenes <- c(cleanGenes, gos[, entrez.ID])
+          idMap <- c(idMap, sapply(gos[, id], function(x) which(oGenes == x), USE.NAMES = F))
+          
+          genes <- genes[!(genes %in% gos[, id])]
         }
       }
       
       # Try to match to gene names and descriptions.
-      if(length(genes) > 0) {
+      if(length(genes) > 0) { # TODO this could grepl, and likely the idMap is bad
         descriptors <- DATA.HOLDER[[taxa]]@gene.meta[gene.Name %in% genes | gene.Desc %in% genes,
                                                      .(entrez.ID, gene.Name, gene.Desc)]
         if(nrow(descriptors) != 0) {
           cleanGenes <- c(cleanGenes, descriptors[, entrez.ID])
+          idMap <- c(idMap, sapply(descriptors[, gene.Name], function(x) which(oGenes == x), USE.NAMES = F))
+          idMap <- c(idMap, sapply(descriptors[, gene.Desc], function(x) which(oGenes == x), USE.NAMES = F))
+
           genes <- genes[!(genes %in% descriptors[, c(gene.Name, gene.Desc)])]
         }
       }
       
       # If anything is left, try to match it to gene aliases.
-      if(length(genes) > 0) {
+      if(length(genes) > 0) { # TODO this can multimatch and shouldn't, also no idMap yet
         aliases <- DATA.HOLDER[[taxa]]@gene.meta[, parseListEntry(alias.Name), entrez.ID] %>%
           .[grepl(paste0(genes, collapse = '|'), V1)]
         if(nrow(aliases) > 0)
           cleanGenes <- c(cleanGenes, aliases[, unique(entrez.ID)])
       }
       
-      cleanGenes
+      cleanGenes[order(unlist(idMap))]
     }
     
     # Done processing, handle the search.
+    # TODO should prevent signature from working for taxa == 'all'
     handleSearch(tidyGenes(genes, taxa), options)
   }
 }

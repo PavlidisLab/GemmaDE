@@ -38,8 +38,11 @@ getConfig <- function(key = NULL, category = NULL, ...) {
   else if(!is.null(category))
     ret <- Filter(function(x) x$category == category, getOption('app.registered'))
   
-  if(length(list(...)) > 0)
-    ret[[names(list(...))]]$value <- unname(unlist(list(...)))
+  if(length(list(...)) > 0) {
+    for(v in names(list(...))) {
+      ret[[v]]$value <- unname(list(...)[[v]])
+    }
+  }
   
   ret
 }
