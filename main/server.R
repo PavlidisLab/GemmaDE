@@ -86,6 +86,10 @@ server <- function(input, output, session) {
       session$userData$treeRendered <- T
       
       output$results_tree <- generateResultsTree(session$userData$plotData$conditions, session$userData$plotData$options)
+    } else if(input$tabs == 'Word Cloud' && !is.null(session$userData$plotData) && is.null(session$userData$cloudRendered)) {
+      session$userData$cloudRendered <- T
+      
+      output$results_cloud <- generateResultsCloud(session$userData$plotData$conditions, session$userData$options)
     }
   })
   
@@ -93,7 +97,8 @@ server <- function(input, output, session) {
   observeEvent(input$UPDATED, {
     session$userData$genesRendered <- NULL
     session$userData$goRendered <- NULL
-    #session$userData$treeRendered <- NULL
+    session$userData$treeRendered <- NULL
+    session$userData$cloudRendered <- NULL
 
     if(input$tabs == 'Gene Info') {
       shinyjs::delay(100, {
@@ -118,6 +123,10 @@ server <- function(input, output, session) {
       session$userData$treeRendered <- T
       
       output$results_tree <- generateResultsTree(session$userData$plotData$conditions, session$userData$plotData$options)
+    } else if(input$tabs == 'Word Cloud' && !is.null(session$userData$plotData) && is.null(session$userData$cloudRendered)) {
+      session$userData$cloudRendered <- T
+      
+      output$results_cloud <- generateResultsCloud(session$userData$plotData$conditions, session$userData$options)
     }
   })
   
@@ -257,8 +266,11 @@ server <- function(input, output, session) {
     
     advanceProgress('Cross linking')
     
-    conditions <- conditions %>% setorder(distance) %>% .[, head(.SD, 1), stat] %>%
-      .[abs(stat) >= 1]
+    conditions <- conditions %>%
+      .[abs(stat) >= 1] %>%
+      .[, stat := round(stat, 3)] %>%
+      setorder(distance) %>%
+      .[, head(.SD, 1), stat]
     
     tmp <- getTags(options$taxa$value, experiments$rn) %>%
       .[cf.Cat %in% conditions[, unique(cf.Cat)] &

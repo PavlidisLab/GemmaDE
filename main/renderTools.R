@@ -104,7 +104,7 @@ generateResultsPlot <- function(genes, conditions, expr, options = getConfig(),
   }
 }
 
-generateResultsTree <- function(data, options) {
+makeNetwork <- memoise(function(data, options) {
   mTag <- getTags(options$taxa$value) %>%
     .[cf.Cat %in% data[, unique(cf.Cat)] &
         cf.BaseLongUri %in% data[, unique(cf.BaseLongUri)] &
@@ -123,42 +123,60 @@ generateResultsTree <- function(data, options) {
     .[is.na(Parent), Parent := cf.Cat] %>% unique %>%
     merge(data[`Test Statistic` > 0, .(cf.Cat, Contrast = paste0(cf.BaseLongUri, ' vs. ', cf.ValLongUri), `Test Statistic`)],
           by = c('cf.Cat', 'Contrast'), all = T) %>% {
-      rbind(data.table(Parent = NA, Contrast = 'Data', `Test Statistic` = NA, children = NA),
-            rbind(.[, .(Parent = 'Data', Contrast = unique(cf.Cat), `Test Statistic` = NA, children = NA)],
-                  .[is.na(Parent), Parent := cf.Cat] %>%
-                    .[, children := .N, cf.Cat] %>%
-                    .[, .(Parent, Contrast, `Test Statistic`, children)]))
-    }
-
+            rbind(data.table(Parent = NA, Contrast = 'Data', `Test Statistic` = NA, children = NA),
+                  rbind(.[, .(Parent = 'Data', Contrast = unique(cf.Cat), `Test Statistic` = NA, children = NA)],
+                        .[is.na(Parent), Parent := cf.Cat] %>%
+                          .[, children := .N, cf.Cat] %>%
+                          .[, .(Parent, Contrast, `Test Statistic`, children)]))
+          }
+  
   mGraph <- suppressWarnings(
     igraph::graph_from_data_frame(mTag[, .(Parent, Contrast, weight = 1 / (`Test Statistic` + abs(min(`Test Statistic`) + 1)))] %>%
                                     .[is.na(weight), weight := 1]) %>%
       simplify(edge.attr.comb = 'sum')
   )
-
+  
   if(!igraph::is_dag(mGraph))
     mGraph <- suppressWarnings(igraph::induced_subgraph(mGraph, igraph::topo_sort(mGraph)))
-   
-   vertices <- mTag[, .(`Test Statistic`, Contrast)] %>% .[, head(.SD, 1), `Test Statistic`] %>%
-     setorder(-`Test Statistic`, na.last = T) %>% .[, Contrast] %>% intersect(names(igraph::V(mGraph))) %>%
-     head(500)
-   
-   paths <- shortest_paths(mGraph, from = 'NA',
-                           to = vertices,
-                           mode = 'out')$vpath %>% unlist %>% unique
-   
-   mSimpleGraph <- igraph::induced_subgraph(mGraph, paths)
-   dGraph <- igraph::as_data_frame(mSimpleGraph)
-   
-   mCircle <- mTag[is.na(Parent) | (Parent %in% dGraph$from & Contrast %in% dGraph$to)] %>%
-     .[Contrast %in% Parent & !(Contrast %in% vertices), `Test Statistic` := NA] %>%
-     .[, `Test Statistic` := `Test Statistic` / children] %>%
-     .[, .(Parent, Contrast, `Test Statistic`)] %>%
-     as.data.frame %>% .[!is.na(.[, 1]), ] %>%
-     data.tree::FromDataFrameNetwork() %>%
-     circlepackeR(size = 'Test Statistic',
-                  color_max = 'hsl(211, 100%, 14%)',
-                  color_min = 'hsl(210, 53%, 74%)')
+  
+  vertices <- mTag[, .(`Test Statistic`, Contrast)] %>% .[, head(.SD, 1), `Test Statistic`] %>%
+    setorder(-`Test Statistic`, na.last = T) %>% .[, Contrast] %>% intersect(names(igraph::V(mGraph))) %>%
+    head(500)
+  
+  paths <- shortest_paths(mGraph, from = 'NA',
+                          to = vertices,
+                          mode = 'out')$vpath %>% unlist %>% unique
+  
+  mSimpleGraph <- igraph::induced_subgraph(mGraph, paths)
+  dGraph <- igraph::as_data_frame(mSimpleGraph)
+  
+  mTag[is.na(Parent) | (Parent %in% dGraph$from & Contrast %in% dGraph$to)] %>%
+    .[Contrast %in% Parent & !(Contrast %in% vertices), `Test Statistic` := NA] %>%
+    .[, `Test Statistic` := `Test Statistic` / children] %>%
+    .[, .(Parent, Contrast, `Test Statistic`)]
+})
+
+generateResultsCloud <- function(data, options) {
+  mCloudValues <- data[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, `Test Statistic`)] %>%
+    melt(measure.vars = 1:3) %>%
+    .[, .(`Test Statistic` = mean(`Test Statistic`), variable), value] %>%
+    setorder(-`Test Statistic`) %>% .[`Test Statistic` > 0] %>%
+    head(300)
+  
+  mVals <- mCloudValues[, value]
+  mCounts <- mCloudValues[, `Test Statistic`]
+  
+  mCloud <- d3wordcloud(mVals, mCounts)
+  renderD3wordcloud(mCloud)
+}
+
+generateResultsTree <- function(data, options) {
+  mCircle <- makeNetwork(data, options) %>%
+    as.data.frame %>% .[!is.na(.[, 1]), ] %>%
+    data.tree::FromDataFrameNetwork() %>%
+    circlepackeR(size = 'Test Statistic',
+                 color_max = 'hsl(211, 100%, 14%)',
+                 color_min = 'hsl(210, 53%, 74%)')
    
    renderCirclepackeR(mCircle)
 }

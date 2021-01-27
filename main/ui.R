@@ -69,6 +69,7 @@ ui <- fluidPage(style = 'height: 100%;',
                         tabsetPanel(id = 'tabs',
                                     tabPanel('Conditions', column(12, style = 'margin-top: 16px', dataTableOutput('results') %>% withSpinner)),
                                     tabPanel('Hierarchical View (beta)', column(12, style = 'margin-top: 16px', circlepackeROutput('results_tree', height = '90vh') %>% withSpinner)),
+                                    tabPanel('Word Cloud', column(12, style = 'margin-top: 16px', d3wordcloudOutput('results_cloud', height = '90vh') %>% withSpinner)),
                                     tabPanel('Gene Info', column(12, style = 'margin-top: 16px', htmlOutput('results_genes') %>% withSpinner)),
                                     tabPanel('GO Enrichment', column(12, style = 'margin-top: 16px', dataTableOutput('results_go') %>% withSpinner))
                         ),

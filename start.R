@@ -1,32 +1,37 @@
+# Visualizations
 library(shiny)
 library(shinyjs)
 library(shinyWidgets)
 library(shinycssloaders)
 library(htmlwidgets)
-library(sparkline)
 library(DT)
 library(heatmaply)
 library(shinyHeatmaply)
-library(shinypanels)
-library(RColorBrewer)
-library(stringr)
-library(bit)
+library(shinypanels) # From jsicherman/shinypanels, NOT datasketch
 library(circlepackeR)
+library(d3wordcloud)
 library(data.tree)
+# library(sparkline)
+library(RColorBrewer)
 
-library(jsonlite)
 library(async)
+library(memoise)
 
+# Data drivers
 library(matrixStats)
 library(Rfast)
 library(igraph)
 library(dplyr)
 library(data.table)
+library(stringr)
+library(bit)
 
-library(gemmaAPI)
+# Parsing helpers
+library(gemmaAPI, lib.loc = '/home/omancarci/R/x86_64-redhat-linux-gnu-library/3.6/')
 library(ermineR)
 library(mygene)
 library(homologene)
+library(jsonlite)
 library(XML)
 
 source('dependencies.R')
@@ -35,7 +40,5 @@ runApp('main', port = 18232, launch.browser = F)
 
 # TODO consider memoise::memoise -ing things
 
-# Sz genes from Lilah's
-
-# Technical details
-# If we can set up lazy computation of Gemma linkages then we don't limit to limit rows returned
+# Can trim terms right after generation by only keeping those with
+# terms[, .N, term pair] %>% .[distance == 0 | N > 1]
