@@ -362,7 +362,12 @@ precomputeTags <- function(taxa = getConfig(key = 'taxa')$value, heuristic = F, 
     merge(DATA.HOLDER[[taxa]]@experiment.meta[, .(rsc.ID, ee.ID, cf.Cat)], by = c('rsc.ID', 'ee.ID'), all.x = T, sort = F, allow.cartesian = T) %>%
     
     # Finally reorder
-    reorderTags
+    reorderTags %>%
+    
+    # And use some heuristics to make our corpus a little more lean
+    .[, N := .N, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
+    .[distance == 0 | (N < 500 & distance < 5)] %>%
+    .[, !'N']
 }
 
 #' Reorder Tags
