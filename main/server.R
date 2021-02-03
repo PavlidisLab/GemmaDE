@@ -6,7 +6,7 @@ server <- function(input, output, session) {
   # On connect, observe the query string. Search if any genes are specified
   observeEvent(input$LOAD, {
     output$results_header <- renderUI(generateResultsHeader(
-      HTML('<div style="margin-bottom: 10px"><h2 class="loading" style="display: inline">EnriChing</h2></div>')))
+      HTML('<div style="margin-bottom: 10px"><h2 style="display: inline">No enrichments yet</h2></div>')))
     
     query <- getQueryString(session)
     options <- getConfig()
@@ -151,7 +151,7 @@ server <- function(input, output, session) {
       size = 'l',
       footer = NULL,
       fluidRow(style = 'height: 85vh;',
-               column(10, plotlyOutput('plot') %>% withSpinner),
+               column(10, plotlyOutput('plot') %>% withSpinner(custom.class = 'DNA_cont', custom.html = div(lapply(1:10, function(x) div(class = 'nucleobase'))))),
                column(2, style = 'padding-top: 15px; padding-right: 30px;',
                       fluidRow(style = 'display: flex; flex-direction: row; justify-content: space-evenly; margin-bottom: 15px;',
                                downloadButton('plot_save_jpg', 'Save JPG'), downloadButton('plot_save_pdf', 'Save PDF')),
@@ -252,7 +252,7 @@ server <- function(input, output, session) {
     # Generate the results header
     if(exists('output'))
       output$results_header <- renderUI({
-        generateResultsHeader(HTML(paste0('<div style="margin-bottom: 10px"><h2 style="display: inline">EnriChed ',
+        generateResultsHeader(HTML(paste0('<div style="margin-bottom: 10px"><h2 style="display: inline">Enriched ',
                                           nrow(experiments), ' experiment', ifelse(nrow(experiments) > 1, 's', ''), ' for ',
                                           ifelse(which(colnames(experiments) == 'score') == 2, colnames(experiments)[1],
                                                  paste0('<span data-toggle="tooltip" data-placement="top" title="',
@@ -310,12 +310,12 @@ server <- function(input, output, session) {
   #' @param genes A character vector of entrez IDs
   #' @param options The search options
   handleSearch <- function(genes, options) {
-    experiments <- search(genes, options)
+    experiments <- search(genes, options, verbose = T)
     
     if(is.null(experiments))
       endFailure()
     else {
-      conditions <- enrich(experiments, options)
+      conditions <- enrich(experiments, options, verbose = T, inprod = T)
       session$userData$endTime <- Sys.time()
       
       if(is.null(conditions))
@@ -380,7 +380,7 @@ server <- function(input, output, session) {
         else
           v <- input[[x]]
         
-        if(!isTRUE(all.equal(v, getConfig(key = x)$value)) || length(v) != length(getConfig(key = x)$value)) {
+        if(!is.null(v) && v != '' && (!isTRUE(all.equal(v, getConfig(key = x)$value)) || length(v) != length(getConfig(key = x)$value))) {
           if(length(v) > 1)
             paste0(x, '=', paste0('[', paste0(v, collapse = ','), ']'))
           else

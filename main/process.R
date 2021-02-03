@@ -31,7 +31,7 @@ cor.wt <- function(x, y, w = rep(1, length(y))) {
 #' * mfx: Whether or not to scale by gene multifunctionality
 #' * geeq: Whether or not to scale by GEEQ score
 #' @param verbose Whether or not to print messages to the progress bar (if it can be found)
-search <- function(genes, options = getConfig(), verbose = T) {
+search <- memoise(function(genes, options = getConfig(), verbose = T) {
   if(verbose)
     advanceProgress('Loading experiments')
   
@@ -164,7 +164,7 @@ search <- function(genes, options = getConfig(), verbose = T) {
     experimentMeta$ee.qScore <- pmax(experimentMeta$ee.qScore + 1, 0, na.rm = T)
   experimentMeta$ee.qScore <- sqrt(experimentMeta$ee.qScore / 2)
 
-  if(any(is.na(query))) {
+  if(length(query) == 0 || any(is.na(query))) {
     # TODO Consider warning if length(query) > 1 (some number was invalid)
     zScore <- abs(zScore)
     query <- Rfast::rowMaxs(zScore %>% as.matrix %>% .[, as.which(experimentMask)], value = T) # TODO maybe this should come after pv weight
@@ -212,17 +212,18 @@ search <- function(genes, options = getConfig(), verbose = T) {
   
   # TODO it may be more appropriate to add and divide by constants
   # (ie. 1e5, sufficiently large enough to guarantee it's always positive)
-  # to prevent imprudent score deviations
+  # to prevent imprudent score deviations.
+  # This seems to actually make it worse
   ret %>% setnames(c(mData@gene.meta$gene.Name[geneMask], 'score')) %>%
     .[, is.passing := experimentMask %>% as.booltype] %>%
     .[, f.IN := experimentN / n.genes] %>%
     .[, f.OUT := pmax(0, experimentMeta$n.DE - experimentN) / experimentMeta$n.detect] %>%
     .[, ee.q := experimentMeta$ee.qScore] %>%
-    .[, score := (score + abs(min(score))) * ee.q * (1 + f.IN) / (1 + 10^(f.OUT))] %>%
-    .[, score := score / max(score)] %>%
+    .[, score := (score + 1e5) * ee.q * (1 + f.IN) / (1 + 10^(f.OUT))] %>% # abs(min(score))
+    #.[, score := score / max(score)] %>%
     .[, rn := colnames(zScore)] %>%
     setorder(-score)
-}
+})
 
 #' getTags
 #' 
@@ -240,7 +241,7 @@ getTags <- function(taxa = getConfig(key = 'taxa')$value,
   if(inv)
     rsc.IDs <- CACHE.BACKGROUND[[taxa]][!(rsc.ID %in% rsc.IDs), unique(as.character(rsc.ID))]
   
-  if(exists('TAGS') && !is.null(TAGS[[taxa]]))
+  if(exists('TAGS', envir = globalenv()) && !is.null(TAGS[[taxa]]))
     return(TAGS[[taxa]][rsc.ID %in% rsc.IDs])
     
   CACHE.BACKGROUND[[taxa]] %>%
@@ -258,10 +259,9 @@ getTags <- function(taxa = getConfig(key = 'taxa')$value,
 #' Get all the expanded ontology tags within a given taxon.
 #'
 #' @param taxa A taxa scope. Can be one of [human, mouse, rat, any].
-#' @param heuristic Whether or not to speed up by guessing ontology terms
 #' @param mGraph The igraph form of the ontologies. Computes internally if not supplied
 #' @param graphTerms The unique ontology terms. Computes internally if not supplied
-precomputeTags <- function(taxa = getConfig(key = 'taxa')$value, heuristic = F, mGraph = NULL, graphTerms = NULL) {
+precomputeTags <- function(taxa = getConfig(key = 'taxa')$value, mGraph = NULL, graphTerms = NULL) {
   if(is.null(mGraph))
     mGraph <- simplify(igraph::graph_from_data_frame(ONTOLOGIES[, .(ChildNode_Long, ParentNode_Long)]))
   if(is.null(graphTerms))
@@ -269,9 +269,9 @@ precomputeTags <- function(taxa = getConfig(key = 'taxa')$value, heuristic = F, 
   
   # Tags that are simple ontology terms
   mSimpleTags <- DATA.HOLDER[[taxa]]@experiment.meta[, .(tag = unique(cf.BaseLongUri), type = 'cf.BaseLongUri'), .(rsc.ID, ee.ID)] %>%
-    .[(heuristic && grepl('https://', tag, fixed = T)) || tag %in% graphTerms] %>%
+    .[tag %in% graphTerms] %>%
     rbind(DATA.HOLDER[[taxa]]@experiment.meta[, .(tag = unique(cf.ValLongUri), type = 'cf.ValLongUri'), .(rsc.ID, ee.ID)] %>%
-            .[(heuristic && grepl('https://', tag, fixed = T)) || tag %in% graphTerms])
+            .[tag %in% graphTerms])
   
   # Tags that are "bagged" (ie. have multiple tags)
   bagged <- DATA.HOLDER[[taxa]]@experiment.meta[, grepl('; ', cf.BaseLongUri, fixed = T) |
@@ -280,10 +280,10 @@ precomputeTags <- function(taxa = getConfig(key = 'taxa')$value, heuristic = F, 
   # Structured text entries (ie. non-ontology terms)
   mStructuredTags <- DATA.HOLDER[[taxa]]@experiment.meta[!bagged, .(tag = unique(cf.BaseLongUri),
                                                              type = 'cf.BaseLongUri'), .(rsc.ID, ee.ID)] %>%
-    .[!((heuristic && grepl('https://', tag, fixed = T)) || tag %in% graphTerms)] %>%
+    .[!(tag %in% graphTerms)] %>%
     rbind(DATA.HOLDER[[taxa]]@experiment.meta[!bagged, .(tag = unique(cf.ValLongUri),
                                                   type = 'cf.ValLongUri'), .(rsc.ID, ee.ID)] %>%
-            .[!((heuristic && grepl('https://', tag, fixed = T)) || tag %in% graphTerms)]) %>% na.omit %>% .[, distance := 0]
+            .[!(tag %in% graphTerms)]) %>% .[, distance := 0]
   
   # Expand the bagged tags so there's one row per entry
   if(sum(bagged) == 0)
@@ -291,16 +291,15 @@ precomputeTags <- function(taxa = getConfig(key = 'taxa')$value, heuristic = F, 
   else
     mBagOfWords <- DATA.HOLDER[[taxa]]@experiment.meta[bagged, .(tag = unique(cf.BaseLongUri),
                                                                  type = 'cf.BaseLongUri'), .(rsc.ID, ee.ID)] %>%
-      .[!((heuristic && grepl('https://', tag, fixed = T)) || tag %in% graphTerms)] %>%
+      .[!(tag %in% graphTerms)] %>%
       rbind(DATA.HOLDER[[taxa]]@experiment.meta[bagged, .(tag = unique(cf.ValLongUri),
                                                           type = 'cf.ValLongUri'), .(rsc.ID, ee.ID)] %>%
-              .[!((heuristic && grepl('https://', tag, fixed = T)) || tag %in% graphTerms)]) %>%
-      na.omit %>%
+              .[!(tag %in% graphTerms)]) %>%
       .[, lapply(.SD, function(x) parseListEntry(as.character(x))), .(rsc.ID, ee.ID, type)] %>%
       .[, ID := 1:length(tag), .(rsc.ID, ee.ID, type)]
   
   if(nrow(mBagOfWords) > 0)
-    mComputable <- union(mSimpleTags[, unique(tag)], mBagOfWords[(heuristic && grepl('https://', tag, fixed = T)) || tag %in% graphTerms, tag])
+    mComputable <- union(mSimpleTags[, unique(tag)], mBagOfWords[tag %in% graphTerms, tag])
   else
     mComputable <- mSimpleTags[, unique(tag)]
   
@@ -323,7 +322,7 @@ precomputeTags <- function(taxa = getConfig(key = 'taxa')$value, heuristic = F, 
   # Structured tags just get inserted
   mTags <- mTags %>% rbind(mStructuredTags[, ID := NA] %>% .[, .(tag, rsc.ID, ee.ID, type, distance, ID)])
   
-  if(nrow(mBagOfWords) > 0 & nrow(mComputedTags) > 0)
+  if(nrow(mBagOfWords) > 0 && nrow(mComputedTags) > 0)
     # Ontology-expanded bag of word tags get associated with their parents from mComputedTags
     mTags <- mTags %>% rbind(
       mBagOfWords %>%
@@ -341,13 +340,14 @@ precomputeTags <- function(taxa = getConfig(key = 'taxa')$value, heuristic = F, 
   
   # Do a grid expansion of bagged terms, maintaining indexed ordering
   if(nrow(mBagOfWords) > 0 && nrow(mTags[!is.na(ID) & distance < 1]) > 0)
-    mTagsExpanded <- mTags %>% .[!is.na(ID) & distance < 1, expand.grid(aggregate(.SD[, tag], by = list(.SD[, ID]), FUN = list)[[-1]]) %>%
-                                   apply(1, paste0, collapse = '; ') %>% unique, .(rsc.ID, ee.ID, type)] %>%
-    .[, c('tag', 'V1') := list(V1, NULL)] %>% rbind(mTags[is.na(ID), .(rsc.ID, ee.ID, type, tag)])
+    mTagsExpanded <- mTags # TODO this loses tags?
+  #  mTagsExpanded <- mTags %>% .[!is.na(ID) & distance < 1, expand.grid(aggregate(.SD[, tag], by = list(.SD[, ID]), FUN = list)[[-1]]) %>%
+  #                                 apply(1, paste0, collapse = '; ') %>% unique, .(rsc.ID, ee.ID, type)] %>%
+  #  .[, c('tag', 'V1') := list(V1, NULL)] %>% rbind(mTags[is.na(ID) | distance >= 1, .(rsc.ID, ee.ID, type, tag)])
   else
     mTagsExpanded <- mTags
   
-  mTagsExpanded %>%
+  mTagsExpanded %>% .[, .(rsc.ID, ee.ID, type, tag)] %>%
     
     # Now expand these expanded terms
     .[, expand.grid(cf.BaseLongUri = .SD[type == 'cf.BaseLongUri', tag],
@@ -373,7 +373,7 @@ precomputeTags <- function(taxa = getConfig(key = 'taxa')$value, heuristic = F, 
     
     # And use some heuristics to make our corpus a little more lean
     .[, N := .N, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
-    .[distance == 0 | (N < 500 & distance < 5)] %>%
+    .[distance == 0 | (N > 1 & N < 500 & distance < 5)] %>%
     .[, !'N']
 }
 
@@ -438,10 +438,10 @@ reorderTags2 <- function(cache) {
 #' @param options The options
 #' @param verbose Whether or not to print messages to the progress bar (if it can be found)
 #' @param inprod Whether to use the generated null distribution or not
-enrich <- function(rankings, options = getConfig(), verbose = T, inprod = T) {
+enrich <- memoise(function(rankings, options = getConfig(), verbose = T, inprod = T) {
   if(verbose)
     advanceProgress('Looking up ontology terms')
-  
+
   if(options$taxa$value == 'any') { # TODO This will include even species for which there were no homologs
     mMaps <- list(rbindlist(lapply(options$taxa$core, function(x) getTags(x, NULL))),
                   rbindlist(lapply(options$taxa$core, function(x) getTags(x, rankings$rn))))
@@ -465,10 +465,7 @@ enrich <- function(rankings, options = getConfig(), verbose = T, inprod = T) {
   }
   
   enrichTest <- function(input) {
-    if(verbose)
-      advanceProgress('Running tests')
-    
-    if(inprod && exists('NULLS')) {
+    if(inprod && exists('NULLS', envir = globalenv())) {
       whichCols <- c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri',
                      paste0(c('M', 'S'), which(colnames(rankings) == 'score') - 1))
       
@@ -497,5 +494,9 @@ enrich <- function(rankings, options = getConfig(), verbose = T, inprod = T) {
       input[, stat := A / B] # suppressWarnings(phyper(A - 1, B, D, C + A, F)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)
   }
   
-  aprior() %>% enrichTest %>% .[is.finite(stat)] %>% setorder(-stat)
-}
+  aprior() %>% {
+    if(verbose)
+      advanceProgress('Running tests')
+    enrichTest(.)
+  } %>% .[is.finite(stat)] %>% setorder(-stat)
+})

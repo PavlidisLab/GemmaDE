@@ -104,7 +104,7 @@ generateResultsPlot <- function(genes, conditions, expr, options = getConfig(),
   }
 }
 
-makeNetwork <- memoise(function(data, options) {
+makeNetwork <- memoise::memoise(function(data, options) {
   mTag <- getTags(options$taxa$value) %>%
     .[cf.Cat %in% data[, unique(cf.Cat)] &
         cf.BaseLongUri %in% data[, unique(cf.BaseLongUri)] &
@@ -295,7 +295,7 @@ generateGOPage <- function(ora) {
                                             render = JS('asPval'), width = '10%')
                                      )))
   renderDT(mTable)
-}
+} # TODO May memoise
 
 #' Generate Gene Page
 #'
