@@ -2,7 +2,7 @@
 library(shiny)
 library(shinyjs)
 library(shinyWidgets)
-library(shinycssloaders)
+library(shinycssloaders) # From jsicherman/shinycssloaders, NOT daattali
 library(htmlwidgets)
 library(DT)
 library(heatmaply)
@@ -13,6 +13,7 @@ library(d3wordcloud)
 library(data.tree)
 # library(sparkline)
 library(RColorBrewer)
+library(sass)
 
 library(async)
 library(memoise)
@@ -38,4 +39,20 @@ source('dependencies.R')
 
 runApp('main', port = 18232, launch.browser = F)
 
-# TODO consider memoise::memoise -ing things
+# ROADMAP
+# [/] Get a good simulation framework set up for the new analyses
+# [-] Fix single gene queries
+# [-] Output gene-wise contributions to scoring
+# [-] Consider interpolating between null distributions
+# [/] Consider result caching
+# [-] Release to lab
+# [-] Think of names
+# [x] Add a biology-related loader
+# [-] Support multisessions
+# [-] Release name poll
+
+# FOR WRITING UP
+# Sex, cell type, tissue specific findings
+# Anecdotes (drug-related, metabolic alterations in PD astrocytes)
+# Demonstration through simulations
+# Breakdown of gaps in knowledge incl. counts for other tools (per species)
