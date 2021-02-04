@@ -170,6 +170,13 @@ input[type="search"] {
   line-height: 1.6em;
 }
 
+.loader {
+  top: 50% !important;
+  position: relative !important;
+  color: unset !important;
+  background: unset !important;
+}
+
 footer, .content:after {
   height: 50px;
 }

@@ -30,11 +30,7 @@ cor.wt <- function(x, y, w = rep(1, length(y))) {
 #' * fc.lower / fc.upper: Upper and lower logFC thresholds (default: 0 / 10)
 #' * mfx: Whether or not to scale by gene multifunctionality
 #' * geeq: Whether or not to scale by GEEQ score
-#' @param verbose Whether or not to print messages to the progress bar (if it can be found)
-search <- memoise(function(genes, options = getConfig(), verbose = T) {
-  if(verbose)
-    advanceProgress('Loading experiments')
-  
+search <- memoise(function(genes, options = getConfig()) {
   if(options$taxa$value == 'any') {
     mData <- new('EData')
     
@@ -73,9 +69,6 @@ search <- memoise(function(genes, options = getConfig(), verbose = T) {
         mData@gene.meta$gene.Name <- coalesce(mData@gene.meta$gene.Name, gMeta[gMap$I, gene.Name])
         mData@gene.meta$mfx.Rank <- rowMeans2(cbind(mData@gene.meta$mfx.Rank, gMeta[gMap$I, mfx.Rank]), na.rm = T)
       }
-      
-      if(verbose)
-        message(paste('Processed', x))
     }
     
     genes <- genes$key
@@ -88,19 +81,13 @@ search <- memoise(function(genes, options = getConfig(), verbose = T) {
   }
   
   n.genes <- length(geneMask)
-  if(n.genes == 0) {
-    if(verbose)
-      setProgress(T)
+  if(n.genes == 0)
     return(NULL)
-  }
   
   query <- suppressWarnings(options$sig$value %>% as.numeric)
-  if(length(query) > 1 && length(query) != n.genes) {
-    # TODO Should signal why it stopped (mismatch of signature length)
-    if(verbose)
-      setProgress(T)
+  # TODO Should signal why it stopped (mismatch of signature length)
+  if(length(query) > 1 && length(query) != n.genes)
     return(NULL)
-  }
   
   # P-values for only the GOI
   pv <- mData@data$adj.pv[geneMask, ]
@@ -143,14 +130,8 @@ search <- memoise(function(genes, options = getConfig(), verbose = T) {
   
   # Fail if 0 experiments show these genes as DE
   # TODO Not technically necessary anymore?
-  if(sum(experimentMask) == 0) {
-    if(verbose)
-      setProgress(T)
+  if(sum(experimentMask) == 0)
     return(NULL)
-  }
-  
-  if(verbose)
-    advanceProgress('Ranking')
   
   # Number of DEGs for experiments that pass thresholds
   experimentMeta <- mData@experiment.meta %>% copy %>% as.data.frame %>%
@@ -436,12 +417,8 @@ reorderTags2 <- function(cache) {
 #'
 #' @param rankings A named numeric (@seealso search).
 #' @param options The options
-#' @param verbose Whether or not to print messages to the progress bar (if it can be found)
 #' @param inprod Whether to use the generated null distribution or not
-enrich <- memoise(function(rankings, options = getConfig(), verbose = T, inprod = T) {
-  if(verbose)
-    advanceProgress('Looking up ontology terms')
-
+enrich <- memoise(function(rankings, options = getConfig(), inprod = T) {
   if(options$taxa$value == 'any') { # TODO This will include even species for which there were no homologs
     mMaps <- list(rbindlist(lapply(options$taxa$core, function(x) getTags(x, NULL))),
                   rbindlist(lapply(options$taxa$core, function(x) getTags(x, rankings$rn))))
@@ -494,9 +471,5 @@ enrich <- memoise(function(rankings, options = getConfig(), verbose = T, inprod 
       input[, stat := A / B] # suppressWarnings(phyper(A - 1, B, D, C + A, F)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)
   }
   
-  aprior() %>% {
-    if(verbose)
-      advanceProgress('Running tests')
-    enrichTest(.)
-  } %>% .[is.finite(stat)] %>% setorder(-stat)
+  aprior() %>% enrichTest %>% .[is.finite(stat)] %>% setorder(-stat)
 })

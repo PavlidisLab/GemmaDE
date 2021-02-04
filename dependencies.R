@@ -1,11 +1,9 @@
-options(app.name = 'EnriCh')
-options(app.description = 'Pending')
+options(app.name = 'TODO')
+options(app.description = 'TODO')
 options(app.tags = 'genomics,bioinformatics,genetics,transcriptomes,rnaseq,microarrays,biotechnology,medicine,biomedical,meta-analysis,statistics,search,open source,database,software')
 options(app.author = 'Jordan Sicherman (jordan.sicherman@msl.ubc.ca)')
-options(spinner.color = '#002145')
-options(spinner.type = 6)
 
-options(max.progress.steps = 5)
+options(max.progress.steps = 3)
 options(max.gemma = 1000)
 
 addConfig <- function(description, category, extras = NULL, ...) {
@@ -93,7 +91,6 @@ addConfig(taxa = 'human', description = NA, category = NA,
 addConfig(sig = '', description = NA, category = NA)
 
 source('/home/jsicherman/Thesis Work/main/process.R')
-source('/home/jsicherman/Thesis Work/main/progress.R')
 source('/home/jsicherman/Thesis Work/main/renderTools.R')
 source('/home/jsicherman/Thesis Work/main/gemmaAPI.R')
 source('/home/jsicherman/Thesis Work/main/load.R')

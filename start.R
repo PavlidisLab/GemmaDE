@@ -35,21 +35,38 @@ library(homologene)
 library(jsonlite)
 library(XML)
 
+# Concurrent users
+library(promises)
+library(future)
+plan(multicore, workers = 5)
+options(future.globals.maxSize = 30 * 1000 * 1024^2)
+
 source('dependencies.R')
 
 runApp('main', port = 18232, launch.browser = F)
 
 # ROADMAP
-# [/] Get a good simulation framework set up for the new analyses
-# [-] Fix single gene queries
-# [-] Output gene-wise contributions to scoring
-# [-] Consider interpolating between null distributions
-# [/] Consider result caching
-# [-] Release to lab
-# [-] Think of names
 # [x] Add a biology-related loader
-# [-] Support multisessions
-# [-] Release name poll
+
+# [/] Support multisessions
+# [ ]--- Needs to disable the search button
+# [?]--- Cancel a process if the client disconnects
+
+# [/] Get a good simulation framework set up for the new analyses
+# [ ]--- Needs to be tested
+
+# [-] Fix single gene queries
+
+# [-] Output gene-wise contributions to scoring
+
+# [-] Consider interpolating between null distributions
+
+# [/] Consider result caching
+# [ ]--- Make more decisions on what to cache
+
+# [-] Release to lab
+# [ ]--- Think of names
+# [ ]--- Release name poll
 
 # FOR WRITING UP
 # Sex, cell type, tissue specific findings

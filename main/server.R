@@ -3,6 +3,30 @@
 #' Query strings are supported as follows:
 #' ?genes=[list of genes]&taxa=[human|mouse|rat]&...
 server <- function(input, output, session) {
+  advanceProgress <- function(detail) {
+    setProgress(session$userData$progress + 1, detail)
+  }
+  
+  setProgress <- function(progress = NULL, detail = '', n.steps = NULL) {
+    if(is.null(progress)) {
+      if(is.null(session$userData$progress.bar)) return(NULL)
+      progress <- session$userData$progress.bar$getMax()
+      n.steps <- progress
+    }
+    
+    session$userData$progress <- progress
+    
+    if(progress == 0) {
+      session$userData$progress.bar <- shiny::Progress$new(min = 0, max = n.steps)
+      session$userData$progress.bar$set(message = 'Searching...', detail = detail)
+    } else {
+      session$userData$progress.bar$set(value = progress, detail = detail)
+      
+      if(progress >= session$userData$progress.bar$getMax())
+        session$userData$progress.bar$close()
+    }
+  }
+  
   # On connect, observe the query string. Search if any genes are specified
   observeEvent(input$LOAD, {
     output$results_header <- renderUI(generateResultsHeader(
@@ -224,7 +248,7 @@ server <- function(input, output, session) {
   #'
   #' Ends the search protocol with a failure message
   endFailure <- function() {
-    setProgress(environment())
+    setProgress()
     output$results_header <- renderUI({ # TODO Tooltips aren't beautiful
       generateResultsHeader(HTML('<h2 data-toggle="tooltip" data-placement="top" title="Relax thresholds or modify gene set.">Invalid search.</h2>'))
     })
@@ -235,7 +259,7 @@ server <- function(input, output, session) {
   #'
   #' Ends the search protocol with no results
   endEmpty <- function() {
-    setProgress(environment())
+    setProgress()
     output$results_header <- renderUI({ generateResultsHeader('No conditions found in scope.') })
     output$results <- NULL
   }
@@ -264,7 +288,7 @@ server <- function(input, output, session) {
     
     conditions[, Contrast := paste0('<b>', cf.BaseLongUri, '</b> vs. <b>', cf.ValLongUri, '</b>')]
     
-    advanceProgress('Cross linking')
+    advanceProgress('Cross-linking')
     
     conditions <- conditions %>%
       .[abs(stat) >= 1] %>%
@@ -310,34 +334,37 @@ server <- function(input, output, session) {
   #' @param genes A character vector of entrez IDs
   #' @param options The search options
   handleSearch <- function(genes, options) {
-    experiments <- search(genes, options, verbose = T)
-    
-    if(is.null(experiments))
-      endFailure()
-    else {
-      conditions <- enrich(experiments, options, verbose = T, inprod = T)
-      session$userData$endTime <- Sys.time()
-      
-      if(is.null(conditions))
-        endEmpty()
+    advanceProgress('Ranking experiments')
+    future({ search(genes, options) }, globals = 'DATA.HOLDER') %...>%(function(experiments) {
+      if(is.null(experiments))
+        endFailure()
       else {
-        conditions <- endSuccess(genes, experiments, conditions, options)
-        
-        # TODO for "any"
-        geneInfo <- DATA.HOLDER[[options$taxa$value]]@gene.meta[entrez.ID %in% genes, .(entrez.ID, gene.Name)]
-        
-        output$results <- generateResults(conditions)
-        
-        # Prepare some plotting information.
-        session$userData$plotData <- list(
-          options = options,
-          gene.ID = geneInfo$entrez.ID,
-          gene.Name = geneInfo$gene.Name,
-          experiments = experiments$rn,
-          conditions = conditions[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, `Test Statistic`, `Ontology Steps`)]
-        )
+        advanceProgress('Enriching')
+        future({ enrich(experiments, options, inprod = T) }, globals = c('TAGS', 'NULLS')) %...>%(function(conditions) {
+          session$userData$endTime <- Sys.time()
+          
+          if(is.null(conditions))
+            endEmpty()
+          else {
+            conditions <- endSuccess(genes, experiments, conditions, options)
+            
+            # TODO for "any"
+            geneInfo <- DATA.HOLDER[[options$taxa$value]]@gene.meta[entrez.ID %in% genes, .(entrez.ID, gene.Name)]
+            
+            output$results <- generateResults(conditions)
+            
+            # Prepare some plotting information.
+            session$userData$plotData <- list(
+              options = options,
+              gene.ID = geneInfo$entrez.ID,
+              gene.Name = geneInfo$gene.Name,
+              experiments = experiments$rn,
+              conditions = conditions[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, `Test Statistic`, `Ontology Steps`)]
+            )
+          }
+        })
       }
-    }
+    })
   }
   
   #' Search Genes
@@ -354,7 +381,7 @@ server <- function(input, output, session) {
                           taxa = input$taxa,
                           update = T) {
     session$userData$startTime <- as.POSIXct(Sys.time())
-    setProgress(environment(), 0, 'Validating input', n.steps = getOption('max.progress.steps'))
+    setProgress(0, 'Validating input', n.steps = getOption('max.progress.steps'))
     
     signature <- unlist(strsplit(gsub(' ', ',', gsub('(;|,( ?))', ',', signature)), ','))
     
