@@ -1,30 +1,45 @@
+# Visualizations
 library(shiny)
 library(shinyjs)
 library(shinyWidgets)
-library(shinycssloaders)
+library(shinycssloaders) # From jsicherman/shinycssloaders, NOT daattali
 library(htmlwidgets)
-library(sparkline)
 library(DT)
 library(heatmaply)
 library(shinyHeatmaply)
-library(shinypanels)
+library(shinypanels) # From jsicherman/shinypanels, NOT datasketch
+library(circlepackeR)
+library(d3wordcloud)
+library(data.tree)
+# library(sparkline)
 library(RColorBrewer)
-library(stringr)
-library(bit)
+library(sass)
 
-library(jsonlite)
 library(async)
+library(memoise)
 
+# Data drivers
 library(matrixStats)
 library(Rfast)
 library(igraph)
 library(dplyr)
 library(data.table)
+library(stringr)
+library(bit)
 
-library(gemmaAPI)
+# Parsing helpers
+library(gemmaAPI, lib.loc = '/home/omancarci/R/x86_64-redhat-linux-gnu-library/3.6/')
 library(ermineR)
 library(mygene)
 library(homologene)
+library(jsonlite)
+library(XML)
+
+# Concurrent users
+library(promises)
+library(future)
+plan(multicore, workers = 5)
+options(future.globals.maxSize = 30 * 1000 * 1024^2)
 
 source('/home/jsicherman/Thesis Work/dependencies.R')
 
@@ -122,7 +137,7 @@ DATA.HOLDER$mouse <- NULL
 DATA.HOLDER$rat <- NULL
 
 lapply('artificial', function(x) { # c(getConfig(key = 'taxa')$core, 'artificial')
-  lapply(1:20, function(i) {
+  lapply(2:20, function(i) {
     #if(file.exists(paste0('/space/scratch/jsicherman/Thesis Work/data/nulls/', x, '_', i, '.rds'))) {
     #  message(paste0('File for ', x, '_', i, ' already exists... Skipping.'))
     #} else {
@@ -141,13 +156,13 @@ lapply('artificial', function(x) { # c(getConfig(key = 'taxa')$core, 'artificial
           else
             searchGenes <- DATA.HOLDER[[x]]@gene.meta[mGenes, entrez.ID]
           
-          tmp <- search(searchGenes, getConfig(taxa = x), verbose = F)
+          tmp <- search(searchGenes, getConfig(taxa = x))
           
           if(is.null(tmp) || class(tmp) == 'try-error') {
             message(paste0('No rankings on genes ', paste0(mGenes, collapse = ', ')))
             NULL
           } else
-            enrich(tmp, getConfig(taxa = x), verbose = F, inprod = F) %>% .[, index := .I]
+            enrich(tmp, getConfig(taxa = x), inprod = F) %>% .[, index := .I]
         })
         
         if(is.null(ret) || class(ret) == 'try-error') {

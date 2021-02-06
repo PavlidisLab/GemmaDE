@@ -18,12 +18,15 @@ server <- function(input, output, session) {
     
     if(progress == 0) {
       session$userData$progress.bar <- shiny::Progress$new(min = 0, max = n.steps)
-      session$userData$progress.bar$set(message = 'Searching...', detail = detail)
+      session$userData$progress.bar$set(message = 'Working...', detail = detail)
     } else {
       session$userData$progress.bar$set(value = progress, detail = detail)
       
-      if(progress >= session$userData$progress.bar$getMax())
+      if(progress >= session$userData$progress.bar$getMax()) {
         session$userData$progress.bar$close()
+        shinyjs::enable('search')
+        shinyjs::enable('reset')
+      }
     }
   }
   
@@ -114,6 +117,10 @@ server <- function(input, output, session) {
       session$userData$cloudRendered <- T
       
       output$results_cloud <- generateResultsCloud(session$userData$plotData$conditions, session$userData$options)
+    } else if(input$tabs == 'Gene Contributions' && !is.null(session$userData$plotData) && is.null(session$userData$contribsRendered)) {
+      session$userData$contribsRendered <- T
+      
+      output$results_contribs <- generateGeneContribs(session$userData$plotData$conditions, session$userData$options)
     }
   })
   
@@ -123,6 +130,7 @@ server <- function(input, output, session) {
     session$userData$goRendered <- NULL
     session$userData$treeRendered <- NULL
     session$userData$cloudRendered <- NULL
+    session$userData$contribsRendered <- NULL
 
     if(input$tabs == 'Gene Info') {
       shinyjs::delay(100, {
@@ -151,6 +159,10 @@ server <- function(input, output, session) {
       session$userData$cloudRendered <- T
       
       output$results_cloud <- generateResultsCloud(session$userData$plotData$conditions, session$userData$options)
+    } else if(input$tabs == 'Gene Contributions' && !is.null(session$userData$plotData) && is.null(session$userData$contribsRendered)) {
+      session$userData$contribsRendered <- T
+      
+      output$results_contribs <- generateGeneContribs(session$userData$plotData$conditions, session$userData$options)
     }
   })
   
@@ -178,7 +190,7 @@ server <- function(input, output, session) {
                column(10, plotlyOutput('plot') %>% withSpinner(custom.class = 'DNA_cont', custom.html = div(lapply(1:10, function(x) div(class = 'nucleobase'))))),
                column(2, style = 'padding-top: 15px; padding-right: 30px;',
                       fluidRow(style = 'display: flex; flex-direction: row; justify-content: space-evenly; margin-bottom: 15px;',
-                               downloadButton('plot_save_jpg', 'Save JPG'), downloadButton('plot_save_pdf', 'Save PDF')),
+                               downloadButton('plot_save_jpg', 'Save JPG'), downloadButton('plot_save_pdf', 'Save PDF')), # TODO These buttons don't work
                       selectInput('plot_type', 'Type', list('Boxplot', 'Violin plot', 'Heatmap', 'Scatterplot', 'Jitterplot')),
                       selectInput('plot_data', 'Data', list('Gene Expression')),
                       pickerInput('plot_genes', 'Genes', list('Loading...'), multiple = T),
@@ -353,13 +365,26 @@ server <- function(input, output, session) {
             
             output$results <- generateResults(conditions)
             
+            # TODO for "any"
+            geneAssociations <- merge(TAGS[[options$taxa$value]][, .(rsc.ID, cf.Cat, cf.BaseLongUri, cf.ValLongUri)],
+                                      conditions[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, `Test Statistic`)],
+                                      by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T) %>%
+              merge(experiments[, !c('is.passing', 'f.OUT', 'ee.q')],
+                    by.x = 'rsc.ID', by.y = 'rn', sort = F, allow.cartesian = T) %>%
+              .[f.IN > 0] %>% .[, !'f.IN'] %>%
+              .[, lapply(.SD, mean), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri),
+                .SDcols = Filter(function(x) !(x %in% c('rsc.ID', 'cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri', 'score')), colnames(.))] %>% {
+                  data.table(.[, 1:4], .[, -(1:4)] %>% as.matrix %>% `+`(abs(min(.))) %>% `/`(rowSums2(.)))
+                } %>% setorder(-`Test Statistic`) %>% .[, !'Test Statistic']
+            
             # Prepare some plotting information.
             session$userData$plotData <- list(
               options = options,
               gene.ID = geneInfo$entrez.ID,
               gene.Name = geneInfo$gene.Name,
               experiments = experiments$rn,
-              conditions = conditions[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, `Test Statistic`, `Ontology Steps`)]
+              conditions = conditions[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, `Test Statistic`, `Ontology Steps`)] %>%
+                merge(geneAssociations, by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), all = T, sort = F)
             )
           }
         })
@@ -380,6 +405,9 @@ server <- function(input, output, session) {
                           signature = input$signature,
                           taxa = input$taxa,
                           update = T) {
+    shinyjs::disable('search')
+    shinyjs::disable('reset')
+    
     session$userData$startTime <- as.POSIXct(Sys.time())
     setProgress(0, 'Validating input', n.steps = getOption('max.progress.steps'))
     

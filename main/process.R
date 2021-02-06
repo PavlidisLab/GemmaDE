@@ -30,7 +30,7 @@ cor.wt <- function(x, y, w = rep(1, length(y))) {
 #' * fc.lower / fc.upper: Upper and lower logFC thresholds (default: 0 / 10)
 #' * mfx: Whether or not to scale by gene multifunctionality
 #' * geeq: Whether or not to scale by GEEQ score
-search <- memoise(function(genes, options = getConfig()) {
+search <- (function(genes, options = getConfig()) {
   if(options$taxa$value == 'any') {
     mData <- new('EData')
     
@@ -158,12 +158,12 @@ search <- memoise(function(genes, options = getConfig()) {
   else
     MFX_WEIGHT <- rep(1, n.genes)
   
-  zScore <- zScore * -log10(pv)
+  zScore <- zScore * -log10(Rfast::Pmax(matrix(1e-10, ncol = ncol(pv), nrow = nrow(pv)), as.matrix(pv)))
   
   if(options$method$value == 'diff') {
-    ret <- (zScore - query) %>% t %>% as.data.table %>%
-      .[, score := Rfast::rowsums(as.matrix(. * MFX_WEIGHT))]
-  } else if(options$method$value == 'cor') {
+    ret <- (zScore - query) %>% t %>% as.data.table %>% `*`(MFX_WEIGHT) %>%
+      .[, score := Rfast::rowsums(as.matrix(.))]
+  } else if(options$method$value == 'cor') { # TODO Other methods should also mfx weight the gene matrix
     ret <- zScore %>% t %>% as.data.table %>%
       .[, score := abs(cor.wt(zScore %>% as.matrix, query, MFX_WEIGHT))] %>% # TODO abs?
       .[is.nan(score), score := 0]
@@ -418,7 +418,7 @@ reorderTags2 <- function(cache) {
 #' @param rankings A named numeric (@seealso search).
 #' @param options The options
 #' @param inprod Whether to use the generated null distribution or not
-enrich <- memoise(function(rankings, options = getConfig(), inprod = T) {
+enrich <- (function(rankings, options = getConfig(), inprod = T) {
   if(options$taxa$value == 'any') { # TODO This will include even species for which there were no homologs
     mMaps <- list(rbindlist(lapply(options$taxa$core, function(x) getTags(x, NULL))),
                   rbindlist(lapply(options$taxa$core, function(x) getTags(x, rankings$rn))))

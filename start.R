@@ -57,7 +57,7 @@ runApp('main', port = 18232, launch.browser = F)
 
 # [-] Fix single gene queries
 
-# [-] Output gene-wise contributions to scoring
+# [/] Output gene-wise contributions to scoring
 
 # [-] Consider interpolating between null distributions
 

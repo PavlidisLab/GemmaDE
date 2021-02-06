@@ -8,6 +8,25 @@ generateResultsHeader <- function(title) {
     fluidRow(class = 'info-text', column(12, h2(title)))
 }
 
+# TODO Implement condition picker to not overwhelm
+generateGeneContribs <- function(data, options, plot_conditions = NULL) {
+  mData <- data[, !c('Test Statistic', 'Ontology Steps')] %>%
+    head(20) %>% # TODO Stopgap for picker
+    melt(id.vars = 1:3) %>%
+    .[, contrast := paste0(cf.BaseLongUri, ' vs. ', cf.ValLongUri)]
+  
+  fig <- plot_ly(type = 'scatterpolar', fill = 'toself', mode = 'markers')
+  for(group in unique(mData[, contrast])) {
+    fig <- fig %>%
+      add_trace(r = mData[contrast == group, value],
+                theta = mData[contrast == group, variable],
+                visible = 'legendonly',
+                name = group)
+  }
+  
+  renderPlotly(fig %>% layout(polar = list(radialaxis = list(visible = T, range = c(0, 1)))))
+}
+
 #' Generate Results Plot
 #'
 #' @param genes Genes that can be visualized
