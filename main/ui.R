@@ -25,7 +25,7 @@ ui <- fluidPage(style = 'height: 100%;',
                     fluidRow(id = 'header'),
                     
                     # The gene entry bar
-                    fluidRow(wellPanel(
+                    fluidRow(wellPanel(style = 'margin-bottom: 0;',
                       # Search parameters
                       fluidRow(
                         # Gene entry
@@ -63,6 +63,9 @@ ui <- fluidPage(style = 'height: 100%;',
                         )
                       )
                     )),
+                    
+                    # Hidden, but hijacked for downloading table data
+                    downloadButton('dataDownload', '', style = 'visibility: hidden; height: 0'),
                     
                     fluidRow(
                       column(12, htmlOutput('results_header')),

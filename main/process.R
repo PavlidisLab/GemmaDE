@@ -144,11 +144,16 @@ search <- (function(genes, options = getConfig()) {
   else
     experimentMeta$ee.qScore <- pmax(experimentMeta$ee.qScore + 1, 0, na.rm = T)
   experimentMeta$ee.qScore <- sqrt(experimentMeta$ee.qScore / 2)
-
+  
   if(length(query) == 0 || any(is.na(query))) {
     # TODO Consider warning if length(query) > 1 (some number was invalid)
     zScore <- abs(zScore)
-    query <- Rfast::rowMaxs(zScore %>% as.matrix %>% .[, as.which(experimentMask)], value = T) # TODO maybe this should come after pv weight
+    
+    # TODO maybe this should come after pv weight
+    if(n.genes == 1)
+      query <- max(zScore %>% as.matrix %>% .[, as.which(experimentMask)])
+    else
+      query <- Rfast::rowMaxs(zScore %>% as.matrix %>% .[, as.which(experimentMask)], value = T)
   } else
     zScore <- logFC # Doesn't make sense to query a z-score
   # TODO it might if we only care about directionality

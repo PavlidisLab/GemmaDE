@@ -24,7 +24,9 @@ generateGeneContribs <- function(data, options, plot_conditions = NULL) {
                 name = group)
   }
   
-  renderPlotly(fig %>% layout(polar = list(radialaxis = list(visible = T, range = c(0, 1)))))
+  renderPlotly(fig %>% layout(polar = list(radialaxis = list(visible = T, range = c(0, 1)))) %>% config(displaylogo = F,
+                                                                                                        toImageButtonOptions = list(format = 'svg'),
+                                                                                                        modeBarButtonsToRemove = c('toggleSpikelines', 'hoverCompareCartesian')))
 }
 
 #' Generate Results Plot
@@ -71,9 +73,9 @@ generateResultsPlot <- function(genes, conditions, expr, options = getConfig(),
   
   if(plot_type == 'Heatmap') {
     if(plot_data == 'Gene Expression')
-      heatmaply(expr$expr, labRow = NULL, showticklabels = c(F, T), scale = 'row',
-                Rowv = NULL, dendrogram = 'none', colors = cool_warm,
-                col_side_colors = expr$metadata[, .(Contrast = baseline)])
+      ret <- heatmaply(expr$expr, labRow = NULL, showticklabels = c(F, T), scale = 'row',
+                       Rowv = NULL, dendrogram = 'none', colors = cool_warm,
+                       col_side_colors = expr$metadata[, .(Contrast = baseline)])
   } else {
     if(plot_data == 'Gene Expression') {
       data <- expr$expr %>% reshape2::melt(value.name = 'Expression', varnames = c('Gene', 'Sample')) %>%
@@ -82,45 +84,49 @@ generateResultsPlot <- function(genes, conditions, expr, options = getConfig(),
     }
     
     if(plot_type == 'Scatterplot') {
-      (data %>% ggplot(aes(color = Gene, x = Sample, y = Expression)) +
-         geom_point(aes(text = paste('Accession:', accession), shape = Contrast), size = 2) +
-         scale_color_brewer(palette = 'Dark2') +
-         geom_line(aes(group = interaction(Gene, Contrast))) +
-         theme_classic() + theme(axis.text.x = element_blank())) %>%
+      ret <- (data %>% ggplot(aes(color = Gene, x = Sample, y = Expression)) +
+                geom_point(aes(text = paste('Accession:', accession), shape = Contrast), size = 2) +
+                scale_color_brewer(palette = 'Dark2') +
+                geom_line(aes(group = interaction(Gene, Contrast))) +
+                theme_classic() + theme(axis.text.x = element_blank())) %>%
         ggplotly %>%
         layout(yaxis = list(title = 'Expression (log<sub>2</sub> CPM)'))
     } else if(plot_type == 'Boxplot') {
-      suppressWarnings(suppressMessages((data %>% ggplot(aes(fill = Contrast,
-                                                             x = Gene, y = Expression)) +
-                                           geom_boxplot() +
-                                           scale_fill_brewer(palette = 'Dark2') +
-                                           theme_classic()) %>%
-                                          ggplotly(dynamicTicks = T) %>%
-                                          layout(boxmode = 'group',
-                                                 yaxis = list(title = 'Expression (log<sub>2</sub> CPM)'))))
+      ret <- suppressWarnings(suppressMessages((data %>% ggplot(aes(fill = Contrast,
+                                                                    x = Gene, y = Expression)) +
+                                                  geom_boxplot() +
+                                                  scale_fill_brewer(palette = 'Dark2') +
+                                                  theme_classic()) %>%
+                                                 ggplotly(dynamicTicks = T) %>%
+                                                 layout(boxmode = 'group',
+                                                        yaxis = list(title = 'Expression (log<sub>2</sub> CPM)'))))
     } else if(plot_type == 'Jitterplot') {
       data <- data %>% mutate(GeneID = Gene, Gene = as.numeric(Gene))
       
-      suppressWarnings(suppressMessages((data %>% ggplot(aes(text = paste0('Accession: ', accession, '<br>Gene: ', GeneID),
-                                                             fill = Contrast, group = interaction(Gene, Contrast),
-                                                             x = Gene, y = Expression)) +
-                                           geom_jitter(position = position_jitterdodge(), alpha = 0.8) +
-                                           scale_fill_brewer(palette = 'Dark2') +
-                                           theme_classic()) %>%
-                                          ggplotly(dynamicTicks = T, tooltip = c('text', 'fill', 'y')) %>%
-                                          layout(boxmode = 'group',
-                                                 xaxis = list(title = 'Gene', tickmode = 'array', autotick = F, tickvals = 1:(length(unique(data$Gene))), ticktext = unique(data$GeneID)),
-                                                 yaxis = list(title = 'Expression (log<sub>2</sub> CPM)'))))
+      ret <- suppressWarnings(suppressMessages((data %>% ggplot(aes(text = paste0('Accession: ', accession, '<br>Gene: ', GeneID),
+                                                                    fill = Contrast, group = interaction(Gene, Contrast),
+                                                                    x = Gene, y = Expression)) +
+                                                  geom_jitter(position = position_jitterdodge(), alpha = 0.8) +
+                                                  scale_fill_brewer(palette = 'Dark2') +
+                                                  theme_classic()) %>%
+                                                 ggplotly(dynamicTicks = T, tooltip = c('text', 'fill', 'y')) %>%
+                                                 layout(boxmode = 'group',
+                                                        xaxis = list(title = 'Gene', tickmode = 'array', autotick = F, tickvals = 1:(length(unique(data$Gene))), ticktext = unique(data$GeneID)),
+                                                        yaxis = list(title = 'Expression (log<sub>2</sub> CPM)'))))
     } else if(plot_type == 'Violin plot') {
-      suppressWarnings(suppressMessages((data %>% ggplot(aes(fill = Contrast,
-                                                             x = Gene, y = Expression)) +
-                                           geom_violin(alpha = 0.9) +
-                                           scale_fill_brewer(palette = 'Dark2') +
-                                           theme_classic()) %>%
-                                          ggplotly %>%
-                                          layout(yaxis = list(title = 'Expression (log<sub>2</sub> CPM)'))))
+      ret <- suppressWarnings(suppressMessages((data %>% ggplot(aes(fill = Contrast,
+                                                                    x = Gene, y = Expression)) +
+                                                  geom_violin(alpha = 0.9) +
+                                                  scale_fill_brewer(palette = 'Dark2') +
+                                                  theme_classic()) %>%
+                                                 ggplotly %>%
+                                                 layout(yaxis = list(title = 'Expression (log<sub>2</sub> CPM)'))))
     }
   }
+  
+  ret %>% config(displaylogo = F,
+                 toImageButtonOptions = list(format = 'svg'),
+                 modeBarButtonsToRemove = c('toggleSpikelines', 'hoverCompareCartesian'))
 }
 
 makeNetwork <- memoise::memoise(function(data, options) {
@@ -211,6 +217,13 @@ generateResults <- function(data) {
   mTable <- datatable(data[, outputColumns, with = F] %>% as.data.frame,
                       extensions = 'Buttons',
                       rownames = data[, cf.Cat],
+                      callback = JS(
+                        "var a = document.createElement('a');",
+                        "$(a).addClass('dt-button');",
+                        "$(a).click(function() { $('#dataDownload')[0].click() });",
+                        "$(a).text('Download');",
+                        "$('div.dwnld').append(a);"
+                      ),
                       escape = -(c(which(outputColumns == 'Contrast'), which(outputColumns == 'Evidence')) + 1),
                       filter = 'top',
                       options = list(pageLength = 10,
@@ -227,7 +240,7 @@ generateResults <- function(data) {
                                      fixedHeader = T,
                                      initComplete = JS('onTableCreated'),
                                      drawCallback = JS('onTableDraw'),
-                                     dom = 'lBfrtip',
+                                     dom = 'lB<"dwnld">frtip',
                                      autoWidth = T,
                                      deferRender = T,
                                      serverSide = T,
@@ -265,18 +278,7 @@ generateResults <- function(data) {
                                      buttons = list(
                                        list(extend = 'collection',
                                             text = 'Visualize',
-                                            action = JS('plotData')),
-                                       list(extend = 'csvHtml5',
-                                            text = 'Download',
-                                            title = 'data'#,
-                                            #exportOptions = list(
-                                            #  format = list(
-                                            #body = JS('unformatSpark')
-                                            # TODO Will eventually need to fix this so html data is fixed
-                                            #customizeData = JS('function(data) { console.log(data); }')
-                                            #  )
-                                            #)
-                                       )
+                                            action = JS('plotData'))
                                      )
                       )
   )

@@ -177,6 +177,14 @@ input[type="search"] {
   background: unset !important;
 }
 
+.dwnld > a {
+  float: right !important;
+}
+
+.main-svg {
+  padding-top: 20.5px;
+}
+
 footer, .content:after {
   height: 50px;
 }

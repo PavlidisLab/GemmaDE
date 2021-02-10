@@ -41,6 +41,11 @@ library(future)
 plan(multicore, workers = 5)
 options(future.globals.maxSize = 30 * 1000 * 1024^2)
 
+#Sys.setenv(PATH = paste('/home/jsicherman/miniconda2/bin:/home/jsicherman/miniconda2/condabin',
+#                        Sys.getenv('PATH'), sep = ':'))
+#Sys.setenv(LD_LIBRARY_PATH = paste('/home/jsicherman/centos/usr/lib64',
+#                                   Sys.getenv('LD_LIBRARY_PATH'), sep = ':'))
+
 source('dependencies.R')
 
 runApp('main', port = 18232, launch.browser = F)
@@ -48,20 +53,27 @@ runApp('main', port = 18232, launch.browser = F)
 # ROADMAP
 # [x] Add a biology-related loader
 
-# [/] Support multisessions
-# [ ]--- Needs to disable the search button
-# [?]--- Cancel a process if the client disconnects
+# [x] Support multisessions
+# [x]--- Needs to disable the search button
+# [x]--- Cancel a process if the client disconnects
 
 # [/] Get a good simulation framework set up for the new analyses
 # [ ]--- Needs to be tested
 
-# [-] Fix single gene queries
+# [x] Fix single gene queries
+# [x] Fix plot saving
+# [x]--- Seems overly complicated and takes awhile
+# [x]--- Changed from orca to plotly built-in svg
+# [x] Fix table saving
 
 # [/] Output gene-wise contributions to scoring
+# [ ]--- These numbers may not be very meaningful as they only communicate amount of DE. If they could somehow
+#        be modified to portray specificity, it would be ideal
+# [ ]--- Need to have a condition selector to minimize legend overhead
 
 # [-] Consider interpolating between null distributions
 
-# [/] Consider result caching
+# [x] Consider result caching
 # [ ]--- Make more decisions on what to cache
 
 # [-] Release to lab

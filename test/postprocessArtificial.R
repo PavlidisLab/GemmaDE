@@ -1,7 +1,35 @@
 artificial <- readRDS('/space/scratch/jsicherman/Thesis Work/data/artificial/experiment_data.rds')
-#contrasts <- readRDS('/space/scratch/jsicherman/Thesis Work/data/artificial/contrast_table.rds')
+contrasts <- readRDS('/space/scratch/jsicherman/Thesis Work/data/artificial/contrast_table.rds')
 exp.meta <- readRDS('/space/scratch/jsicherman/Thesis Work/data/artificial/experiment_meta.rds')
 gene.meta <- readRDS('/space/scratch/jsicherman/Thesis Work/data/artificial/gene_meta.rds')
+
+#cMap <- lapply(1:nrow(contrasts), function(x) contrasts[x, contrast][[1]]$ID)
+
+getCMap <- function(genes = NULL, condition = NULL) {
+  genes <- as.integer(genes)
+  
+  if(!is.null(condition)) {
+    condition[2] <- head(ONTOLOGIES.DEFS[Definition == condition[2], as.character(Node_Long)], 1) %>% {
+      if(length(.) == 0) condition[2]
+      else .
+    }
+    condition[3] <- head(ONTOLOGIES.DEFS[Definition == condition[3], as.character(Node_Long)], 1) %>% {
+      if(length(.) == 0) condition[3]
+      else .
+    }
+    
+    condition <- SIMULATION[cf.Cat == condition[1] &
+                              grepl(condition[2], cf.BaseLongUri, fixed = T) &
+                              grepl(condition[3], cf.ValLongUri, fixed = T), I]
+    rbindlist(lapply(switch((length(genes) == 0) + 1, genes, 1:length(cMap)), function(x) {
+      indx <- which(cMap[[x]] == condition)
+      data.table(entrez.ID = x,
+                 index = indx,
+                 frac = indx/length(cMap[[x]]))
+    })) %>% setorder(index)
+  } else
+    cMap[genes]
+}
 
 tmp <- rbindlist(lapply(1:length(artificial), function(i) {
   if(class(artificial[[i]]) == 'try-error')

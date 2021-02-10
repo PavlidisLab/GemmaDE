@@ -55,7 +55,7 @@ mu.phi.estimates <- readRDS(mu.phi.estimates)
 generateSyntheticData <- function (dataset, n.vars, samples.per.cond, n.diffexp, repl.id = 1, 
                                    seqdepth = 1e+07, minfact = 0.7, maxfact = 1.4, relmeans = "auto", 
                                    dispersions = "auto", fraction.upregulated = 1, between.group.diffdisp = FALSE, 
-                                   filter.threshold.total = 1, filter.threshold.mediancpm = 0, 
+                                   filter.threshold.total = 0, filter.threshold.mediancpm = 0, 
                                    fraction.non.overdispersed = 0, random.outlier.high.prob = 0, 
                                    random.outlier.low.prob = 0, single.outlier.high.prob = 0, 
                                    single.outlier.low.prob = 0, effect.size = 1.5, output.file = NULL) 
@@ -69,8 +69,8 @@ generateSyntheticData <- function (dataset, n.vars, samples.per.cond, n.diffexp,
   uID <- paste(sample(c(0:9, letters, LETTERS), 10, replace = TRUE), 
                collapse = "")
   condition <- rep(c(1, 2), each = samples.per.cond)
-  S1 <- which(condition == 1)
-  S2 <- which(condition == 2)
+  S1 <- 1:samples.per.cond
+  S2 <- 1:samples.per.cond + samples.per.cond
   if (length(effect.size) == 1) {
     n.upregulated <- floor(fraction.upregulated * n.diffexp)
     if (fraction.upregulated != 0 & n.diffexp != 0) {
@@ -198,17 +198,16 @@ generateSyntheticData <- function (dataset, n.vars, samples.per.cond, n.diffexp,
   
   random.outliers <- matrix(0, nrow(Z), ncol(Z))
   random.outliers.factor <- matrix(1, nrow(Z), ncol(Z))
-  if (random.outlier.high.prob != 0 | random.outlier.low.prob != 
-      0) {
+  if (random.outlier.high.prob != 0 | random.outlier.low.prob != 0) {
+    tmp <- matrix(runif(prod(dim(Z))), nrow = nrow(Z))
     for (i in 1:nrow(Z)) {
       for (j in 1:ncol(Z)) {
-        tmp <- runif(1)
-        if (tmp < random.outlier.high.prob) {
+        if (tmp[i, j] < random.outlier.high.prob) {
           random.outliers[i, j] <- 1
           random.outliers.factor[i, j] <- runif(1, min = 5, 
                                                 max = 10)
         }
-        else if (tmp < random.outlier.low.prob + random.outlier.high.prob) {
+        else if (tmp[i, j] < random.outlier.low.prob + random.outlier.high.prob) {
           random.outliers[i, j] <- (-1)
           random.outliers.factor[i, j] <- 1/runif(1, 
                                                   min = 5, max = 10)
@@ -268,8 +267,7 @@ generateSyntheticData <- function (dataset, n.vars, samples.per.cond, n.diffexp,
   common.libsize <- exp(mean(log(colSums(Z))))
   pseudocounts <- sweep(Z + 0.5, 2, norm.factors, "/") * common.libsize
   log2.pseudocounts <- log2(pseudocounts)
-  M.value <- apply(log2.pseudocounts[, S2], 1, mean) - apply(log2.pseudocounts[, 
-                                                                               S1], 1, mean)
+  M.value <- apply(log2.pseudocounts[, S2], 1, mean) - apply(log2.pseudocounts[, S1], 1, mean)
   A.value <- 0.5 * (apply(log2.pseudocounts[, S2], 1, mean) + 
                       apply(log2.pseudocounts[, S1], 1, mean))
   variable.annotations <- data.frame(truedispersions.S1 = truedispersions.S1, 
@@ -304,8 +302,7 @@ generateSyntheticData <- function (dataset, n.vars, samples.per.cond, n.diffexp,
   m <- apply(cpm, 1, median)
   keep.C <- which(m >= filter.threshold.mediancpm)
   Z.TC <- Z.T[keep.C, ]
-  variable.annotations.TC <- variable.annotations.T[keep.C, 
-  ]
+  variable.annotations.TC <- variable.annotations.T[keep.C, ]
   filtering <- paste(filtering, "; ", paste("median cpm >=", 
                                             filter.threshold.mediancpm))
   rownames(Z.TC) <- paste("g", 1:nrow(Z.TC), sep = "")
@@ -347,7 +344,7 @@ GENE_IDS <- 1:N_GENES
 
 N_CONTRASTS <- nrow(SIMULATION)
 EXP_RATE <- 1
-USE_DESEQ <- F
+USE <- 'simulated'
 
 # A gene should have a contrast associated with it most strongly, and other contrasts diminishing exponentially
 
@@ -403,23 +400,23 @@ experiment.data <- mclapply(1:N_EXPERIMENTS, function(x) {
   
   tmp@sample.annotations$condition <- factor(tmp@sample.annotations$condition, labels = LETTERS[1:2])
   
-  if(USE_DESEQ) {
+  if(USE == 'DESeq2') {
     suppressMessages(DESeqDataSetFromMatrix(countData = tmp@count.matrix,
                                             colData = tmp@sample.annotations,
                                             design = ~ condition) %>% DESeq(quiet = T) %>% results %>%
                        as.data.table(keep.rownames = T) %>% {
-                         list(contrast = contrast,
+                         list(contrast = y,
                               entrez.ID = .[, as.integer(substring(rn, 2))],
                               fc = .[, log2FoldChange],
                               adj.pv = .[, padj])
                        })
-  } else {
+  } else if(USE == 'Limma') {
     d0 <- DGEList(tmp@count.matrix) %>% calcNormFactors()
     cutoff <- 1
     drop <- which(apply(cpm(d0), 1, max) < cutoff)
     d <- d0[-drop, ]
     mm <- model.matrix(~0 + condition, tmp@sample.annotations)
-    yy <- voom(d0, mm, plot = F)
+    yy <- voom(d, mm, plot = F)
     fit <- lmFit(yy, mm)
     contr <- makeContrasts(conditionB - conditionA, levels = colnames(coef(fit)))
     contrasts.fit(fit, contr) %>% eBayes %>% topTable(sort.by = 'P', number = Inf) %>%
@@ -429,6 +426,15 @@ experiment.data <- mclapply(1:N_EXPERIMENTS, function(x) {
              fc = .[, logFC],
              adj.pv = .[, adj.P.Val])
       }
+  } else {
+    list(contrast = y,
+         entrez.ID = 1:N_GENES,
+         fc = tmp@variable.annotations$truelog2foldchanges + rnorm(N_GENES, sd = 0.1),
+         adj.pv = runif(N_GENES) %>% {
+           a <- .
+           a[tmp@variable.annotations$differential.expression == 1] <- runif(tmp@info.parameters$n.diffexp, 1e-32, 0.05)
+           a
+        })
   }
 })
 

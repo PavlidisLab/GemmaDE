@@ -3,6 +3,10 @@
 #' Query strings are supported as follows:
 #' ?genes=[list of genes]&taxa=[human|mouse|rat]&...
 server <- function(input, output, session) {
+  session$onSessionEnded(function() {
+    session$userData$INTERRUPT <- T
+  })
+  
   advanceProgress <- function(detail) {
     setProgress(session$userData$progress + 1, detail)
   }
@@ -189,8 +193,8 @@ server <- function(input, output, session) {
       fluidRow(style = 'height: 85vh;',
                column(10, plotlyOutput('plot') %>% withSpinner(custom.class = 'DNA_cont', custom.html = div(lapply(1:10, function(x) div(class = 'nucleobase'))))),
                column(2, style = 'padding-top: 15px; padding-right: 30px;',
-                      fluidRow(style = 'display: flex; flex-direction: row; justify-content: space-evenly; margin-bottom: 15px;',
-                               downloadButton('plot_save_jpg', 'Save JPG'), downloadButton('plot_save_pdf', 'Save PDF')), # TODO These buttons don't work
+                      #fluidRow(style = 'display: flex; flex-direction: row; justify-content: space-evenly; margin-bottom: 15px;',
+                      #         downloadButton('plot_save_jpg', 'Save JPG'), downloadButton('plot_save_svg', 'Save SVG')),
                       selectInput('plot_type', 'Type', list('Boxplot', 'Violin plot', 'Heatmap', 'Scatterplot', 'Jitterplot')),
                       selectInput('plot_data', 'Data', list('Gene Expression')),
                       pickerInput('plot_genes', 'Genes', list('Loading...'), multiple = T),
@@ -215,6 +219,33 @@ server <- function(input, output, session) {
                             session$userData$plotData$options,
                             input$plot_genes, input$plot_conditions, input$plot_type, input$plot_data)
       })
+      
+      #output$plot_save_jpg <- downloadHandler(function() {
+      #  shinyjs::disable('plot_save_jpg')
+      #  shinyjs::disable('plot_save_svg')
+      #  paste0('plot-', Sys.Date(), '.jpeg')
+      #}, function(file) {
+      #  suppressWarnings(tryCatch({
+      #    print(file)
+      #    withr::with_dir(dirname(file), plotly::orca(session$userData$last_plot, basename(file), width = 11 * 96, height = 8.5 * 96))
+      #  }, error = function(e) {}, finally = {
+      #    shinyjs::enable('plot_save_jpg')
+      #    shinyjs::enable('plot_save_svg')
+      #  }))
+      #})
+      
+      #output$plot_save_svg <- downloadHandler(function() {
+      #  shinyjs::disable('plot_save_jpg')
+      #  shinyjs::disable('plot_save_svg')
+      #  paste0('plot-', Sys.Date(), '.svg')
+      #}, function(file) {
+      #  suppressWarnings(tryCatch({
+      #    withr::with_dir(dirname(file), plotly::orca(session$userData$last_plot, basename(file), width = 11 * 96, height = 8.5 * 96))
+      #  }, error = function(e) {}, finally = {
+      #    shinyjs::enable('plot_save_jpg')
+      #    shinyjs::enable('plot_save_svg')
+      #  }))
+      #})
     }
     
     if(is.null(session$userData$plotData$exprInfo)) {
@@ -348,17 +379,26 @@ server <- function(input, output, session) {
   handleSearch <- function(genes, options) {
     advanceProgress('Ranking experiments')
     future({ search(genes, options) }, globals = 'DATA.HOLDER') %...>%(function(experiments) {
+      if(!is.null(session$userData$INTERRUPT))
+        return(NULL)
+      
       if(is.null(experiments))
         endFailure()
       else {
         advanceProgress('Enriching')
         future({ enrich(experiments, options, inprod = T) }, globals = c('TAGS', 'NULLS')) %...>%(function(conditions) {
+          if(!is.null(session$userData$INTERRUPT))
+            return(NULL)
+          
           session$userData$endTime <- Sys.time()
           
           if(is.null(conditions))
             endEmpty()
           else {
             conditions <- endSuccess(genes, experiments, conditions, options)
+            
+            if(!is.null(session$userData$INTERRUPT))
+              return(NULL)
             
             # TODO for "any"
             geneInfo <- DATA.HOLDER[[options$taxa$value]]@gene.meta[entrez.ID %in% genes, .(entrez.ID, gene.Name)]
@@ -386,6 +426,12 @@ server <- function(input, output, session) {
               conditions = conditions[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, `Test Statistic`, `Ontology Steps`)] %>%
                 merge(geneAssociations, by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), all = T, sort = F)
             )
+            
+            output$dataDownload <- downloadHandler(function() {
+              paste0('enrichment-', Sys.Date(), '.csv')
+            }, function(file) {
+              write.csv(session$userData$plotData$conditions %>% copy %>% setnames(c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), c('Category', 'Baseline', 'Value')), file)
+            }, 'text/csv')
           }
         })
       }
