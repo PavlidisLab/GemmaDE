@@ -45,6 +45,7 @@ if(!exists('DATA.HOLDER'))
   source('dependencies.R')
 
 rm(NULLS, DRUGBANK, TAGS, CACHE.BACKGROUND, ONTOLOGIES, ONTOLOGIES.DEFS)
+DATA.HOLDER$artificial <- NULL
 DATA.HOLDER$mouse <- NULL
 DATA.HOLDER$rat <- NULL
 
@@ -328,76 +329,55 @@ letterWrap <- function(n, depth = 1) {
   return(c(x, letterWrap(n - length(x), depth = depth + 1)))
 }
 
-# Create corpus ----
-
-SIMULATION <- DATA.HOLDER$human@experiment.meta[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>% unique %>%
-  .[, c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri') := list(as.character(cf.Cat),
-                                                             as.character(cf.BaseLongUri),
-                                                             as.character(cf.ValLongUri))] %>%
-  .[, I := .I]
-
-N_EXPERIMENTS <- nrow(DATA.HOLDER$human@experiment.meta)
-EXPERIMENT_NAMES <- letterWrap(N_EXPERIMENTS)
-
-N_GENES <- nrow(DATA.HOLDER$human@gene.meta)
-GENE_IDS <- 1:N_GENES
-
-N_CONTRASTS <- nrow(SIMULATION)
-EXP_RATE <- 1
-USE <- 'simulated'
-
-# A gene should have a contrast associated with it most strongly, and other contrasts diminishing exponentially
-
-if(!exists('CONTRAST_TABLE')) {
-  CONTRAST_TABLE <- data.table(entrez.ID = GENE_IDS)
-  CONTRAST_TABLE <- CONTRAST_TABLE[, list(contrast = list(data.table(ID = sample(1:N_CONTRASTS),
-                                                                     prob = sort(rexp(N_CONTRASTS, EXP_RATE), T) %>% `/`(runif(1, 1.01, 1.5) * head(., 1)),
-                                                                     down = sample(c(T, F), N_CONTRASTS, T)))), entrez.ID]
+if(!exists('CONTRAST_AFFINITY')) {
+  eMeta <- DATA.HOLDER$human@experiment.meta %>% copy
+  N_GENES <- nrow(DATA.HOLDER$human@gene.meta)
+  N_EXP <- nrow(eMeta)
+  CONTRASTS <- eMeta[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>% unique
+  EXP_CONTRASTS <- sample(1:nrow(CONTRASTS), N_EXP, T, sort(rexp(nrow(CONTRASTS)), T))
+  USE <- 'simulated'
+  
+  rm(DATA.HOLDER)
+  
+  r1exp <- function(n, n.1, val.1 = 2, val.1.rate = 1, rate = 1) {
+    sample(c(val.1 + rexp(n.1, val.1.rate), val.1 * rexp(n - n.1, rate) %>% `/`(max(.))))
+  }
+  
+  CONTRAST_AFFINITY <- lapply(unique(EXP_CONTRASTS), function(contrast) {
+    data.table(contrast = contrast,
+               entrez.ID = 1:N_GENES,
+               probability = r1exp(N_GENES, n.1 = 5)) %>%
+      .[, effect := pmax(rnorm(N_GENES, 10, 1.5), 1) * probability] %>%
+      .[sample(c(T, F), N_GENES, T), effect := 1 / effect]
+  }) %>% rbindlist
+  
+  saveRDS(CONTRAST_AFFINITY, '/space/scratch/jsicherman/Thesis Work/data/artificial4/contrast_aff.rds')
 }
 
-if(!exists('gene.meta'))
-  gene.meta <- data.table(entrez.ID = as.character(GENE_IDS),
-                          gene.ID = NA_character_,
-                          ensembl.ID = NA_character_,
-                          gene.Name = paste0('g', GENE_IDS),
-                          alias.Name = NA_character_,
-                          gene.Desc = NA_character_,
-                          mfx.Rank = sapply(1:nrow(CONTRAST_TABLE), function(x) CONTRAST_TABLE[x, contrast][[1]][, sum(prob)]) %>% `/`(max(.)))
-
-# Not exact zeroes
-rzexp <- function(n, prob.zero = 0.4, rate = 5e-4) {
-  zeroes <- floor(prob.zero * n)
-  sample(c(sample(4:10, zeroes, T), rexp(n - zeroes, rate)))
-}
-
-# The basic strategy is that we'll pick a contrast corresponding to the same row of the human data
-# and then choose genes to differentially express based on that contrast...
-
-experiment.meta <- DATA.HOLDER$human@experiment.meta %>% copy
-#experiment.meta[, ee.qScore := ...]
-#experiment.meta[, ee.sScore := ...]
-experiment.meta[, n.DE := as.integer(round(rzexp(N_EXPERIMENTS)))]
-experiment.meta[, n.detect := N_GENES]
-#experiment.meta[, mean.fc := ...]
-experiment.meta[, ee.Name := EXPERIMENT_NAMES]
-experiment.meta[, rsc.ID := EXPERIMENT_NAMES]
-
-options(mc.cores = 10)
-experiment.data <- mclapply(1:N_EXPERIMENTS, function(x) {
-  message(paste0(round(100*x/N_EXPERIMENTS, 2), '%'))
-  y <- head(merge(SIMULATION, DATA.HOLDER$human@experiment.meta[x, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]), 1)
-  probs <- CONTRAST_TABLE[, rbindlist(.SD[, contrast])[ID == y[, I]]][, .(prob, down)]
-  genes.dysregulated <- sample(1:N_GENES, experiment.meta[x, n.DE], F, probs[, prob])
+options(mc.cores = 5)
+mclapply(1:N_EXP, function(experiment) {
+  # Sample some genes to DE
+  mDat <- tryCatch({CONTRAST_AFFINITY[contrast == EXP_CONTRASTS[experiment]] %>%
+      setorder(-probability) %>%
+      head(2 * eMeta$n.DE[experiment]) %>%
+      .[sample(1:nrow(.), eMeta$n.DE[experiment], F, .$probability)] %>%
+      .[, .(entrez.ID, effect)]}, error = function(e) {
+        
+        print(e)
+        data.table(entrez.ID = NA_integer_, effect = NA_integer_)
+      })
   
-  effects <- 1.5 + dqrng::dqrexp(N_GENES)
+  # Make the others have effect of 1
+  mDat <- data.table(entrez.ID = 1:N_GENES,
+                     effect = 1) %>% merge(mDat, by = 'entrez.ID', all.x = T) %>%
+    .[!is.na(effect.y), effect.x := effect.y] %>%
+    .[, c('effect', 'effect.x', 'effect.y') := list(effect.x, NULL, NULL)]
   
-  effects[setdiff(1:N_GENES, genes.dysregulated)] <- 1
-  effects[effects != 0 & probs[, down]] <- 1 / effects[effects != 0 & probs[, down]]
-  
-  tmp <- generateSyntheticData(EXPERIMENT_NAMES[x],
-                               n.vars = N_GENES, samples.per.cond = max(2, floor(experiment.meta[x, ee.NumSamples] / 2)),
-                               effect.size = effects)
-  
+  print(paste0('exp: ', experiment, ' contr: ', EXP_CONTRASTS[experiment]))
+  print(eMeta$n.DE[experiment])
+  tmp <- generateSyntheticData('',
+                               n.vars = N_GENES, samples.per.cond = max(2, floor(eMeta[experiment, ee.NumSamples] / 2)),
+                               effect.size = mDat$effect)
   tmp@sample.annotations$condition <- factor(tmp@sample.annotations$condition, labels = LETTERS[1:2])
   
   if(USE == 'DESeq2') {
@@ -405,8 +385,8 @@ experiment.data <- mclapply(1:N_EXPERIMENTS, function(x) {
                                             colData = tmp@sample.annotations,
                                             design = ~ condition) %>% DESeq(quiet = T) %>% results %>%
                        as.data.table(keep.rownames = T) %>% {
-                         list(contrast = y,
-                              DEGs = genes.dysregulated,
+                         list(contrast = EXP_CONTRASTS[experiment],
+                              DEGs = mDat[effect != 1, entrez.ID],
                               entrez.ID = .[, as.integer(substring(rn, 2))],
                               fc = .[, log2FoldChange],
                               adj.pv = .[, padj])
@@ -422,26 +402,23 @@ experiment.data <- mclapply(1:N_EXPERIMENTS, function(x) {
     contr <- makeContrasts(conditionB - conditionA, levels = colnames(coef(fit)))
     contrasts.fit(fit, contr) %>% eBayes %>% topTable(sort.by = 'P', number = Inf) %>%
       as.data.table(keep.rownames = T) %>% {
-        list(contrast = y,
-             DEGs = genes.dysregulated,
+        list(contrast = EXP_CONTRASTS[experiment],
+             DEGs = mDat[effect != 1, entrez.ID],
              entrez.ID = .[, as.integer(substring(rn, 2))],
              fc = .[, logFC],
              adj.pv = .[, adj.P.Val])
       }
   } else {
-    list(contrast = y,
-         DEGs = genes.dysregulated,
-         entrez.ID = 1:N_GENES,
-         fc = tmp@variable.annotations$truelog2foldchanges + rnorm(N_GENES, sd = 0.1),
+    list(contrast = EXP_CONTRASTS[experiment],
+         DEGs = mDat[effect != 1, entrez.ID],
+         fc = tmp@variable.annotations$truelog2foldchanges + rnorm(N_GENES, sd = 0.05),
          adj.pv = runif(N_GENES) %>% {
            a <- .
+           spikes <- as.integer(mDat[, 1.05 * sum(effect != 1)])
+           a[sample(1:length(a), spikes)] <- runif(spikes, 1e-32, 0.05)
+           a <- p.adjust(a, method = 'BH')
            a[tmp@variable.annotations$differential.expression == 1] <- runif(tmp@info.parameters$n.diffexp, 1e-32, 0.05)
            a
-        })
+         })
   }
-})
-
-saveRDS(CONTRAST_TABLE, '/space/scratch/jsicherman/Thesis Work/data/artificial/contrast_table.rds')
-saveRDS(experiment.meta, '/space/scratch/jsicherman/Thesis Work/data/artificial/experiment_meta.rds')
-saveRDS(experiment.data, '/space/scratch/jsicherman/Thesis Work/data/artificial/experiment_data.rds')
-saveRDS(gene.meta, '/space/scratch/jsicherman/Thesis Work/data/artificial/gene_meta.rds')
+}) %>% saveRDS('/space/scratch/jsicherman/Thesis Work/data/artificial4/experiment_dat.rds')

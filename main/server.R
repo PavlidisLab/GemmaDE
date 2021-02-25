@@ -386,7 +386,7 @@ server <- function(input, output, session) {
         endFailure()
       else {
         advanceProgress('Enriching')
-        future({ enrich(experiments, options, inprod = T) }, globals = c('TAGS', 'NULLS')) %...>%(function(conditions) {
+        future({ enrich(experiments, options, inprod = T) }, globals = c('CACHE.BACKGROUND', 'NULLS')) %...>%(function(conditions) {
           if(!is.null(session$userData$INTERRUPT))
             return(NULL)
           
@@ -406,7 +406,7 @@ server <- function(input, output, session) {
             output$results <- generateResults(conditions)
             
             # TODO for "any"
-            geneAssociations <- merge(TAGS[[options$taxa$value]][, .(rsc.ID, cf.Cat, cf.BaseLongUri, cf.ValLongUri)],
+            geneAssociations <- merge(getTags(options$taxa$value)[, .(rsc.ID, cf.Cat, cf.BaseLongUri, cf.ValLongUri)],
                                       conditions[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, `Test Statistic`)],
                                       by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T) %>%
               merge(experiments[, !c('is.passing', 'f.OUT', 'ee.q')],

@@ -1,4 +1,4 @@
-options(app.name = 'TODO')
+options(app.name = 'Gemma DE')
 options(app.description = 'TODO')
 options(app.tags = 'genomics,bioinformatics,genetics,transcriptomes,rnaseq,microarrays,biotechnology,medicine,biomedical,meta-analysis,statistics,search,open source,database,software')
 options(app.author = 'Jordan Sicherman (jordan.sicherman@msl.ubc.ca)')

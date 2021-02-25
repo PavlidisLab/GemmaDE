@@ -244,10 +244,6 @@ if(!exists('CACHE.BACKGROUND')) {
   }
 }
 
-if(!exists('TAGS')) {
-  TAGS <- lapply(names(CACHE.BACKGROUND), getTags) %>% `names<-`(names(CACHE.BACKGROUND))
-}
-
 if(!exists('NULLS')) {
   mFiles <- list.files('/space/scratch/jsicherman/Thesis Work/data/nulls')
   NULLS <- lapply(c('any', names(DATA.HOLDER)), function(taxa) {
@@ -269,6 +265,6 @@ if(!exists('NULLS')) {
   rm(mFiles)
 }
 
-if(!exists('DRUGBANK')) {
+if(!exists('DRUGBANK') && interactive()) {
   DRUGBANK <- loadDrugbank()
 }

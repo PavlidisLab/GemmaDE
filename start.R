@@ -51,6 +51,8 @@ source('dependencies.R')
 runApp('main', port = 18232, launch.browser = F)
 
 # ROADMAP
+# [?] Consider independent component analysis to reduce feature space
+#     per "Content-based microarray search using differential expression profiles"
 # [x] Add a biology-related loader
 
 # [x] Support multisessions
@@ -67,8 +69,8 @@ runApp('main', port = 18232, launch.browser = F)
 # [x] Fix table saving
 
 # [/] Output gene-wise contributions to scoring
-# [ ]--- These numbers may not be very meaningful as they only communicate amount of DE. If they could somehow
-#        be modified to portray specificity, it would be ideal
+# [ ]--- These numbers may not be very meaningful as they only communicate p-weighted amount of DE.
+#        If they could somehow be modified to portray specificity, it would be ideal
 # [ ]--- Need to have a condition selector to minimize legend overhead
 
 # [-] Consider interpolating between null distributions
@@ -76,7 +78,7 @@ runApp('main', port = 18232, launch.browser = F)
 # [x] Consider result caching
 # [ ]--- Make more decisions on what to cache
 
-# [-] Release to lab
+# [-] Release to lab (ssh -L 12345:localhost:18232 -p 22000 <USERNAME>@willie.msl.ubc.ca)
 # [ ]--- Think of names
 # [ ]--- Release name poll
 

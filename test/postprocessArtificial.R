@@ -1,49 +1,24 @@
-artificial <- readRDS('/space/scratch/jsicherman/Thesis Work/data/artificial/experiment_data.rds')
-contrasts <- readRDS('/space/scratch/jsicherman/Thesis Work/data/artificial/contrast_table.rds')
-exp.meta <- readRDS('/space/scratch/jsicherman/Thesis Work/data/artificial/experiment_meta.rds')
-gene.meta <- readRDS('/space/scratch/jsicherman/Thesis Work/data/artificial/gene_meta.rds')
-
-#cMap <- lapply(1:nrow(contrasts), function(x) contrasts[x, contrast][[1]]$ID)
-
-getCMap <- function(genes = NULL, condition = NULL) {
-  genes <- as.integer(genes)
-  
-  if(!is.null(condition)) {
-    condition[2] <- head(ONTOLOGIES.DEFS[Definition == condition[2], as.character(Node_Long)], 1) %>% {
-      if(length(.) == 0) condition[2]
-      else .
-    }
-    condition[3] <- head(ONTOLOGIES.DEFS[Definition == condition[3], as.character(Node_Long)], 1) %>% {
-      if(length(.) == 0) condition[3]
-      else .
-    }
-    
-    condition <- SIMULATION[cf.Cat == condition[1] &
-                              grepl(condition[2], cf.BaseLongUri, fixed = T) &
-                              grepl(condition[3], cf.ValLongUri, fixed = T), I]
-    rbindlist(lapply(switch((length(genes) == 0) + 1, genes, 1:length(cMap)), function(x) {
-      indx <- which(cMap[[x]] == condition)
-      data.table(entrez.ID = x,
-                 index = indx,
-                 frac = indx/length(cMap[[x]]))
-    })) %>% setorder(index)
-  } else
-    cMap[genes]
-}
+artificial <- readRDS('/space/scratch/jsicherman/Thesis Work/data/artificial4/experiment_dat.rds')
+contrasts <- readRDS('/space/scratch/jsicherman/Thesis Work/data/artificial4/contrast_aff.rds')
+contrastMap <- readRDS('/space/scratch/jsicherman/Thesis Work/data/artificial4/contrast_map.rds')
 
 tmp <- rbindlist(lapply(1:length(artificial), function(i) {
-  if(class(artificial[[i]]) == 'try-error')
-    data.table(experiment = i, entrez.ID = NA_integer_,
+  if(class(artificial[[i]]) == 'try-error' || is.null(artificial[[i]]))
+    data.table(experiment = i, entrez.ID = NA_integer_, contrast = NA_integer_,
                fc = NA_real_, adj.pv = NA_real_)
-  else
-    data.table(experiment = i, entrez.ID = artificial[[i]]$entrez.ID,
+  else {
+    eID <- artificial[[i]]$entrez.ID
+    if(is.null(eID))
+      eID <- 1:length(artificial[[i]]$fc)
+    
+    data.table(experiment = i, entrez.ID = eID, contrast = artificial[[i]]$contrast,
                fc = artificial[[i]]$fc, adj.pv = artificial[[i]]$adj.pv)
-  }))
+  }
+}))
 
 fc <- dcast(tmp[, .(entrez.ID, experiment, fc)], entrez.ID ~ experiment, value.var = 'fc')
 pv <- dcast(tmp[, .(entrez.ID, experiment, adj.pv)], entrez.ID ~ experiment, value.var = 'adj.pv')
-
-eContrasts <- rbindlist(lapply(artificial[sapply(artificial, class) != 'try-error'], '[[', 'contrast'))
+eContrasts <- tmp[, unique(contrast), experiment] %>% .[, V1]
 
 rm(tmp, artificial)
 
@@ -71,14 +46,43 @@ letterWrap <- function(n, depth = 1) {
 EXPERIMENTS <- letterWrap(N)
 colnames(fc) <- EXPERIMENTS
 colnames(pv) <- EXPERIMENTS
+names(eContrasts) <- EXPERIMENTS
 
-exp.meta[, n.DE := colSums2(as.matrix(pv) < 0.05, na.rm = T)]
-exp.meta[, mean.fc := colMeans2(as.matrix(fc), na.rm = T)]
+#goodExperiments <- which(!is.na(eContrasts)) %>% unname
+#fc <- fc[, goodExperiments]
+#pv <- pv[, goodExperiments]
+#eContrasts <- eContrasts[goodExperiments]
+#EXPERIMENTS <- EXPERIMENTS[goodExperiments]
+
+eMeta <- DATA.HOLDER$human@experiment.meta %>% copy# %>% .[goodExperiments]
+eMeta[, c('cf.Cat', 'cf.Baseline', 'cf.Val', 'cf.BaseLongUri', 'cf.ValLongUri') := NULL]
+
+eMeta[, cf.ID := eContrasts]
+eMeta <- merge(eMeta, contrastMap[, cf.ID := .I], by = 'cf.ID', sort = F)
+#eMeta[, cf.Baseline := '']
+#eMeta[, cf.Val := ''] # TODO
+#eMeta[, ee.qScore := ...]
+#eMeta[, ee.sScore := ...]
+eMeta[, n.detect := nrow(fc)]
+#eMeta[, mean.fc := ...]
+eMeta[, ee.Name := EXPERIMENTS]
+eMeta[, rsc.ID := EXPERIMENTS]
+
+#eMeta[, n.DE := colSums2(pv < 0.05, na.rm = T)]
+eMeta[, mean.fc := colMeans2(fc, na.rm = T)]
+
+gMeta <- data.table(entrez.ID = as.character(1:nrow(fc)),
+                    gene.ID = NA_character_,
+                    ensembl.ID = NA_character_,
+                    gene.Name = paste0('g', 1:nrow(fc)),
+                    alias.Name = NA_character_,
+                    gene.Desc = NA_character_,
+                    mfx.Rank = contrasts[, sum(probability), entrez.ID][, sqrt(V1 / max(V1))])
 
 DATA.HOLDER$artificial <- new('EData', taxon = 'artificial', data = list(fc = fc, adj.pv = pv),
-                              experiment.meta = exp.meta, gene.meta = gene.meta,
+                              experiment.meta = eMeta, gene.meta = gMeta,
                               go = data.table(entrez.ID = NA, category = NA, id = NA, term = NA))
-rm(fc, pv, N, EXPERIMENTS, exp.meta, gene.meta)
+rm(fc, pv, N, EXPERIMENTS, eMeta, gMeta, eContrasts, contrastMap)
 
 DATA.HOLDER$artificial@gene.meta <- DATA.HOLDER$artificial@gene.meta[, c('n.DE', 'dist.Mean', 'dist.SD') :=
                                                                        list(rowSums2(DATA.HOLDER$artificial@data$adj.pv < 0.05, na.rm = T),
@@ -88,4 +92,3 @@ DATA.HOLDER$artificial@gene.meta <- DATA.HOLDER$artificial@gene.meta[, c('n.DE',
 DATA.HOLDER$artificial@data$zscore <- (DATA.HOLDER$artificial@data$fc - DATA.HOLDER$artificial@gene.meta$dist.Mean) / DATA.HOLDER$artificial@gene.meta$dist.SD
 
 CACHE.BACKGROUND$artificial <- precomputeTags('artificial')
-TAGS$artificial <- getTags('artificial')

@@ -205,15 +205,15 @@ search <- (function(genes, options = getConfig()) {
     .[, f.IN := experimentN / n.genes] %>%
     .[, f.OUT := pmax(0, experimentMeta$n.DE - experimentN) / experimentMeta$n.detect] %>%
     .[, ee.q := experimentMeta$ee.qScore] %>%
-    .[, score := (score + 1e5) * ee.q * (1 + f.IN) / (1 + 10^(f.OUT))] %>% # abs(min(score))
-    #.[, score := score / max(score)] %>%
+    .[, score := (score + abs(min(score))) * ee.q * (1 + f.IN) / (1 + 10^(f.OUT))] %>% # 
+    .[, score := score / max(score)] %>%
     .[, rn := colnames(zScore)] %>%
     setorder(-score)
 })
 
 #' getTags
 #' 
-#' Expand the specified ontology for the specified experiments.
+#' Get tags for the specified experiments within a specified distance.
 #'
 #' @param taxa A taxa scope. Can be one of [human, mouse, rat, any].
 #' @param rsc.IDs A list of experiment rsc IDs or NULL for everything
@@ -227,17 +227,7 @@ getTags <- function(taxa = getConfig(key = 'taxa')$value,
   if(inv)
     rsc.IDs <- CACHE.BACKGROUND[[taxa]][!(rsc.ID %in% rsc.IDs), unique(as.character(rsc.ID))]
   
-  if(exists('TAGS', envir = globalenv()) && !is.null(TAGS[[taxa]]))
-    return(TAGS[[taxa]][rsc.ID %in% rsc.IDs])
-    
-  CACHE.BACKGROUND[[taxa]] %>%
-    .[distance <= max.distance] %>%
-    .[, .(rsc.ID = as.character(rsc.ID), cf.Cat = as.character(cf.Cat), cf.BaseLongUri = as.character(cf.BaseLongUri),
-          cf.ValLongUri = as.character(cf.ValLongUri), distance, reverse)] %>%
-    .[rsc.ID %in% rsc.IDs] %>%
-    .[as.character(cf.BaseLongUri) != as.character(cf.ValLongUri)] %>%
-    .[, .(distance = mean(distance), reverse = data.table::first(reverse)),
-      .(rsc.ID, cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>% setorder(distance, rsc.ID)
+  CACHE.BACKGROUND[[taxa]][distance <= max.distance & rsc.ID %in% rsc.IDs]
 }
 
 #' Precompute Tags
@@ -360,6 +350,11 @@ precomputeTags <- function(taxa = getConfig(key = 'taxa')$value, mGraph = NULL, 
     # And use some heuristics to make our corpus a little more lean
     .[, N := .N, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
     .[distance == 0 | (N > 1 & N < 500 & distance < 5)] %>%
+    
+    # This is annoying but the filter should be applied twice
+    .[, N := .N, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
+    .[distance == 0 | (N > 1 & N < 500 & distance < 5)] %>%
+    
     .[, !'N']
 }
 
@@ -391,7 +386,7 @@ reorderTags <- function(cache) {
 #' Reorder Tags
 #' 
 #' Reorders the baseline and contrast so that the most common one is in the baseline for the expanded
-#' set of tags
+#' set of tags.
 #'
 #' @param cache The cache entry
 #'

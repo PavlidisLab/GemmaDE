@@ -44,9 +44,9 @@ options(future.globals.maxSize = 30 * 1000 * 1024^2)
 source('/home/jsicherman/Thesis Work/dependencies.R')
 
 library(parallel)
-options(mc.cores = 24)
+options(mc.cores = 18)
 
-ITERS <- 1000
+ITERS <- 2000
 
 rm(DRUGBANK, NULLS)
 
@@ -135,12 +135,15 @@ tidyGenes <- function(genes, taxa) {
 DATA.HOLDER$human <- NULL
 DATA.HOLDER$mouse <- NULL
 DATA.HOLDER$rat <- NULL
+CACHE.BACKGROUND$human <- NULL
+CACHE.BACKGROUND$mouse <- NULL
+CACHE.BACKGROUND$rat <- NULL
 
-lapply('artificial', function(x) { # c(getConfig(key = 'taxa')$core, 'artificial')
-  lapply(2:20, function(i) {
-    #if(file.exists(paste0('/space/scratch/jsicherman/Thesis Work/data/nulls/', x, '_', i, '.rds'))) {
-    #  message(paste0('File for ', x, '_', i, ' already exists... Skipping.'))
-    #} else {
+lapply(names(DATA.HOLDER), function(x) {
+  lapply(1:20, function(i) {
+    if(file.exists(paste0('/space/scratch/jsicherman/Thesis Work/data/nulls/', x, '_', i, '.rds'))) {
+      message(paste0('File for ', x, '_', i, ' already exists... Skipping.'))
+    } else {
       mclapply(1:ITERS, function(j) {
         if(j %% (ITERS / 20) == 0)
           message(paste0(Sys.time(), ' ... ', x, ' ', i, ' ... ', round(100 * j / ITERS, 2), '%'))
@@ -185,7 +188,7 @@ lapply('artificial', function(x) { # c(getConfig(key = 'taxa')$core, 'artificial
         
         gc()
         NULL
-      #}
+      }
     }
   })
 })
