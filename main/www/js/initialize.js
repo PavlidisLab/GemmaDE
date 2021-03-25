@@ -99,7 +99,7 @@ function onTableDraw() {
   
   addMathJax();
   
-  $('.spark:not(:has(canvas))').each(function(index) {
+  /*$('.spark:not(:has(canvas))').each(function(index) {
       $(this).sparkline('html', {
         type: $(this).attr('type'),
         sliceColors: ['#4DAC26', '#D7191C'],
@@ -108,7 +108,7 @@ function onTableDraw() {
         chartRangeMin: 0,
         chartRangeMax: 1
       });
-  });
+  });*/
 }
 
 function histogram(data) {

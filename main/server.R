@@ -46,14 +46,16 @@ server <- function(input, output, session) {
     
     sig <- switch(is.null(query$sig) + 1, jsonify(query$sig), options$sig$value)
     fc <- switch(is.null(query$fc) + 1, jsonify(query$fc) %>% as.numeric, options$fc$value)
+    categories <- switch(is.null(query$categories) + 1, jsonify(query$categories), options$categories$value)
     
     updateSelectizeInput(session, 'genes', options = list(persist = F, create = T, createOnBlur = T))
     session$sendCustomMessage('querySet', genes)
     
     updateTextInput(session, 'sig', value = sig)
     updateSliderInput(session, 'fc', value = fc)
+    updateSelectizeInput(session, 'categories', selected = categories)
     
-    for(mName in Filter(function(x) !(x %in% c('sig', 'fc')), names(options))) {
+    for(mName in Filter(function(x) !(x %in% c('sig', 'fc', 'categories')), names(options))) {
       do.update(session, options[[mName]], ifelse(is.null(query[[mName]]), options[[mName]]$value, query[[mName]]))
     }
 
@@ -259,7 +261,7 @@ server <- function(input, output, session) {
                             cf.ValLongUri %in% (session$userData$plotData$conditions[`Ontology Steps` == 0] %>% .[1:5, unique(cf.ValLongUri)])] %>%
                         unique %>% # TODO for "any"
                         merge(DATA.HOLDER[[session$userData$plotData$options$taxa$value]]@experiment.meta[rsc.ID %in% session$userData$plotData$experiments, .(rsc.ID, ee.ID, ee.NumSamples)],
-                              by = 'rsc.ID', sort = F, allow.cartesian = T) %>% {
+                              by = c('rsc.ID', 'ee.ID'), sort = F, allow.cartesian = T) %>% {
                           if(nrow(.) == 0) return(NULL)
                           
                           # Select some samples to queue for gene expression visualization
@@ -337,14 +339,15 @@ server <- function(input, output, session) {
       .[abs(stat) >= 1] %>%
       .[, stat := round(stat, 3)] %>%
       setorder(distance) %>%
-      .[, head(.SD, 1), stat]
+      .[, head(.SD, 1), stat] %>%
+      .[cf.Cat %in% options$categories$value]
     
     tmp <- getTags(options$taxa$value, experiments$rn) %>%
       .[cf.Cat %in% conditions[, unique(cf.Cat)] &
           cf.BaseLongUri %in% conditions[, unique(cf.BaseLongUri)] &
           cf.ValLongUri %in% conditions[, unique(cf.ValLongUri)]] %>% # TODO for "any"
       merge(DATA.HOLDER[[options$taxa$value]]@experiment.meta[rsc.ID %in% experiments$rn, .(rsc.ID, ee.ID, ee.Name)],
-            by = 'rsc.ID', sort = F, allow.cartesian = T) %>%
+            by = c('rsc.ID', 'ee.ID'), sort = F, allow.cartesian = T) %>%
       .[, N := length(unique(ee.ID)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
     
     # This chunk is costly, but associates all Gemma linkages. It would be great if we could defer this
@@ -365,6 +368,8 @@ server <- function(input, output, session) {
       .[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, N, Evidence)] %>%
       unique %>%
       merge(conditions, by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), sort = F) %>%
+      .[, `Relatedness` := case_when(stat > 0 ~ 'Positive', stat < 0 ~ 'Anti', T ~ 'Non')] %>%
+      .[, stat := abs(stat)] %>%
       setorder(-stat, na.last = T) %>%
       setnames(c('stat', 'C', 'distance'), c('Test Statistic', 'Observations', 'Ontology Steps')) %>%
       .[, Observations := round(Observations, 2)]

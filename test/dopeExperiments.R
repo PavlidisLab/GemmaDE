@@ -40,13 +40,48 @@ library(limma)
 library(compcodeR)
 library(parallel)
 library(edgeR)
+library(lhs)
 
-if(!exists('DATA.HOLDER'))
-  source('dependencies.R')
+source('dependencies.R')
 
-rm(NULLS, DRUGBANK, TAGS, CACHE.BACKGROUND, ONTOLOGIES, ONTOLOGIES.DEFS)
+DATA.HOLDER$artificial <- NULL
 DATA.HOLDER$mouse <- NULL
 DATA.HOLDER$rat <- NULL
+CACHE.BACKGROUND$artificial <- NULL
+CACHE.BACKGROUND$mouse <- NULL
+CACHE.BACKGROUND$rat <- NULL
+NULLS$artificial <- NULL
+NULLS$mouse <- NULL
+NULLS$rat <- NULL
+
+letterWrap <- function(n, depth = 1) {
+  x <- do.call(paste0,
+               do.call(expand.grid, args = list(lapply(1:depth, function(x) return(LETTERS)), stringsAsFactors = F)) %>%
+                 .[, rev(names(.[])), drop = F])
+  
+  if(n <= length(x)) return(x[1:n])
+  
+  return(c(x, letterWrap(n - length(x), depth = depth + 1)))
+}
+
+mContrasts <- DATA.HOLDER$human@experiment.meta[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>% unique
+mGraph <- simplify(igraph::graph_from_data_frame(ONTOLOGIES[, .(ChildNode_Long, ParentNode_Long)]))
+graphTerms <- unique(ONTOLOGIES[, as.character(ChildNode_Long, ParentNode_Long)])
+
+SUFFIX <- '_lhs2'
+options(mc.cores = 4)
+
+N_GENES <- nrow(DATA.HOLDER$human@gene.meta)
+
+if(!exists('hypercube')) {
+  print('Making hypercube')
+  hypercube <- improvedLHS(5000, 5)
+  hypercube <- cbind(1, hypercube) #hypercube[, 1] <- pmin(hypercube[, 5], 1L + as.integer(hypercube[, 1] * 20)) # Groups
+  hypercube[, 2] <- 1L + as.integer(hypercube[, 2] * 99) # Genes
+  #hypercube[, 3] <- 1L
+  hypercube[, 4] <- pmin(N_GENES - floor(hypercube[, 3] * hypercube[, 2]), as.integer(qexp(hypercube[, 4]) * 100)) # Other genes that are DE
+  hypercube[, 5] <- 1L + as.integer(hypercube[, 5] * 49) # Experiments
+}
 
 mu.phi.estimates <- system.file("extdata", "Pickrell.Cheung.Mu.Phi.Estimates.rds",
                                 package = "compcodeR")
@@ -216,52 +251,47 @@ generateSyntheticData <- function (dataset, n.vars, samples.per.cond, n.diffexp,
     }
     Z <- round(random.outliers.factor * Z)
   }
+  
   has.single.outlier <- rep(0, n.vars)
   single.outliers <- matrix(0, nrow(Z), ncol(Z))
   single.outliers.factor <- matrix(1, nrow(Z), ncol(Z))
-  if (single.outlier.high.prob != 0 | single.outlier.low.prob != 
-      0) {
-    has.single.outlier[genes.upreg[1:floor((single.outlier.high.prob + 
-                                              single.outlier.low.prob) * length(genes.upreg))]] <- 1
-    has.single.outlier[genes.downreg[1:floor((single.outlier.high.prob + 
-                                                single.outlier.low.prob) * length(genes.downreg))]] <- 1
-    has.single.outlier[genes.nonreg[1:floor((single.outlier.high.prob + 
-                                               single.outlier.low.prob) * length(genes.nonreg))]] <- 1
-    for (i in 1:nrow(Z)) {
-      if (has.single.outlier[i] == 1) {
-        the.sample <- sample(1:(ncol(Z)), 1)
-        if (runif(1) < (single.outlier.high.prob/(single.outlier.high.prob + 
-                                                  single.outlier.low.prob))) {
-          single.outliers[i, the.sample] <- 1
-          single.outliers.factor[i, the.sample] <- runif(1, 
-                                                         min = 5, max = 10)
+  if (single.outlier.high.prob != 0 | single.outlier.low.prob !=  0) {
+    has.single.outlier[sample(1:n.vars, floor((single.outlier.high.prob +
+                                                 single.outlier.low.prob) * n.vars))] <- 1
+    
+    seeds <- runif(nrow(Z))
+    samples <- sample(1:ncol(Z), nrow(Z), T)
+    factors <- runif(nrow(Z), min = 5, max = 10)
+    
+    rout <- lapply(1:nrow(Z), function(i) {
+      if(has.single.outlier[i] == 1) {
+        if(seeds[i] < single.outlier.high.prob / (single.outlier.high.prob + single.outlier.low.prob)) {
+          list(c(rep(0, samples[i] - 1), 1, rep(0, ncol(Z) - samples[i])),
+               c(rep(0, samples[i] - 1), factors[i], rep(0, ncol(Z) - samples[i])))
+        } else {
+          list(c(rep(0, samples[i] - 1), -1, rep(0, ncol(Z) - samples[i])),
+               c(rep(0, samples[i] - 1), 1 / factors[i], rep(0, ncol(Z) - samples[i])))
         }
-        else {
-          single.outliers[i, the.sample] <- (-1)
-          single.outliers.factor[i, the.sample] <- 1/runif(1, 
-                                                           min = 5, max = 10)
-        }
-      }
-    }
+      } else
+        list(rep(0, ncol(Z)), rep(1, ncol(Z)))
+    })
+    
+    single.outliers <- do.call(rbind, lapply(rout, '[[', 1))
+    single.outliers.factor <- do.call(rbind, lapply(rout, '[[', 2))
+    
     Z <- round(single.outliers.factor * Z)
   }
+  
   rownames(Z) <- 1:n.vars
-  n.random.outliers.up.S1 <- apply(random.outliers[, S1] > 
-                                     0, 1, sum)
-  n.random.outliers.up.S2 <- apply(random.outliers[, S2] > 
-                                     0, 1, sum)
-  n.random.outliers.down.S1 <- apply(random.outliers[, S1] < 
-                                       0, 1, sum)
-  n.random.outliers.down.S2 <- apply(random.outliers[, S2] < 
-                                       0, 1, sum)
-  n.single.outliers.up.S1 <- apply(single.outliers[, S1] > 
-                                     0, 1, sum)
-  n.single.outliers.up.S2 <- apply(single.outliers[, S2] > 
-                                     0, 1, sum)
-  n.single.outliers.down.S1 <- apply(single.outliers[, S1] < 
-                                       0, 1, sum)
-  n.single.outliers.down.S2 <- apply(single.outliers[, S2] < 
-                                       0, 1, sum)
+  n.random.outliers.up.S1 <- apply(random.outliers[, S1] > 0, 1, sum)
+  n.random.outliers.up.S2 <- apply(random.outliers[, S2] >  0, 1, sum)
+  n.random.outliers.down.S1 <- apply(random.outliers[, S1] < 0, 1, sum)
+  n.random.outliers.down.S2 <- apply(random.outliers[, S2] < 0, 1, sum)
+  n.single.outliers.up.S1 <- apply(single.outliers[, S1] > 0, 1, sum)
+  n.single.outliers.up.S2 <- apply(single.outliers[, S2] > 0, 1, sum)
+  n.single.outliers.down.S1 <- apply(single.outliers[, S1] < 0, 1, sum)
+  n.single.outliers.down.S2 <- apply(single.outliers[, S2] < 0, 1, sum)
+  
   nf <- calcNormFactors(Z)
   norm.factors <- nf * colSums(Z)
   common.libsize <- exp(mean(log(colSums(Z))))
@@ -318,130 +348,153 @@ generateSyntheticData <- function (dataset, n.vars, samples.per.cond, n.diffexp,
   return(invisible(data.object))
 }
 
-letterWrap <- function(n, depth = 1) {
-  x <- do.call(paste0,
-               do.call(expand.grid, args = list(lapply(1:depth, function(x) return(LETTERS)), stringsAsFactors = F)) %>%
-                 .[, rev(names(.[])), drop = F])
+mclapply(1:nrow(hypercube), function(iter) {
+  if(iter %% 20 == 0)
+    print(iter)
   
-  if(n <= length(x)) return(x[1:n])
+  genes.n <- sample(1:N_GENES, hypercube[iter, 2])
+  genes <- DATA.HOLDER$human@gene.meta[genes.n, entrez.ID]
   
-  return(c(x, letterWrap(n - length(x), depth = depth + 1)))
-}
-
-# Create corpus ----
-
-SIMULATION <- DATA.HOLDER$human@experiment.meta[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>% unique %>%
-  .[, c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri') := list(as.character(cf.Cat),
-                                                             as.character(cf.BaseLongUri),
-                                                             as.character(cf.ValLongUri))] %>%
-  .[, I := .I]
-
-N_EXPERIMENTS <- nrow(DATA.HOLDER$human@experiment.meta)
-EXPERIMENT_NAMES <- letterWrap(N_EXPERIMENTS)
-
-N_GENES <- nrow(DATA.HOLDER$human@gene.meta)
-GENE_IDS <- 1:N_GENES
-
-N_CONTRASTS <- nrow(SIMULATION)
-EXP_RATE <- 1
-USE <- 'simulated'
-
-# A gene should have a contrast associated with it most strongly, and other contrasts diminishing exponentially
-
-if(!exists('CONTRAST_TABLE')) {
-  CONTRAST_TABLE <- data.table(entrez.ID = GENE_IDS)
-  CONTRAST_TABLE <- CONTRAST_TABLE[, list(contrast = list(data.table(ID = sample(1:N_CONTRASTS),
-                                                                     prob = sort(rexp(N_CONTRASTS, EXP_RATE), T) %>% `/`(runif(1, 1.01, 1.5) * head(., 1)),
-                                                                     down = sample(c(T, F), N_CONTRASTS, T)))), entrez.ID]
-}
-
-if(!exists('gene.meta'))
-  gene.meta <- data.table(entrez.ID = as.character(GENE_IDS),
-                          gene.ID = NA_character_,
-                          ensembl.ID = NA_character_,
-                          gene.Name = paste0('g', GENE_IDS),
-                          alias.Name = NA_character_,
-                          gene.Desc = NA_character_,
-                          mfx.Rank = sapply(1:nrow(CONTRAST_TABLE), function(x) CONTRAST_TABLE[x, contrast][[1]][, sum(prob)]) %>% `/`(max(.)))
-
-# Not exact zeroes
-rzexp <- function(n, prob.zero = 0.4, rate = 5e-4) {
-  zeroes <- floor(prob.zero * n)
-  sample(c(sample(4:10, zeroes, T), rexp(n - zeroes, rate)))
-}
-
-# The basic strategy is that we'll pick a contrast corresponding to the same row of the human data
-# and then choose genes to differentially express based on that contrast...
-
-experiment.meta <- DATA.HOLDER$human@experiment.meta %>% copy
-#experiment.meta[, ee.qScore := ...]
-#experiment.meta[, ee.sScore := ...]
-experiment.meta[, n.DE := as.integer(round(rzexp(N_EXPERIMENTS)))]
-experiment.meta[, n.detect := N_GENES]
-#experiment.meta[, mean.fc := ...]
-experiment.meta[, ee.Name := EXPERIMENT_NAMES]
-experiment.meta[, rsc.ID := EXPERIMENT_NAMES]
-
-options(mc.cores = 10)
-experiment.data <- mclapply(1:N_EXPERIMENTS, function(x) {
-  message(paste0(round(100*x/N_EXPERIMENTS, 2), '%'))
-  y <- head(merge(SIMULATION, DATA.HOLDER$human@experiment.meta[x, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]), 1)
-  probs <- CONTRAST_TABLE[, rbindlist(.SD[, contrast])[ID == y[, I]]][, .(prob, down)]
-  genes.dysregulated <- sample(1:N_GENES, experiment.meta[x, n.DE], F, probs[, prob])
-  
-  effects <- 1.5 + dqrng::dqrexp(N_GENES)
-  
-  effects[setdiff(1:N_GENES, genes.dysregulated)] <- 1
-  effects[effects != 0 & probs[, down]] <- 1 / effects[effects != 0 & probs[, down]]
-  
-  tmp <- generateSyntheticData(EXPERIMENT_NAMES[x],
-                               n.vars = N_GENES, samples.per.cond = max(2, floor(experiment.meta[x, ee.NumSamples] / 2)),
-                               effect.size = effects)
-  
-  tmp@sample.annotations$condition <- factor(tmp@sample.annotations$condition, labels = LETTERS[1:2])
-  
-  if(USE == 'DESeq2') {
-    suppressMessages(DESeqDataSetFromMatrix(countData = tmp@count.matrix,
-                                            colData = tmp@sample.annotations,
-                                            design = ~ condition) %>% DESeq(quiet = T) %>% results %>%
-                       as.data.table(keep.rownames = T) %>% {
-                         list(contrast = y,
-                              DEGs = genes.dysregulated,
-                              entrez.ID = .[, as.integer(substring(rn, 2))],
-                              fc = .[, log2FoldChange],
-                              adj.pv = .[, padj])
-                       })
-  } else if(USE == 'Limma') {
-    d0 <- DGEList(tmp@count.matrix) %>% calcNormFactors()
-    cutoff <- 1
-    drop <- which(apply(cpm(d0), 1, max) < cutoff)
-    d <- d0[-drop, ]
-    mm <- model.matrix(~0 + condition, tmp@sample.annotations)
-    yy <- voom(d, mm, plot = F)
-    fit <- lmFit(yy, mm)
-    contr <- makeContrasts(conditionB - conditionA, levels = colnames(coef(fit)))
-    contrasts.fit(fit, contr) %>% eBayes %>% topTable(sort.by = 'P', number = Inf) %>%
-      as.data.table(keep.rownames = T) %>% {
-        list(contrast = y,
-             DEGs = genes.dysregulated,
-             entrez.ID = .[, as.integer(substring(rn, 2))],
-             fc = .[, logFC],
-             adj.pv = .[, adj.P.Val])
-      }
-  } else {
-    list(contrast = y,
-         DEGs = genes.dysregulated,
-         entrez.ID = 1:N_GENES,
-         fc = tmp@variable.annotations$truelog2foldchanges + rnorm(N_GENES, sd = 0.1),
+  # Add spiked-in experiments
+  # Create hypercube[, 5] experiments that DE hypercube[, 3]% of genes and hypercube[, 4] other genes
+  print(paste0('Spoofing ', hypercube[iter, 5], ' experiments'))
+  pseudo <- lapply(1:hypercube[iter, 5], function(i) {
+    # The process follows an exponential distribution
+    effects <- 1.5 + rexp(N_GENES)
+    # But only a few genes will be used
+    genes.on <- sample((1:N_GENES)[-genes.n], hypercube[iter, 4])
+    DEGs <- floor(hypercube[iter, 3] * hypercube[iter, 2]) + hypercube[iter, 4]
+    # Sample from the largest few effects
+    effects.keep <- order(effects, decreasing = T) %>% head(2 * DEGs) %>% sample(DEGs)
+    
+    effects.down <- sample(c(T, F), N_GENES, T, c(0.5012399, 0.4987578))
+    effects[effects.down] <- 1 / effects[effects.down]
+    # Make our "real selected genes" DE
+    if(DEGs > 0) {
+      effects[c(genes.n, genes.on)] <- effects[effects.keep]
+      effects[-c(genes.n, genes.on)] <- 1
+    }
+    
+    outliers <- 0.05 * 10^(-hypercube[iter, 6])
+    
+    tmp <- generateSyntheticData('', N_GENES, samples.per.cond = 10, effect.size = effects,
+                                 single.outlier.high.prob = outliers/2,
+                                 single.outlier.low.prob = outliers/2)
+    
+    list(fc = tmp@variable.annotations$truelog2foldchanges + rnorm(N_GENES, sd = 0.05),
          adj.pv = runif(N_GENES) %>% {
            a <- .
+           spikes <- as.integer(1.05 * sum(effects != 1))
+           a[sample(1:length(a), min(spikes, length(a)))] <- runif(min(spikes, length(a)), 1e-32, 0.05)
+           a <- p.adjust(a, method = 'BH')
            a[tmp@variable.annotations$differential.expression == 1] <- runif(tmp@info.parameters$n.diffexp, 1e-32, 0.05)
+           a[is.na(tmp@variable.annotations$truelog2foldchanges)] <- NA_real_
            a
-        })
+         })
+  }) %>% {
+    list(fc = do.call(cbind, lapply(., '[[', 1)),
+         adj.pv = do.call(cbind, lapply(., '[[', 2)))
   }
-})
-
-saveRDS(CONTRAST_TABLE, '/space/scratch/jsicherman/Thesis Work/data/artificial/contrast_table.rds')
-saveRDS(experiment.meta, '/space/scratch/jsicherman/Thesis Work/data/artificial/experiment_meta.rds')
-saveRDS(experiment.data, '/space/scratch/jsicherman/Thesis Work/data/artificial/experiment_data.rds')
-saveRDS(gene.meta, '/space/scratch/jsicherman/Thesis Work/data/artificial/gene_meta.rds')
+  
+  nExp <- letterWrap(hypercube[iter, 5])
+  colnames(pseudo$fc) <- nExp
+  colnames(pseudo$adj.pv) <- nExp
+  
+  DATA <- DATA.HOLDER %>% copy
+  
+  DATA$human@gene.meta$n.DE <- rowSums2(DATA$human@data$adj.pv <= 0.05, na.rm = T)
+  DATA$human@gene.meta$dist.Mean <- rowMeans2(DATA$human@data$fc, na.rm = T)
+  DATA$human@gene.meta$dist.SD <- Rfast::rowVars(DATA$human@data$fc, na.rm = T, std = T)
+  
+  DATA$human@data$fc <- cbind(DATA$human@data$fc, pseudo$fc)
+  DATA$human@data$adj.pv <- cbind(DATA$human@data$adj.pv, pseudo$adj.pv)
+  DATA$human@data$zscore <- (DATA$human@data$fc - DATA$human@gene.meta$dist.Mean) / DATA$human@gene.meta$dist.SD
+  
+  mGroups <- sample(1:nrow(mContrasts), hypercube[iter, 1])
+  pGroups <- mContrasts[mGroups]
+  mAssoc <- sample(1:hypercube[iter, 1], hypercube[iter, 5], T)
+  
+  DATA$human@experiment.meta <- rbind(DATA$human@experiment.meta,
+                                      data.table(ee.ID = max(DATA.HOLDER$human@experiment.meta$ee.ID) + 1:hypercube[iter, 5],
+                                                 ee.qScore = hypercube[iter, 6],
+                                                 ee.sScore = hypercube[iter, 6],
+                                                 rsc.ID = nExp,
+                                                 ee.Troubled = F,
+                                                 ee.Public = T,
+                                                 ee.Name = nExp,
+                                                 ee.Source = 'ART',
+                                                 ee.Scale = 'LOG2',
+                                                 ee.NumSamples = 20,
+                                                 ee.TagLongUri = NA_character_,
+                                                 ad.Name = NA_character_,
+                                                 ad.Company = NA_character_,
+                                                 ad.Sequencing = T,
+                                                 sf.Subset = F,
+                                                 sf.Cat = NA_character_,
+                                                 sf.CatLongUri = NA_character_,
+                                                 sf.Val = NA_character_,
+                                                 sf.ValLongUri = NA_character_,
+                                                 cf.Cat = pGroups[mAssoc, cf.Cat],
+                                                 cf.CatLongUri = NA_character_,
+                                                 cf.Val = NA_character_,
+                                                 cf.ValLongUri = pGroups[mAssoc, as.character(cf.ValLongUri)],
+                                                 cf.Baseline = NA_character_,
+                                                 cf.BaseLongUri = pGroups[mAssoc, as.character(cf.BaseLongUri)],
+                                                 n.DE = colSums(pseudo$adj.pv < 0.05),
+                                                 mean.fc = colMeans2(pseudo$fc),
+                                                 n.detect = nrow(pseudo$adj.pv)))
+  
+  tmp <- search(genes, DATA = DATA)
+  
+  if(is.null(tmp)) {
+    message('No ranking on genes')
+    return(NULL)
+  }
+  
+  # Make new cache entries
+  CACHE <- CACHE.BACKGROUND %>% copy
+  DATA$human@experiment.meta <- DATA$human@experiment.meta %>% tail(hypercube[iter, 5])
+  CACHE$human <- rbind(CACHE$human,
+                       precomputeTags(mGraph = mGraph,
+                                      graphTerms = graphTerms,
+                                      DATA = DATA, POST = F)) %>%
+    reorderTags2 %>%
+    
+    # And use some heuristics to make our corpus a little more lean
+    .[, N := .N, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
+    .[distance == 0 | (N > 1 & N < 500 & distance < 5)] %>%
+    
+    # This is annoying but the filter should be applied twice
+    .[, N := .N, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
+    .[distance == 0 | (N > 1 & N < 500 & distance < 5)] %>%
+    
+    .[, !'N']
+  
+  # TODO compute a new prior?
+  
+  # Enrich
+  tmp2 <- enrich(tmp, CACHE = CACHE)
+  enriched <- tmp2 %>% .[, I := .I] %>% .[, f := I / max(I)] %>%
+    merge(CACHE$human[, !c('reverse', 'distance')],
+          by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri')) %>%
+    .[rsc.ID %in% nExp,
+      .(A, B, C, stat, distance, I, f,
+        group = as.integer(as.character(factor(rsc.ID, levels = nExp, labels = mGroups[mAssoc]))))] %>%
+    unique %>% setorder(I)
+  
+  print(paste0(hypercube[iter, 3], ' / ', hypercube[iter, 4], ' (', hypercube[iter, 5], ')'))
+  print(enriched %>% head(5))
+  
+  list(perc_de = hypercube[iter, 3],
+       other_de = hypercube[iter, 4],
+       genes = as.integer(genes),
+       n_exp = hypercube[iter, 5],
+       groups = mGroups,
+       associations = mAssoc,
+       qScore = hypercube[iter, 6],
+       maxIndex = nrow(tmp),
+       search = tmp %>% .[, I := .I] %>% .[, f := I / max(I)] %>%
+         .[rn %in% nExp, .(score, I, f)],
+       enrich = enriched)
+}) %>% saveRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/artificial',
+                      SUFFIX, '/bootstrap_experiments.rds'))

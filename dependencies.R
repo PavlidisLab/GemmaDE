@@ -54,7 +54,7 @@ as.input <- function(entry) {
       sliderInput(entry$name, entry$description, value = entry$value,
                   min = entry$min, max = entry$max, step = entry$step, ticks = entry$ticks)
   } else if(is.character(entry$value))
-    selectInput(entry$name, entry$description, entry$choices, entry$value)
+    selectInput(entry$name, entry$description, entry$choices, entry$value, switch(is.null(entry$multiple) + 1, entry$multiple, F))
   else if(is.logical(entry$value))
     materialSwitch(entry$name, entry$description, entry$value, right = T)
 }
@@ -79,6 +79,26 @@ addConfig(mfx = T, description = 'Score multifunctionality', category = 'Scoring
 addConfig(geeq = T, description = 'Score experiment quality (GEEQ)', category = 'Scoring')
 addConfig(method = 'diff', description = 'Scoring function', category = 'Scoring', extras = list(choices = list(`M-VSM` = 'mvsm', `Difference` = 'diff', `Correlation` = 'cor')))
 addConfig(gemmaLink = F, description = 'Add links to Gemma', category = 'Filtering')
+addConfig(categories = c('age', 'behavior', 'biological process', 'biological sex',
+                         'cell type', 'clinical history', 'diet', 'disease', 'environmental history',
+                         'environmental stress', 'genotype', 'medical procedure', 'molecular entity',
+                         'organism part', 'phenotype', 'temperature', 'treatment'),
+          description = 'Categories to display', category = 'Filtering',
+          extras = list(choices = list(`age` = 'age', `behavior` = 'behavior',
+                                       `biological process` = 'biological process', `biological sex` = 'biological sex',
+                                       `block` = 'block', `cell line` = 'cell line', `cell type` = 'cell type',
+                                       `clinical history` = 'clinical history',
+                                       `collection of material` = 'collection of material',
+                                       `developmental stage` = 'developmental stage', `diet` = 'diet', `disease` = 'disease',
+                                       `disease staging` = 'disease staging', `dose` = 'dose',
+                                       `environmental history` = 'environmental history',
+                                       `environmental stress` = 'environmental stress', `generation` = 'generation',
+                                       `genotype` = 'genotype', `growth condition` = 'growth condition',
+                                       `individual` = 'individual', `medical procedure` = 'medical procedure',
+                                       `molecular entity` = 'molecular entity', `organism part` = 'organism part',
+                                       `phenotype` = 'phenotype', `population` = 'population', `strain` = 'strain',
+                                       `temperature` = 'temperature', `timepoint` = 'timepoint', `treatment` = 'treatment'),
+                        multiple = T))
 
 addConfig(taxa = 'human', description = NA, category = NA,
           extras = list(choices = list(`H. sapiens` = 'human',

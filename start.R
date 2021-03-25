@@ -11,7 +11,6 @@ library(shinypanels) # From jsicherman/shinypanels, NOT datasketch
 library(circlepackeR)
 library(d3wordcloud)
 library(data.tree)
-# library(sparkline)
 library(RColorBrewer)
 library(sass)
 
@@ -41,16 +40,11 @@ library(future)
 plan(multicore, workers = 5)
 options(future.globals.maxSize = 30 * 1000 * 1024^2)
 
-#Sys.setenv(PATH = paste('/home/jsicherman/miniconda2/bin:/home/jsicherman/miniconda2/condabin',
-#                        Sys.getenv('PATH'), sep = ':'))
-#Sys.setenv(LD_LIBRARY_PATH = paste('/home/jsicherman/centos/usr/lib64',
-#                                   Sys.getenv('LD_LIBRARY_PATH'), sep = ':'))
-
 source('dependencies.R')
 
 runApp('main', port = 18232, launch.browser = F)
 
-# ROADMAP
+# Roadmap ----
 # [?] Consider independent component analysis to reduce feature space
 #     per "Content-based microarray search using differential expression profiles"
 # [x] Add a biology-related loader
@@ -59,8 +53,8 @@ runApp('main', port = 18232, launch.browser = F)
 # [x]--- Needs to disable the search button
 # [x]--- Cancel a process if the client disconnects
 
-# [/] Get a good simulation framework set up for the new analyses
-# [ ]--- Needs to be tested
+# [x] Get a good simulation framework set up for the new analyses
+# [x]--- Needs to be tested
 
 # [x] Fix single gene queries
 # [x] Fix plot saving
@@ -73,17 +67,26 @@ runApp('main', port = 18232, launch.browser = F)
 #        If they could somehow be modified to portray specificity, it would be ideal
 # [ ]--- Need to have a condition selector to minimize legend overhead
 
-# [-] Consider interpolating between null distributions
+# [x] Consider interpolating between null distributions
 
 # [x] Consider result caching
 # [ ]--- Make more decisions on what to cache
 
 # [-] Release to lab (ssh -L 12345:localhost:18232 -p 22000 <USERNAME>@willie.msl.ubc.ca)
-# [ ]--- Think of names
-# [ ]--- Release name poll
+# [x]--- Think of names
 
-# FOR WRITING UP
+# To be written up ----
 # Sex, cell type, tissue specific findings
 # Anecdotes (drug-related, metabolic alterations in PD astrocytes)
 # Demonstration through simulations
 # Breakdown of gaps in knowledge incl. counts for other tools (per species)
+
+# To discuss ----
+
+# 1. BIG poster
+# 2. Now have 3x simulations: entirely artificial, spiked in experiment scores and spiked in experiment data
+#      Finalizing analysis on spike-in of experiment data
+#      Effect of not recalculating prior is non negligible, calculating a few to try to interpolate
+# 3. Spent significant time learning about the way these experiments are actually kept in Gemma
+# 4. Worked on API wrapper which can soon be unified with the other wrapper (not x-compat but close)
+# 5. Dumping more data from API to verify my calculations (some differences)

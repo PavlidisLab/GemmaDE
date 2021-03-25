@@ -212,11 +212,11 @@ generateResultsTree <- function(data, options) {
 #'
 #' @param session The Shiny session storing our data
 generateResults <- function(data) {
-  outputColumns <- c('Contrast', 'Evidence', 'Observations', 'Ontology Steps', 'Test Statistic')
+  outputColumns <- c('Contrast', 'Evidence', 'Observations', 'Ontology Steps', 'Relatedness', 'Test Statistic')
   
   mTable <- datatable(data[, outputColumns, with = F] %>% as.data.frame,
                       extensions = 'Buttons',
-                      rownames = data[, cf.Cat],
+                      rownames = data[, as.character(cf.Cat)],
                       callback = JS(
                         "var a = document.createElement('a');",
                         "$(a).addClass('dt-button');",
@@ -282,7 +282,7 @@ generateResults <- function(data) {
                                      )
                       )
   )
-  mTable$dependencies <- append(mTable$dependencies, htmlwidgets:::getDependency('sparkline'))
+  #mTable$dependencies <- append(mTable$dependencies, htmlwidgets:::getDependency('sparkline'))
   
   renderDT(mTable)
 }

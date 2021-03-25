@@ -187,12 +187,11 @@ if(!exists('DATA.HOLDER')) {
       # Split into 500 ee.ID chunks (so the URI doesn't get too long) and fetch quality scores 
       # from Gemma for all experiments.
       metaData <- rbindlist(lapply(lapply(metaData$ee.ID %>% unique %>% split(ceiling(seq_along(.[]) / 500)),
-                                          datasetInfo, memoized = T) %>% unlist(recursive = F), function(ee.ID) {
+                                          datasetInfo) %>% unlist(recursive = F), function(ee.ID) {
                                             data.table(ee.ID = ee.ID$id,
                                                        ee.qScore = ee.ID$geeq$publicQualityScore,
                                                        ee.sScore = ee.ID$geeq$publicSuitabilityScore)
                                           })) %>% merge(metaData, by = 'ee.ID', all.y = T)
-      forgetGemmaMemoised()
       
       metaData$ee.Name <- metaData$ee.Name %>% as.factor
       metaData$ee.Source <- metaData$ee.Source %>% as.factor
@@ -246,7 +245,7 @@ if(!exists('CACHE.BACKGROUND')) {
 
 if(!exists('NULLS')) {
   mFiles <- list.files('/space/scratch/jsicherman/Thesis Work/data/nulls')
-  NULLS <- lapply(c('any', names(DATA.HOLDER)), function(taxa) {
+  NULLS <- lapply(names(DATA.HOLDER), function(taxa) {
     mDT <- NULL
     for(f in mFiles[startsWith(mFiles, taxa)]) {
       message(paste('Loading', f))
@@ -261,10 +260,10 @@ if(!exists('NULLS')) {
     }
     
     mDT
-  }) %>% `names<-`(c('any', names(DATA.HOLDER)))
+  }) %>% `names<-`(names(DATA.HOLDER))
   rm(mFiles)
 }
 
-if(!exists('DRUGBANK') && interactive()) {
+if(!exists('DRUGBANK') && Sys.getenv('RSTUDIO') == '1') {
   DRUGBANK <- loadDrugbank()
 }
