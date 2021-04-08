@@ -98,7 +98,6 @@ analyzeArtificial <- function(N_GROUPS, N_GENES, COI = NULL, GOI = NULL, seed = 
        best.index = best.index)
 }
 
-options(mc.cores = 3)
 if(!exists('hypercube')) {
   print('Making hypercube')
   hypercube <- improvedLHS(5000, 3)
@@ -109,15 +108,16 @@ if(!exists('hypercube')) {
 
 contrasts <- readRDS('/space/scratch/jsicherman/Thesis Work/data/artificial/contrast_aff.rds')
 
-lapply(1:nrow(hypercube), function(iter) {
-  print(iter)
+options(mc.cores = 3)
+mclapply(1:nrow(hypercube), function(iter) {
+  system(paste0('echo ', iter))
   analyzeArtificial(hypercube[iter, 1],
                     hypercube[iter, 2],
                     best.index = hypercube[iter, 3])
-}) %>% saveRDS('/space/scratch/jsicherman/Thesis Work/data/artificial/bootstrapped_artificial.rds')
+}) %>% saveRDS('/space/scratch/jsicherman/Thesis Work/data/artificial/bootstrapped_artificial2.rds')
 
 if(F) {
-  tmp <- readRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/artificial', SUFFIX, '/bootstrapped_artificial.rds'))
+  art_boot <- readRDS('/space/scratch/jsicherman/Thesis Work/data/artificial/bootstrapped_artificial.rds')
   tmp2 <- lapply(1:length(tmp), function(i) {
     data.table(groups = nrow(tmp[[i]]$diagnostic),
                genes = length(tmp[[i]]$genes),

@@ -30,17 +30,16 @@ cor.wt <- function(x, y, w = rep(1, length(y))) {
 #' Uses the M-VSM to sort experiments that show at least one of the genes as DE.
 #'
 #' @param genes A list of Entrez Gene IDs (ie. 1, 22, 480) as characters
-#' @param taxa A taxa scope. Can be one of [human, mouse, rat, any].
-#' @param signature A DE signature to search or null to compute an "ideal" one
 #' @param options Optional extra parameters to pass, such as:
 #' * pv: An FDR cutoff (default: 0.05)
 #' * fc.lower / fc.upper: Upper and lower logFC thresholds (default: 0 / 10)
 #' * mfx: Whether or not to scale by gene multifunctionality
 #' * geeq: Whether or not to scale by GEEQ score
+#' @param inprod Whether to use the generated null distribution or not
 if(Sys.getenv('RSTUDIO') != '1' || !exists('search', inherits = F))
-search <- (function(genes, options = getConfig()) {#, DATA = NULL) {
-  #if(is.null(DATA)) # TODO Remove after doing scores as this might trigger a full copy
-  #  DATA <- DATA.HOLDER
+search <- (function(genes, options = getConfig(), inprod = T, DATA = NULL) {
+  if(is.null(DATA)) # TODO Remove after doing scores as this might trigger a full copy
+    DATA <- DATA.HOLDER
   
   if(options$taxa$value == 'any') {
     mData <- new('EData')
@@ -85,7 +84,7 @@ search <- (function(genes, options = getConfig()) {#, DATA = NULL) {
     genes <- genes$key
     geneMask <- which(!is.na(mData@gene.meta$mfx.Rank))
   } else {
-    mData <- DATA.HOLDER[[options$taxa$value]]
+    mData <- DATA[[options$taxa$value]]
 
     # Only retain GOI
     geneMask <- which(mData@gene.meta$entrez.ID %in% genes)
@@ -211,7 +210,7 @@ search <- (function(genes, options = getConfig()) {#, DATA = NULL) {
   # (ie. 1e5, sufficiently large enough to guarantee it's always positive)
   # to prevent imprudent score deviations.
   # This seems to actually make it worse
-  ret %>% setnames(c(mData@gene.meta$gene.Name[geneMask], 'score')) %>%
+  ret <- ret %>% setnames(c(mData@gene.meta$gene.Name[geneMask], 'score')) %>%
     .[, is.passing := experimentMask %>% as.booltype] %>%
     .[, f.IN := experimentN / n.genes] %>%
     .[, f.OUT := pmax(0, experimentMeta$n.DE - experimentN) / experimentMeta$n.detect] %>%
@@ -220,6 +219,18 @@ search <- (function(genes, options = getConfig()) {#, DATA = NULL) {
     .[, score := score / max(score)] %>%
     .[, rn := colnames(zScore)] %>%
     setorder(-score)
+  
+  if(inprod && exists('NULLS.EXP', envir = globalenv())) {
+    whichCols <- c('rn', paste0(c('M', 'S'), min(20, which(colnames(ret) == 'score') - 1)))
+    
+    ret %>%
+      merge(NULLS.EXP[[options$taxa$value]][, ..whichCols],
+            by = 'rn', all = T, sort = F) %>%
+      .[, stat := (score - .SD[, whichCols[2], with = F]) / .SD[, whichCols[3], with = F]] %>%
+      .[!is.finite(stat), stat := NA] %>%
+      setorder(-stat)
+  } else
+    ret
 })
 
 #' getTags
@@ -232,17 +243,17 @@ search <- (function(genes, options = getConfig()) {#, DATA = NULL) {
 #' @param inv Whether or not to inverse the selected rscs
 #' @param CACHE A cache to use. If null, uses the global CACHE.BACKGROUND
 getTags <- function(taxa = getConfig(key = 'taxa')$value,
-                    rsc.IDs = NULL, max.distance = Inf, inv = F) {#, CACHE = NULL) {
-  #if(is.null(CACHE)) # TODO Remove after doing scores as this might trigger a full copy
-  #  CACHE <- CACHE.BACKGROUND
+                    rsc.IDs = NULL, max.distance = Inf, inv = F, CACHE = NULL) {
+  if(is.null(CACHE)) # TODO Remove after doing scores as this might trigger a full copy
+    CACHE <- CACHE.BACKGROUND
   
   if(is.null(rsc.IDs))
-    rsc.IDs <- CACHE.BACKGROUND[[taxa]][, unique(as.character(rsc.ID))]
+    rsc.IDs <- CACHE[[taxa]][, unique(as.character(rsc.ID))]
 
   if(inv)
-    rsc.IDs <- CACHE.BACKGROUND[[taxa]][!(rsc.ID %in% rsc.IDs), unique(as.character(rsc.ID))]
+    rsc.IDs <- CACHE[[taxa]][!(rsc.ID %in% rsc.IDs), unique(as.character(rsc.ID))]
   
-  CACHE.BACKGROUND[[taxa]][distance <= max.distance & rsc.ID %in% rsc.IDs]
+  CACHE[[taxa]][distance <= max.distance & rsc.ID %in% rsc.IDs]
 }
 
 #' Precompute Tags
@@ -443,42 +454,33 @@ reorderTags2 <- function(cache) {
 #' @param inprod Whether to use the generated null distribution or not
 #' @param CACHE A cache to use. If null, uses the global CACHE.BACKGROUND
 if(Sys.getenv('RSTUDIO') != '1' || !exists('enrich', inherits = F))
-enrich <- (function(rankings, options = getConfig(), inprod = T) {#, CACHE = NULL) {
+enrich <- (function(rankings, options = getConfig(), inprod = T, CACHE = NULL) {
   if(options$taxa$value == 'any') { # TODO This will include even species for which there were no homologs
-    mMaps <- list(rbindlist(lapply(options$taxa$core, function(x) getTags(x, NULL))),#, CACHE = CACHE))),
-                  rbindlist(lapply(options$taxa$core, function(x) getTags(x, rankings$rn))))#, CACHE = CACHE))))
+    mMaps <- list(rbindlist(lapply(options$taxa$core, function(x) getTags(x, NULL, CACHE = CACHE))),
+                  rbindlist(lapply(options$taxa$core, function(x) getTags(x, rankings$rn, CACHE = CACHE))))
   } else
-    mMaps <- list(getTags(options$taxa$value, NULL),#, CACHE = CACHE),
-                  getTags(options$taxa$value, rankings$rn))#, CACHE = CACHE))
+    mMaps <- getTags(options$taxa$value, rankings$rn, CACHE = CACHE)
   
-  mMaps[[2]] <- mMaps[[2]] %>% merge(rankings[, .(rsc.ID = rn, score)],
-                                     by = 'rsc.ID', sort = F, allow.cartesian = T)
+  # Stat of 0 means it's as expected
+  mMaps <- mMaps[as.character(cf.BaseLongUri) != as.character(cf.ValLongUri)] %>%
+    merge(rankings[, .(rsc.ID = rn, stat)],
+          by = 'rsc.ID', sort = F, allow.cartesian = T) %>%
+    na.omit
   
   aprior <- function() {
-    tmp <- mMaps[[2]][, .(distance = round(mean(distance, na.rm = T), 2),
-                          A = sum(score, na.rm = T)),
-                      .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)][, B := sum(A, na.rm = T)] %>%
-      merge(mMaps[[1]][, .(C = .N),
-                       .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)],
-            by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), sort = F, all = T, allow.cartesian = T)
-    
-    tmp[is.na(tmp)] <- 0
-    tmp[, B := max(B)]
+    mMaps[, .(distance = round(mean(distance, na.rm = T), 2),
+              A = sum(stat + 1, na.rm = T),
+              C = .N),
+          .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
+      .[, c('B', 'D') := list(sum(A, na.rm = T), sum(C, na.rm = T))]
   }
   
   enrichTest <- function(input) {
-    if(inprod && exists('NULLS', envir = globalenv())) {
-      # We'll generate nulls up to 20 genes. After that, it seems quite stable.
-      whichCols <- c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri',
-                     paste0(c('M', 'S'), min(20, which(colnames(rankings) == 'score') - 1)))
-      
-      input[, stat := A / B] %>%
-        merge(NULLS[[options$taxa$value]][, whichCols, with = F],
-              by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), all = T, sort = F) %>%
-        .[, stat := (stat - .SD[, 9]) / .SD[, 10]]
-    } else
-      input[, stat := A / B] # suppressWarnings(phyper(A - 1, B, D, C + A, F)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)
+    input[, c('pv.fisher', 'stat') := list(
+      suppressWarnings(phyper(A - 1, B, D, C + A, F)),
+      A/C), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
   }
   
-  aprior() %>% enrichTest %>% .[is.finite(stat)] %>% setorder(-stat)
+  #aprior() %>% enrichTest %>% .[is.finite(stat)] %>% setorder(-stat)
+  aprior()
 })

@@ -67,9 +67,6 @@ letterWrap <- function(n, depth = 1) {
   return(c(x, letterWrap(n - length(x), depth = depth + 1)))
 }
 
-SUFFIX <- '_lhs2'
-options(mc.cores = 3)
-
 mContrasts <- DATA.HOLDER$human@experiment.meta[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>% unique
 mGraph <- simplify(igraph::graph_from_data_frame(ONTOLOGIES[, .(ChildNode_Long, ParentNode_Long)]))
 graphTerms <- unique(ONTOLOGIES[, as.character(ChildNode_Long, ParentNode_Long)])
@@ -79,10 +76,11 @@ if(!exists('hypercube')) {
   hypercube <- improvedLHS(5000, 4)
   hypercube <- cbind(1, hypercube) #hypercube[, 1] <- pmin(hypercube[, 5], 1L + as.integer(hypercube[, 1] * 20)) # Groups
   hypercube[, 2] <- 1L + as.integer(hypercube[, 2] * 99) # Genes
-  hypercube[, 4] <- 1L + as.integer(hypercube[, 4] * 100) # Mean SD
+  hypercube[, 4] <- 1L + as.integer(hypercube[, 4] * rexp(nrow(hypercube), 0.0075)) # Mean SD
   hypercube[, 5] <- 1L + as.integer(hypercube[, 5] * 49) # Experiments
 }
 
+options(mc.cores = 6)
 mclapply(1:nrow(hypercube), function(iter) {
   print(iter)
   genes <- DATA.HOLDER$human@gene.meta[sample(1:nrow(DATA.HOLDER$human@gene.meta), hypercube[iter, 2]), entrez.ID]
@@ -93,16 +91,19 @@ mclapply(1:nrow(hypercube), function(iter) {
     return(NULL)
   }
   
-  # Decide where to insert
-  possible_indices <- 1 + as.integer(hypercube[iter, 3] * nrow(tmp)) %>% {
-    max(0, . - hypercube[iter, 5] * hypercube[iter, 4] - 1):min(. + hypercube[iter, 5] * hypercube[iter, 4] + 1, nrow(tmp))
-  } %>% pmin(nrow(tmp) - 1)
+  mRange <- pmax(0, as.integer(nrow(tmp) * hypercube[iter, 3]) - 3 * hypercube[iter, 4]):pmin(nrow(tmp), as.integer(nrow(tmp) * hypercube[iter, 3]) + 3 * hypercube[iter, 4])
+  
+  mReplace <- F
+  if(length(mRange) < hypercube[iter, 5])
+    mReplace <- T
+  mRange[mRange <= 0] <- 1
+  mRange[mRange >= nrow(tmp)] <- nrow(tmp)
   
   indices <- tryCatch({
-    sample(possible_indices, hypercube[iter, 5], F, dnorm(possible_indices, hypercube[iter, 3] * nrow(tmp), hypercube[iter, 4]))
+    sample(mRange, hypercube[iter, 5], replace = mReplace, prob = dnorm(mRange, as.integer(nrow(tmp) * hypercube[iter, 3]), hypercube[iter, 4]))
   }, error = function(e) {
     message('Resolving too few probs')
-    sample(possible_indices, hypercube[iter, 5], F, dnorm(possible_indices, hypercube[iter, 3] * nrow(tmp), hypercube[iter, 4]) + 1)
+    sample(mRange, hypercube[iter, 5], replace = mReplace, prob = 100 * dnorm(mRange, as.integer(nrow(tmp) * hypercube[iter, 3]), hypercube[iter, 4]))
   })
   
   scores <- tmp[indices, score]
@@ -158,14 +159,8 @@ mclapply(1:nrow(hypercube), function(iter) {
        groups = mGroups,
        associations = mAssoc,
        indices = indices,
-       maxIndex = nrow(tmp),
        scores = scores,
-       enrich = tmp2 %>% .[, I := .I] %>% .[, f := I / max(I)] %>%
-         merge(CACHE$human[, !c('reverse', 'distance')],
-               by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri')) %>%
-         .[rsc.ID %in% nExp,
-           .(A, B, C, stat, distance, I, f,
-             group = as.integer(as.character(factor(rsc.ID, levels = nExp, labels = mGroups[mAssoc]))))] %>%
-         unique %>% setorder(I))
-}) %>% saveRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/artificial',
-                      SUFFIX, '/bootstrap_scores.rds'))
+       enrich = tmp2 %>%
+         .[, I := .I] %>%
+         .[, c(1:6, 8, 11)])
+}) %>% saveRDS('/space/scratch/jsicherman/Thesis Work/data/artificial/bootstrap_scores.rds')

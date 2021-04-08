@@ -243,9 +243,9 @@ if(!exists('CACHE.BACKGROUND')) {
   }
 }
 
-if(!exists('NULLS')) {
+if(!exists('NULLS.COND')) {
   mFiles <- list.files('/space/scratch/jsicherman/Thesis Work/data/nulls')
-  NULLS <- lapply(names(DATA.HOLDER), function(taxa) {
+  NULLS.COND <- lapply(names(DATA.HOLDER), function(taxa) {
     mDT <- NULL
     for(f in mFiles[startsWith(mFiles, taxa)]) {
       message(paste('Loading', f))
@@ -257,6 +257,27 @@ if(!exists('NULLS')) {
         mDT <- dt
       else
         mDT <- merge(mDT, dt, by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), all = T, sort = F)
+    }
+    
+    mDT
+  }) %>% `names<-`(names(DATA.HOLDER))
+  rm(mFiles)
+}
+
+if(!exists('NULLS.EXP')) {
+  mFiles <- list.files('/space/scratch/jsicherman/Thesis Work/data/nulls2')
+  NULLS.EXP <- lapply(names(DATA.HOLDER), function(taxa) {
+    mDT <- NULL
+    for(f in mFiles[startsWith(mFiles, taxa)]) {
+      message(paste('Loading', f))
+      N <- gsub(paste0(taxa, '_(\\d+)\\.rds'), '\\1', f)
+      dt <- readRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/nulls2/', f)) %>%
+        .[, .(score.mean, score.sd), rn] %>%
+        setnames(2:3, paste0(c('M', 'S'), N))
+      if(is.null(mDT))
+        mDT <- dt
+      else
+        mDT <- merge(mDT, dt, by = 'rn', all = T, sort = F)
     }
     
     mDT
