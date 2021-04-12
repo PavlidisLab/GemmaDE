@@ -1,10 +1,3 @@
-maybeMemoise <- function(f) {
-  if(Sys.getenv('RSTUDIO') == '1')
-    memoise::memoise(f)
-  else
-    f
-}
-
 #' Weighted correlation
 #'
 #' @param x A vector or matrix (whose columns will be correlated)
@@ -36,8 +29,7 @@ cor.wt <- function(x, y, w = rep(1, length(y))) {
 #' * mfx: Whether or not to scale by gene multifunctionality
 #' * geeq: Whether or not to scale by GEEQ score
 #' @param inprod Whether to use the generated null distribution or not
-if(Sys.getenv('RSTUDIO') != '1' || !exists('search', inherits = F))
-search <- (function(genes, options = getConfig(), inprod = T, DATA = NULL) {
+search <- function(genes, options = getConfig(), inprod = T, DATA = NULL) {
   if(is.null(DATA)) # TODO Remove after doing scores as this might trigger a full copy
     DATA <- DATA.HOLDER
   
@@ -69,13 +61,13 @@ search <- (function(genes, options = getConfig(), inprod = T, DATA = NULL) {
         mData@data$adj.pv <- pvData
         mData@data$fc <- fcData
         mData@data$zscore <- zScoreData
-
+        
         mData@gene.meta <- gMeta[gMap$I, ] %>% .[, entrez.ID := gMap$key]
       } else {
         mData@data$adj.pv <- merge(mData@data$adj.pv, pvData, by = 0, all = T) %>% `rownames<-`(.[, 1]) %>% .[, -1]
         mData@data$fc <- merge(mData@data$fc, fcData, by = 0, all = T) %>% `rownames<-`(.[, 1]) %>% .[, -1]
         mData@data$zscore <- merge(mData@data$zscore, zScoreData, by = 0, all = T) %>% `rownames<-`(.[, 1]) %>% .[, -1]
-
+        
         mData@gene.meta$gene.Name <- coalesce(mData@gene.meta$gene.Name, gMeta[gMap$I, gene.Name])
         mData@gene.meta$mfx.Rank <- rowMeans2(cbind(mData@gene.meta$mfx.Rank, gMeta[gMap$I, mfx.Rank]), na.rm = T)
       }
@@ -85,7 +77,7 @@ search <- (function(genes, options = getConfig(), inprod = T, DATA = NULL) {
     geneMask <- which(!is.na(mData@gene.meta$mfx.Rank))
   } else {
     mData <- DATA[[options$taxa$value]]
-
+    
     # Only retain GOI
     geneMask <- which(mData@gene.meta$entrez.ID %in% genes)
   }
@@ -93,6 +85,11 @@ search <- (function(genes, options = getConfig(), inprod = T, DATA = NULL) {
   n.genes <- length(geneMask)
   if(n.genes == 0)
     return(NULL)
+  
+  # No searching if we have this shortcut
+  # TODO Needs to be fixed for "any", and a more elegant solution would be nice
+  if(inprod && options$method$value == 'diff')
+    return(mData@gene.meta[, .(I = .I, entrez.ID)] %>% .[entrez.ID %in% genes, I])
   
   query <- suppressWarnings(options$sig$value %>% as.numeric)
   # TODO Should signal why it stopped (mismatch of signature length)
@@ -220,7 +217,7 @@ search <- (function(genes, options = getConfig(), inprod = T, DATA = NULL) {
     .[, rn := colnames(zScore)] %>%
     setorder(-score)
   
-  if(inprod && exists('NULLS.EXP', envir = globalenv())) {
+  if(exists('NULLS.EXP', envir = globalenv())) {
     whichCols <- c('rn', paste0(c('M', 'S'), min(20, which(colnames(ret) == 'score') - 1)))
     
     ret %>%
@@ -231,7 +228,7 @@ search <- (function(genes, options = getConfig(), inprod = T, DATA = NULL) {
       setorder(-stat)
   } else
     ret
-})
+}
 
 #' getTags
 #' 
@@ -249,7 +246,7 @@ getTags <- function(taxa = getConfig(key = 'taxa')$value,
   
   if(is.null(rsc.IDs))
     rsc.IDs <- CACHE[[taxa]][, unique(as.character(rsc.ID))]
-
+  
   if(inv)
     rsc.IDs <- CACHE[[taxa]][!(rsc.ID %in% rsc.IDs), unique(as.character(rsc.ID))]
   
@@ -280,7 +277,7 @@ precomputeTags <- function(taxa = getConfig(key = 'taxa')$value, mGraph = NULL, 
   
   # Tags that are "bagged" (ie. have multiple tags)
   bagged <- DATA[[taxa]]@experiment.meta[, grepl('; ', as.character(cf.BaseLongUri), fixed = T) |
-                                                  grepl('; ', as.character(cf.ValLongUri), fixed = T)]
+                                           grepl('; ', as.character(cf.ValLongUri), fixed = T)]
   
   # Structured text entries (ie. non-ontology terms)
   mStructuredTags <- DATA[[taxa]]@experiment.meta[!bagged, .(tag = unique(as.character(cf.BaseLongUri)),
@@ -295,13 +292,13 @@ precomputeTags <- function(taxa = getConfig(key = 'taxa')$value, mGraph = NULL, 
     mBagOfWords <- data.table()
   else
     mBagOfWords <- DATA[[taxa]]@experiment.meta[bagged, .(tag = unique(as.character(cf.BaseLongUri)),
-                                                                 type = 'cf.BaseLongUri'), .(rsc.ID, ee.ID)] %>%
-      .[!(tag %in% graphTerms)] %>%
-      rbind(DATA[[taxa]]@experiment.meta[bagged, .(tag = unique(as.character(cf.ValLongUri)),
-                                                          type = 'cf.ValLongUri'), .(rsc.ID, ee.ID)] %>%
-              .[!(tag %in% graphTerms)]) %>%
-      .[, lapply(.SD, function(x) parseListEntry(as.character(x))), .(rsc.ID, ee.ID, type)] %>%
-      .[, ID := 1:length(tag), .(rsc.ID, ee.ID, type)]
+                                                          type = 'cf.BaseLongUri'), .(rsc.ID, ee.ID)] %>%
+    .[!(tag %in% graphTerms)] %>%
+    rbind(DATA[[taxa]]@experiment.meta[bagged, .(tag = unique(as.character(cf.ValLongUri)),
+                                                 type = 'cf.ValLongUri'), .(rsc.ID, ee.ID)] %>%
+            .[!(tag %in% graphTerms)]) %>%
+    .[, lapply(.SD, function(x) parseListEntry(as.character(x))), .(rsc.ID, ee.ID, type)] %>%
+    .[, ID := 1:length(tag), .(rsc.ID, ee.ID, type)]
   
   if(nrow(mBagOfWords) > 0)
     mComputable <- union(mSimpleTags[, unique(tag)], mBagOfWords[tag %in% graphTerms, tag])
@@ -323,7 +320,7 @@ precomputeTags <- function(taxa = getConfig(key = 'taxa')$value, mGraph = NULL, 
     .[, c('tag', 'tag.y') := list(tag.y, NULL)] %>% .[, ID := NA]
   else
     mTags <- data.table()
-    
+  
   # Structured tags just get inserted
   mTags <- mTags %>% rbind(mStructuredTags[, ID := NA] %>% .[, .(tag, rsc.ID, ee.ID, type, distance, ID)])
   
@@ -336,13 +333,13 @@ precomputeTags <- function(taxa = getConfig(key = 'taxa')$value, mGraph = NULL, 
         .[is.na(tag.y), c('tag.y', 'distance') := list(tag, 0)] %>%
         .[, c('tag', 'tag.y') := list(tag.y, NULL)]
     )
-
+  
   mTags <- mTags %>%
     merge(unique(ONTOLOGIES.DEFS[, .(Node_Long = as.character(Node_Long), Definition = as.character(Definition))]),
           by.x = 'tag', by.y = 'Node_Long', sort = F, allow.cartesian = T, all.x = T) %>%
     .[is.na(Definition), Definition := tag] %>%
     .[, .(rsc.ID, ee.ID, type, tag = Definition, distance, ID)]
-
+  
   # Do a grid expansion of bagged terms, maintaining indexed ordering
   if(nrow(mBagOfWords) > 0 && nrow(mTags[!is.na(ID) & distance < 1]) > 0)
     mTagsExpanded <- mTags # TODO this loses tags?
@@ -444,6 +441,8 @@ reorderTags2 <- function(cache) {
           reverse, distance)]
 }
 
+# TODO this could be memoized when inprod && is.integer(rankings)
+
 #' Enrich
 #' 
 #' Given rankings (@seealso search), generate a ranking-weighted count of all terms that can be
@@ -453,34 +452,43 @@ reorderTags2 <- function(cache) {
 #' @param options The options
 #' @param inprod Whether to use the generated null distribution or not
 #' @param CACHE A cache to use. If null, uses the global CACHE.BACKGROUND
-if(Sys.getenv('RSTUDIO') != '1' || !exists('enrich', inherits = F))
-enrich <- (function(rankings, options = getConfig(), inprod = T, CACHE = NULL) {
+enrich <- function(rankings, options = getConfig(), inprod = T, CACHE = NULL) {
+  if(inprod && is.integer(rankings))
+    return(enrichMem(rankings, options))
+  
   if(options$taxa$value == 'any') { # TODO This will include even species for which there were no homologs
     mMaps <- list(rbindlist(lapply(options$taxa$core, function(x) getTags(x, NULL, CACHE = CACHE))),
                   rbindlist(lapply(options$taxa$core, function(x) getTags(x, rankings$rn, CACHE = CACHE))))
   } else
     mMaps <- getTags(options$taxa$value, rankings$rn, CACHE = CACHE)
   
-  # Stat of 0 means it's as expected
+  # Stat of 0 means it's as expected (0 SD from mean)
   mMaps <- mMaps[as.character(cf.BaseLongUri) != as.character(cf.ValLongUri)] %>%
     merge(rankings[, .(rsc.ID = rn, stat)],
           by = 'rsc.ID', sort = F, allow.cartesian = T) %>%
     na.omit
   
-  aprior <- function() {
-    mMaps[, .(distance = round(mean(distance, na.rm = T), 2),
-              A = sum(stat + 1, na.rm = T),
-              C = .N),
-          .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
-      .[, c('B', 'D') := list(sum(A, na.rm = T), sum(C, na.rm = T))]
+  mMaps[, .(distance = round(mean(distance, na.rm = T), 2),
+            stat = sum(stat + 1, na.rm = T) / .N),
+        .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
+}
+
+maybeMemoise <- function(FUN, fname) {
+  if(!exists(fname, envir = globalenv())) {
+    if(Sys.getenv('RSTUDIO') == '1')
+      FUN <- memoise::memoise(FUN)
+    
+    assign(fname, FUN, envir = globalenv())
   }
-  
-  enrichTest <- function(input) {
-    input[, c('pv.fisher', 'stat') := list(
-      suppressWarnings(phyper(A - 1, B, D, C + A, F)),
-      A/C), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
-  }
-  
-  #aprior() %>% enrichTest %>% .[is.finite(stat)] %>% setorder(-stat)
-  aprior()
-})
+}
+
+maybeMemoise(function(rankings, options) {
+  # TODO it would be nice to have smaller clusters or cluster commonly searched genes together
+  lapply(unique(ceiling(rankings / getOption('chunk.size', 200))), function(filenum) {
+    readRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/singlegene/', options$taxa$value, '_', filenum, '.rds')) %>%
+      .[I %in% rankings] %>% dcast(... ~ I, value.var = 'stat')
+  }) %>% Reduce(function(...) merge(..., by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri', 'distance')), .) %>%
+    .[, stat := Rfast::rowmeans(as.matrix(.SD[, !c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri', 'distance')]))] %>%
+    setorder(-stat, distance) %>%
+    .[, .SD[1], stat]
+}, 'enrichMem')

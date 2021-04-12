@@ -1,47 +1,6 @@
-# Visualizations
-library(shiny)
-library(shinyjs)
-library(shinyWidgets)
-library(shinycssloaders) # From jsicherman/shinycssloaders, NOT daattali
-library(htmlwidgets)
-library(DT)
-library(heatmaply)
-library(shinyHeatmaply)
-library(shinypanels) # From jsicherman/shinypanels, NOT datasketch
-library(circlepackeR)
-library(d3wordcloud)
-library(data.tree)
-library(RColorBrewer)
-library(sass)
-
-library(async)
-library(memoise)
-
-# Data drivers
-library(matrixStats)
-library(Rfast)
-library(igraph)
-library(dplyr)
-library(data.table)
-library(stringr)
-library(bit)
-
-# Parsing helpers
-library(gemmaAPI, lib.loc = '/home/omancarci/R/x86_64-redhat-linux-gnu-library/3.6/')
-library(ermineR)
-library(mygene)
-library(homologene)
-library(jsonlite)
-library(XML)
-
-# Concurrent users
-library(promises)
-library(future)
-plan(multicore, workers = 5)
-options(future.globals.maxSize = 30 * 1000 * 1024^2)
+source('requirements.R')
 
 source('dependencies.R')
-
 runApp('main', port = 18232, launch.browser = F)
 
 # Roadmap ----

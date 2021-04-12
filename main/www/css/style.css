@@ -74,6 +74,7 @@ a:hover {
 
 #options > div > div {
   display: flex;
+  flex-direction: column;
   flex: 1;
 }
 
@@ -165,15 +166,19 @@ input.form-control[disabled] {
   margin-top: 0.25em;
 }
 
+.has-feedback .form-control {
+  padding-right: 28.5px !important;
+}
+
 input[type="search"] {
   font-weight: normal;
   line-height: 1.6em;
 }
 
 .loader {
-  /* top: 50% !important;
+  top: 42% !important;
   position: relative !important;
-  color: unset !important; */
+  color: unset !important;
   background: unset !important;
 }
 

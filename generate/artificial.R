@@ -1,53 +1,12 @@
-# Visualizations
-library(shiny)
-library(shinyjs)
-library(shinyWidgets)
-library(shinycssloaders) # From jsicherman/shinycssloaders, NOT daattali
-library(htmlwidgets)
-library(DT)
-library(heatmaply)
-library(shinyHeatmaply)
-library(shinypanels) # From jsicherman/shinypanels, NOT datasketch
-library(circlepackeR)
-library(d3wordcloud)
-library(data.tree)
-# library(sparkline)
-library(RColorBrewer)
+source('/home/jsicherman/Thesis Work/requirements.R')
+source('dependencies.R')
 
-library(async)
-library(memoise)
-
-# Data drivers
-library(matrixStats)
-library(Rfast)
-library(igraph)
-library(dplyr)
-library(data.table)
-library(stringr)
-library(bit)
-
-# Parsing helpers
-library(gemmaAPI, lib.loc = '/home/omancarci/R/x86_64-redhat-linux-gnu-library/3.6/')
-library(ermineR)
-library(mygene)
-library(homologene)
-library(jsonlite)
-library(XML)
-
-library(dqrng)
-library(DESeq2)
-library(limma)
-library(compcodeR)
 library(parallel)
-library(edgeR)
+options(mc.cores = 5)
+USE <- 'simulated'
 
-if(!exists('DATA.HOLDER'))
-  source('dependencies.R')
-
-rm(NULLS, DRUGBANK, CACHE.BACKGROUND, ONTOLOGIES, ONTOLOGIES.DEFS)
-DATA.HOLDER$artificial <- NULL
-DATA.HOLDER$mouse <- NULL
-DATA.HOLDER$rat <- NULL
+rm(NULLS.EXP, CACHE.BACKGROUND, ONTOLOGIES, ONTOLOGIES.DEFS)
+DATA.HOLDER[c('artificial', 'mouse', 'rat')] <- NULL
 
 mu.phi.estimates <- system.file("extdata", "Pickrell.Cheung.Mu.Phi.Estimates.rds",
                                 package = "compcodeR")
@@ -314,43 +273,28 @@ generateSyntheticData <- function (dataset, n.vars, samples.per.cond, n.diffexp,
   return(invisible(data.object))
 }
 
-letterWrap <- function(n, depth = 1) {
-  x <- do.call(paste0,
-               do.call(expand.grid, args = list(lapply(1:depth, function(x) return(LETTERS)), stringsAsFactors = F)) %>%
-                 .[, rev(names(.[])), drop = F])
-  
-  if(n <= length(x)) return(x[1:n])
-  
-  return(c(x, letterWrap(n - length(x), depth = depth + 1)))
+eMeta <- DATA.HOLDER$human@experiment.meta %>% copy
+N_GENES <- nrow(DATA.HOLDER$human@gene.meta)
+N_EXP <- nrow(eMeta)
+CONTRASTS <- eMeta[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>% unique
+EXP_CONTRASTS <- sample(1:nrow(CONTRASTS), N_EXP, T, sort(rexp(nrow(CONTRASTS)), T))
+
+rm(DATA.HOLDER)
+
+r1exp <- function(n, n.1, val.1 = 2, val.1.rate = 1, rate = 1) {
+  sample(c(val.1 + rexp(n.1, val.1.rate), val.1 * rexp(n - n.1, rate) %>% `/`(max(.))))
 }
 
-if(!exists('CONTRAST_AFFINITY')) {
-  eMeta <- DATA.HOLDER$human@experiment.meta %>% copy
-  N_GENES <- nrow(DATA.HOLDER$human@gene.meta)
-  N_EXP <- nrow(eMeta)
-  N_DETECT <- DATA.HOLDER$human@experiment.meta$n.detect
-  CONTRASTS <- eMeta[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>% unique
-  EXP_CONTRASTS <- sample(1:nrow(CONTRASTS), N_EXP, T, sort(rexp(nrow(CONTRASTS)), T))
-  USE <- 'simulated'
-  
-  rm(DATA.HOLDER)
-  
-  r1exp <- function(n, n.1, val.1 = 2, val.1.rate = 1, rate = 1) {
-    sample(c(val.1 + rexp(n.1, val.1.rate), val.1 * rexp(n - n.1, rate) %>% `/`(max(.))))
-  }
-  
-  CONTRAST_AFFINITY <- lapply(unique(EXP_CONTRASTS), function(contrast) {
-    data.table(contrast = contrast,
-               entrez.ID = 1:N_GENES,
-               probability = r1exp(N_GENES, n.1 = 10)) %>%
-      .[, effect := 1.5 + probability/2] %>%
-      .[sample(c(T, F), N_GENES, T, c(0.5012399, 0.4987578)), effect := 1 / effect]
-  }) %>% rbindlist
-  
-  saveRDS(CONTRAST_AFFINITY, '/space/scratch/jsicherman/Thesis Work/data/artificial/contrast_aff.rds')
-}
+CONTRAST_AFFINITY <- lapply(unique(EXP_CONTRASTS), function(contrast) {
+  data.table(contrast = contrast,
+             entrez.ID = 1:N_GENES,
+             probability = r1exp(N_GENES, n.1 = 10)) %>%
+    .[, effect := 1.5 + probability/2] %>%
+    .[sample(c(T, F), N_GENES, T, c(0.5012399, 0.4987578)), effect := 1 / effect]
+}) %>% rbindlist
 
-options(mc.cores = 5)
+saveRDS(CONTRAST_AFFINITY, '/space/scratch/jsicherman/Thesis Work/data/artificial/contrast_aff.rds')
+
 mclapply(1:N_EXP, function(experiment) {
   message(paste0(Sys.time(), ' ... ', round(100 * experiment / N_EXP, 2), '%'))
   
@@ -361,9 +305,8 @@ mclapply(1:N_EXP, function(experiment) {
       head(floor(1.5 * eMeta$n.DE[experiment])) %>%
       .[sample(1:nrow(.), eMeta$n.DE[experiment], F, .$probability)] %>%
       .[, .(entrez.ID, effect)]
-  } else {
+  } else
     mDat <- data.table(entrez.ID = NA_character_, effect = NA_real_)
-  }
   
   # Make the others have effect of 1
   mDat <- data.table(entrez.ID = 1:N_GENES,
@@ -387,7 +330,7 @@ mclapply(1:N_EXP, function(experiment) {
     MISSING <- 1:N_GENES
   
   tmp@variable.annotations$truelog2foldchanges[
-    sample(MISSING, N_GENES - N_DETECT[experiment])] <- NA_real_
+    sample(MISSING, N_GENES - eMeta$n.detect[experiment])] <- NA_real_
   
   if(USE == 'DESeq2') {
     suppressMessages(DESeqDataSetFromMatrix(countData = tmp@count.matrix,
@@ -432,3 +375,7 @@ mclapply(1:N_EXP, function(experiment) {
          })
   }
 }) %>% saveRDS('/space/scratch/jsicherman/Thesis Work/data/artificial/experiment_dat.rds')
+
+rm(mu.phi.estimates, generateSyntheticData, eMeta, N_GENES,
+   N_EXP, CONTRASTS, EXP_CONTRASTS, r1exp, CONTRAST_AFFINITY, USE)
+source('/home/jsicherman/Thesis Work/generate/postprocessArtificial.R')

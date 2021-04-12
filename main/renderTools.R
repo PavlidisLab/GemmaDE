@@ -10,16 +10,20 @@ generateResultsHeader <- function(title) {
 
 # TODO Implement condition picker to not overwhelm
 generateGeneContribs <- function(data, options, plot_conditions = NULL) {
-  mData <- data[, !c('Test Statistic', 'Ontology Steps')] %>%
-    head(20) %>% # TODO Stopgap for picker
-    melt(id.vars = 1:3) %>%
-    .[, contrast := paste0(cf.BaseLongUri, ' vs. ', cf.ValLongUri)]
-  
+  mData <- data %>%
+    setorder(-`Test Statistic`) %>%
+    .[, !c('Test Statistic', 'Ontology Steps', 'N', 'Evidence', 'Relatedness',
+           'cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri')] %>%
+    head(10) %>% # TODO This is a stopgap for picker
+    melt(id.vars = 'Contrast') %>%
+    .[, value := log10(value / sum(value)), Contrast] %>% # TODO for negative/zero values
+    .[, value := (value - min(value)) / (max(value) - min(value)), Contrast]
+
   fig <- plot_ly(type = 'scatterpolar', fill = 'toself', mode = 'markers')
-  for(group in unique(mData[, contrast])) {
+  for(group in unique(mData[, Contrast])) {
     fig <- fig %>%
-      add_trace(r = mData[contrast == group, value],
-                theta = mData[contrast == group, variable],
+      add_trace(r = mData[Contrast == group, value],
+                theta = mData[Contrast == group, variable],
                 visible = 'legendonly',
                 name = group)
   }
@@ -129,58 +133,6 @@ generateResultsPlot <- function(genes, conditions, expr, options = getConfig(),
                  modeBarButtonsToRemove = c('toggleSpikelines', 'hoverCompareCartesian'))
 }
 
-makeNetwork <- memoise::memoise(function(data, options) {
-  mTag <- getTags(options$taxa$value) %>%
-    .[cf.Cat %in% data[, unique(cf.Cat)] &
-        cf.BaseLongUri %in% data[, unique(cf.BaseLongUri)] &
-        cf.ValLongUri %in% data[, unique(cf.ValLongUri)]] %>%
-    .[, Contrast := paste0(cf.BaseLongUri, ' vs. ', cf.ValLongUri)] %>%
-    .[, .(rsc.ID = as.integer(as.factor(rsc.ID)), cf.Cat, Contrast, distance)] %>%
-    .[distance == 0, N := .N, Contrast] %>% .[N > 1, rsc.ID := head(.SD$rsc.ID, 1), .(cf.Cat, Contrast)] %>%
-    .[, distance := mean(distance), .(rsc.ID, Contrast)] %>%
-    .[, unique(.SD[, !'N']), rsc.ID] %>%
-    .[, setorder(.SD, distance), rsc.ID] %>%
-    .[, .(level = as.integer(distance / max(distance) * length(unique(distance)) - min(distance)), cf.Cat, Contrast), rsc.ID] %>%
-    .[, parent := level - 1] %>%
-    .[, Parent := factor(parent, levels = unique(parent),
-                         labels = c(NA, .SD[level < max(level), .(Contrast = head(Contrast, 1)), level][, Contrast])) %>%
-        as.character, rsc.ID] %>% .[, .(cf.Cat, Parent, Contrast)] %>%
-    .[is.na(Parent), Parent := cf.Cat] %>% unique %>%
-    merge(data[`Test Statistic` > 0, .(cf.Cat, Contrast = paste0(cf.BaseLongUri, ' vs. ', cf.ValLongUri), `Test Statistic`)],
-          by = c('cf.Cat', 'Contrast'), all = T) %>% {
-            rbind(data.table(Parent = NA, Contrast = 'Data', `Test Statistic` = NA, children = NA),
-                  rbind(.[, .(Parent = 'Data', Contrast = unique(cf.Cat), `Test Statistic` = NA, children = NA)],
-                        .[is.na(Parent), Parent := cf.Cat] %>%
-                          .[, children := .N, cf.Cat] %>%
-                          .[, .(Parent, Contrast, `Test Statistic`, children)]))
-          }
-  
-  mGraph <- suppressWarnings(
-    igraph::graph_from_data_frame(mTag[, .(Parent, Contrast, weight = 1 / (`Test Statistic` + abs(min(`Test Statistic`) + 1)))] %>%
-                                    .[is.na(weight), weight := 1]) %>%
-      simplify(edge.attr.comb = 'sum')
-  )
-  
-  if(!igraph::is_dag(mGraph))
-    mGraph <- suppressWarnings(igraph::induced_subgraph(mGraph, igraph::topo_sort(mGraph)))
-  
-  vertices <- mTag[, .(`Test Statistic`, Contrast)] %>% .[, head(.SD, 1), `Test Statistic`] %>%
-    setorder(-`Test Statistic`, na.last = T) %>% .[, Contrast] %>% intersect(names(igraph::V(mGraph))) %>%
-    head(500)
-  
-  paths <- shortest_paths(mGraph, from = 'NA',
-                          to = vertices,
-                          mode = 'out')$vpath %>% unlist %>% unique
-  
-  mSimpleGraph <- igraph::induced_subgraph(mGraph, paths)
-  dGraph <- igraph::as_data_frame(mSimpleGraph)
-  
-  mTag[is.na(Parent) | (Parent %in% dGraph$from & Contrast %in% dGraph$to)] %>%
-    .[Contrast %in% Parent & !(Contrast %in% vertices), `Test Statistic` := NA] %>%
-    .[, `Test Statistic` := `Test Statistic` / children] %>%
-    .[, .(Parent, Contrast, `Test Statistic`)]
-})
-
 generateResultsCloud <- function(data, options) {
   mCloudValues <- data[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, `Test Statistic`)] %>%
     melt(measure.vars = 1:3) %>%
@@ -195,24 +147,13 @@ generateResultsCloud <- function(data, options) {
   renderD3wordcloud(mCloud)
 }
 
-generateResultsTree <- function(data, options) {
-  mCircle <- makeNetwork(data, options) %>%
-    as.data.frame %>% .[!is.na(.[, 1]), ] %>%
-    data.tree::FromDataFrameNetwork() %>%
-    circlepackeR(size = 'Test Statistic',
-                 color_max = 'hsl(211, 100%, 14%)',
-                 color_min = 'hsl(210, 53%, 74%)')
-   
-   renderCirclepackeR(mCircle)
-}
-
 #' Generate Results
 #' 
 #' Make a pretty results table and render it
 #'
 #' @param session The Shiny session storing our data
 generateResults <- function(data) {
-  outputColumns <- c('Contrast', 'Evidence', 'Observations', 'Ontology Steps', 'Relatedness', 'Test Statistic')
+  outputColumns <- c('Contrast', 'Evidence', 'Ontology Steps', 'Relatedness', 'Test Statistic')
   
   mTable <- datatable(data[, outputColumns, with = F] %>% as.data.frame,
                       extensions = 'Buttons',
@@ -229,8 +170,7 @@ generateResults <- function(data) {
                       options = list(pageLength = 10,
                                      order = list(
                                        list(which(outputColumns == 'Test Statistic'), 'desc'),
-                                       list(which(outputColumns == 'Ontology Steps'), 'asc'),
-                                       list(which(outputColumns == 'Observations'), 'desc')),
+                                       list(which(outputColumns == 'Ontology Steps'), 'asc')),
                                      language = list(lengthMenu = 'Show _MENU_ conditions per page',
                                                      processing = '',
                                                      emptyTable = 'No matching conditions found.',
@@ -258,18 +198,12 @@ generateResults <- function(data) {
                                             searchable = F, orderable = F),
                                        list(targets = which(outputColumns == 'Test Statistic'),
                                             render = JS('asPval'),
-                                            width = '10%',
-                                            searchable = F),
-                                       list(targets = which(outputColumns == 'Observations'),
                                             width = '5%',
                                             searchable = F),
                                        list(targets = which(outputColumns == 'Ontology Steps'),
-                                            width = '5%')#,
-                                       #list(targets = which(outputColumns == 'Direction'),
-                                       #     width = '5%',
-                                       #     render = JS('asSparkline2'), width = '1px', className = 'dt-center', searchable = F, orderable = F)#,
-                                       #list(targets = (which(outputColumns == 'P-value') + 1):length(outputColumns),
-                                       #     render = JS('asSparkline'), width = '1px', className = 'dt-center', searchable = F, orderable = F)
+                                            width = '5%'),
+                                       list(targets = which(outputColumns == 'Relatedness'),
+                                            width = '5%')
                                      ),
                                      search = list(
                                        list(regex = T),
@@ -282,7 +216,6 @@ generateResults <- function(data) {
                                      )
                       )
   )
-  #mTable$dependencies <- append(mTable$dependencies, htmlwidgets:::getDependency('sparkline'))
   
   renderDT(mTable)
 }

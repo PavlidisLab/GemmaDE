@@ -5,6 +5,7 @@ options(app.author = 'Jordan Sicherman (jordan.sicherman@msl.ubc.ca)')
 
 options(max.progress.steps = 3)
 options(max.gemma = 1000)
+options(chunk.size = 200)
 
 addConfig <- function(description, category, extras = NULL, ...) {
   mList <- getOption('app.registered')
@@ -53,9 +54,9 @@ as.input <- function(entry) {
     else
       sliderInput(entry$name, entry$description, value = entry$value,
                   min = entry$min, max = entry$max, step = entry$step, ticks = entry$ticks)
-  } else if(is.character(entry$value))
-    selectInput(entry$name, entry$description, entry$choices, entry$value, switch(is.null(entry$multiple) + 1, entry$multiple, F))
-  else if(is.logical(entry$value))
+  } else if(is.character(entry$value)) {
+    pickerInput(entry$name, entry$description, entry$choices, entry$value, switch(is.null(entry$multiple) + 1, entry$multiple, F))
+  } else if(is.logical(entry$value))
     materialSwitch(entry$name, entry$description, entry$value, right = T)
 }
 
@@ -114,3 +115,13 @@ source('/home/jsicherman/Thesis Work/main/process.R')
 source('/home/jsicherman/Thesis Work/main/renderTools.R')
 source('/home/jsicherman/Thesis Work/main/gemmaAPI.R')
 source('/home/jsicherman/Thesis Work/main/load.R')
+
+letterWrap <- function(n, depth = 1) {
+  x <- do.call(paste0,
+               do.call(expand.grid, args = list(lapply(1:depth, function(x) return(LETTERS)), stringsAsFactors = F)) %>%
+                 .[, rev(names(.[])), drop = F])
+  
+  if(n <= length(x)) return(x[1:n])
+  
+  return(c(x, letterWrap(n - length(x), depth = depth + 1)))
+}

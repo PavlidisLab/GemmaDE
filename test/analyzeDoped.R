@@ -1,40 +1,54 @@
-SUFFIX <- '_lhs2'
-doped <- readRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/artificial',
-                        SUFFIX, '/bootstrap_scores.rds'))
+cMap <- DATA.HOLDER$human@experiment.meta[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
+  unique %>% .[, cf.ID := 1:nrow(.)] %>%
+  merge(DATA.HOLDER$human@experiment.meta[, .(rsc.ID, cf.Cat, cf.BaseLongUri, cf.ValLongUri)],
+        by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'))
 
-dope_scores <- lapply(1:length(doped), function(i) {
+cMap <- CACHE.BACKGROUND$human[, .(rsc.ID, cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
+  merge(cMap[, .(rsc.ID, cf.ID)], by = 'rsc.ID') %>%
+  .[, !'rsc.ID']
+
+rm(DATA.HOLDER, CACHE.BACKGROUND)
+
+tmp <- readRDS('/space/scratch/jsicherman/Thesis Work/data/artificial/bootstrap_scores.rds')
+
+dope_scores <- lapply(1:length(tmp), function(i) {
   data.table(group = i,
-             insert_sd = doped[[i]]$mean_sd,
-             insert_mean_index = doped[[i]]$mean_index,
-             insert_groups = doped[[i]]$groups[doped[[i]]$associations],
-             search_indices = doped[[i]]$indices,
-             search_fractions = doped[[i]]$indices / doped[[i]]$maxIndex,
-             search_scores = doped[[i]]$scores)
-}) %>% rbindlist
+             insert_sd = tmp[[i]]$mean_sd,
+             insert_mean_index = tmp[[i]]$mean_index,
+             insert_groups = tmp[[i]]$groups[tmp[[i]]$associations],
+             search_indices = tmp[[i]]$indices,
+             search_scores = tmp[[i]]$scores)
+}) %>% rbindlist(fill = T)
 
 dope_scores %>% na.omit %>%
-  ggplot(aes(insert_mean_index, search_fractions)) +
+  ggplot(aes(insert_mean_index, search_indices)) +
   geom_point(aes(color = factor(insert_mean_index))) +
   stat_smooth(method = 'lm', se = F) +
   theme_classic(base_size = 20) + theme(legend.position = 'none') +
   scale_x_continuous(expand = c(0, 0)) + scale_y_continuous(expand = c(0, 0)) +
   labs(x = 'Mean insertion index', y = 'Index of occurrence')
 
-dope_enrich <- lapply(1:length(doped), function(i) {
-  if(!is.null(doped[[i]]$enrich) && nrow(doped[[i]]$enrich) > 0)
-    enriched <- doped[[i]]$enrich[, .(stat, distance, I, f, contrast = group)]
+library(parallel)
+options(mc.cores = 3)
+dope_enrich <- mclapply(1:length(tmp), function(i) {
+  print(i)
+  if(!is.null(tmp[[i]]$enrich) && nrow(tmp[[i]]$enrich) > 0)
+    enriched <- tmp[[i]]$enrich[, f := I/max(I)] %>%
+      merge(cMap, by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri')) %>%
+      .[cf.ID %in% unique(tmp[[i]]$groups), .(stat, distance, I, f, cf.ID)]
   else
     enriched <- data.table(stat = NA, distance = NA, I = NA, f = NA,
-                           contrast = doped[[i]]$groups[doped[[i]]$associations])
+                           cf.ID = tmp[[i]]$groups[tmp[[i]]$associations])
   
   data.table(group = i,
-             insert_sd = doped[[i]]$mean_sd,
-             n_exp = doped[[i]]$n_exp,
-             n_groups = length(doped[[i]]$groups),
-             n_genes = length(doped[[i]]$genes),
-             insert_mean_index = doped[[i]]$mean_index,
+             insert_sd = tmp[[i]]$mean_sd,
+             n_exp = tmp[[i]]$n_exp,
+             n_groups = length(tmp[[i]]$groups),
+             n_genes = length(tmp[[i]]$genes),
+             insert_mean_index = tmp[[i]]$mean_index,
              enriched)
-}) %>% rbindlist
+}) %>% rbindlist(fill = T)
+rm(tmp)
 
 dope_enrich[distance == 0] %>%
   .[, c('ms', 'mi', 'mf') := list(mean(stat, na.rm = T),
@@ -44,6 +58,20 @@ dope_enrich[distance == 0] %>%
         n_exp = paste0(n_exp, ' Experiments'),
         n_groups,
         n_genes = paste0(n_genes, ' Genes'), ms = log10(ms), mi, mf)] -> dope_enrich_plottable
+
+library(scattermore)
+dope_enrich %>%
+  ggplot(aes(insert_mean_index, log10(1 + stat))) +
+  geom_scattermore(color = '#002145') +
+  stat_smooth(method = 'lm', color = 'red', formula = y ~ poly(x, 2)) +
+  theme_classic(base_size = 20) +
+  scale_x_continuous(expand = expansion(add = 0.01),
+                     breaks = c(0, 0.5, 1),
+                     labels = c('Start', 'Middle', 'End'),
+                     name = 'Spike in position') +
+  scale_y_continuous(expand = c(0, 0),
+                     name = expression(log[10](1+stat)),
+                     limits = c(-2, 2.5))
 
 dope_enrich %>% copy %>%
   .[, x := factor(plyr::round_any(100 * (1-insert_mean_index), 10))] %>%

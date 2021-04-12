@@ -15,7 +15,7 @@ $(document).on('shiny:value', function(event) {
     setTimeout(function() {
       updatePanels();
     }, 100);
-  } else if(event.name == 'results_header') {
+  } else if(event.name == 'dataDownload') {
     Shiny.setInputValue('UPDATED', Math.random());
   }
 });

@@ -126,7 +126,7 @@ server <- function(input, output, session) {
     } else if(input$tabs == 'Gene Contributions' && !is.null(session$userData$plotData) && is.null(session$userData$contribsRendered)) {
       session$userData$contribsRendered <- T
       
-      output$results_contribs <- generateGeneContribs(session$userData$plotData$conditions, session$userData$options)
+      output$results_contribs <- generateGeneContribs(session$userData$plotData$conditions, session$userData$plotData$options)
     }
   })
   
@@ -195,8 +195,6 @@ server <- function(input, output, session) {
       fluidRow(style = 'height: 85vh;',
                column(10, plotlyOutput('plot') %>% withSpinner(custom.class = 'DNA_cont', custom.html = div(lapply(1:10, function(x) div(class = 'nucleobase'))))),
                column(2, style = 'padding-top: 15px; padding-right: 30px;',
-                      #fluidRow(style = 'display: flex; flex-direction: row; justify-content: space-evenly; margin-bottom: 15px;',
-                      #         downloadButton('plot_save_jpg', 'Save JPG'), downloadButton('plot_save_svg', 'Save SVG')),
                       selectInput('plot_type', 'Type', list('Boxplot', 'Violin plot', 'Heatmap', 'Scatterplot', 'Jitterplot')),
                       selectInput('plot_data', 'Data', list('Gene Expression')),
                       pickerInput('plot_genes', 'Genes', list('Loading...'), multiple = T),
@@ -221,46 +219,18 @@ server <- function(input, output, session) {
                             session$userData$plotData$options,
                             input$plot_genes, input$plot_conditions, input$plot_type, input$plot_data)
       })
-      
-      #output$plot_save_jpg <- downloadHandler(function() {
-      #  shinyjs::disable('plot_save_jpg')
-      #  shinyjs::disable('plot_save_svg')
-      #  paste0('plot-', Sys.Date(), '.jpeg')
-      #}, function(file) {
-      #  suppressWarnings(tryCatch({
-      #    print(file)
-      #    withr::with_dir(dirname(file), plotly::orca(session$userData$last_plot, basename(file), width = 11 * 96, height = 8.5 * 96))
-      #  }, error = function(e) {}, finally = {
-      #    shinyjs::enable('plot_save_jpg')
-      #    shinyjs::enable('plot_save_svg')
-      #  }))
-      #})
-      
-      #output$plot_save_svg <- downloadHandler(function() {
-      #  shinyjs::disable('plot_save_jpg')
-      #  shinyjs::disable('plot_save_svg')
-      #  paste0('plot-', Sys.Date(), '.svg')
-      #}, function(file) {
-      #  suppressWarnings(tryCatch({
-      #    withr::with_dir(dirname(file), plotly::orca(session$userData$last_plot, basename(file), width = 11 * 96, height = 8.5 * 96))
-      #  }, error = function(e) {}, finally = {
-      #    shinyjs::enable('plot_save_jpg')
-      #    shinyjs::enable('plot_save_svg')
-      #  }))
-      #})
     }
     
     if(is.null(session$userData$plotData$exprInfo)) {
       # If we didn't already process we need to give the UI a tick to update and then fetch the data.
       if(!is.null(session$userData$plotData$conditions)) {
         shinyjs::delay(1, { 
-          synchronise(getTags(session$userData$plotData$options$taxa$value,
-                              session$userData$plotData$experiments) %>% # TODO Selection strategy
+          synchronise(getTags(session$userData$plotData$options$taxa$value) %>% # TODO Selection strategy
                         .[cf.Cat %in% (session$userData$plotData$conditions[`Ontology Steps` == 0] %>% .[1:5, unique(cf.Cat)]) &
                             cf.BaseLongUri %in% (session$userData$plotData$conditions[`Ontology Steps` == 0] %>% .[1:5, unique(cf.BaseLongUri)]) &
                             cf.ValLongUri %in% (session$userData$plotData$conditions[`Ontology Steps` == 0] %>% .[1:5, unique(cf.ValLongUri)])] %>%
                         unique %>% # TODO for "any"
-                        merge(DATA.HOLDER[[session$userData$plotData$options$taxa$value]]@experiment.meta[rsc.ID %in% session$userData$plotData$experiments, .(rsc.ID, ee.ID, ee.NumSamples)],
+                        merge(DATA.HOLDER[[session$userData$plotData$options$taxa$value]]@experiment.meta[, .(rsc.ID, ee.ID, ee.NumSamples)],
                               by = c('rsc.ID', 'ee.ID'), sort = F, allow.cartesian = T) %>% {
                           if(nrow(.) == 0) return(NULL)
                           
@@ -319,34 +289,33 @@ server <- function(input, output, session) {
   #' @param options Any additional options that were passed
   endSuccess <- function(genes, experiments, conditions, options) {
     # Generate the results header
-    if(exists('output'))
+    if(exists('output')) {
+      n_exp <- nrow(DATA.HOLDER[[options$taxa$value]]@experiment.meta)
+      
       output$results_header <- renderUI({
         generateResultsHeader(HTML(paste0('<div style="margin-bottom: 10px"><h2 style="display: inline">Enriched ',
-                                          nrow(experiments), ' experiment', ifelse(nrow(experiments) > 1, 's', ''), ' for ',
-                                          ifelse(which(colnames(experiments) == 'score') == 2, colnames(experiments)[1],
+                                          n_exp, ' experiment', ifelse(n_exp > 1, 's', ''), ' for ',
+                                          ifelse(nrow(genes) == 1, genes[, gene.Name],
                                                  paste0('<span data-toggle="tooltip" data-placement="top" title="',
-                                                        paste0(colnames(experiments)[1:(which(colnames(experiments) == 'score') - 1)], collapse = ', '), '">',
-                                                        which(colnames(experiments) == 'score') - 1, ' gene', ifelse(which(colnames(experiments) == 'score') > 2, 's', ''), '</span>')),
+                                                        paste0(genes[, gene.Name], collapse = ', '), '">',
+                                                        nrow(genes), ' gene', ifelse(nrow(genes) > 1, 's', ''), '</span>')),
                                           '</h2><span class="timestamp">in ',
                                           format(difftime(session$userData$endTime, session$userData$startTime), digits = 3), '.</span></span>')))
       })
+    }
     
-    conditions[, Contrast := paste0('<b>', cf.BaseLongUri, '</b> vs. <b>', cf.ValLongUri, '</b>')]
+    conditions <- conditions[cf.Cat %in% options$categories$value] %>%
+      .[, Contrast := paste0('<b>', cf.BaseLongUri, '</b> vs. <b>', cf.ValLongUri, '</b>')] %>%
+      setnames(as.character(genes[, I]), genes[, gene.Name])
     
     advanceProgress('Cross-linking')
     
-    conditions <- conditions %>%
-      .[abs(stat) >= 1] %>%
-      .[, stat := round(stat, 3)] %>%
-      setorder(distance) %>%
-      .[, head(.SD, 1), stat] %>%
-      .[cf.Cat %in% options$categories$value]
-    
-    tmp <- getTags(options$taxa$value, experiments$rn) %>%
+    # Associating experiments with tags
+    tmp <- getTags(options$taxa$value) %>%
       .[cf.Cat %in% conditions[, unique(cf.Cat)] &
           cf.BaseLongUri %in% conditions[, unique(cf.BaseLongUri)] &
           cf.ValLongUri %in% conditions[, unique(cf.ValLongUri)]] %>% # TODO for "any"
-      merge(DATA.HOLDER[[options$taxa$value]]@experiment.meta[rsc.ID %in% experiments$rn, .(rsc.ID, ee.ID, ee.Name)],
+      merge(DATA.HOLDER[[options$taxa$value]]@experiment.meta[, .(rsc.ID, ee.ID, ee.Name)],
             by = c('rsc.ID', 'ee.ID'), sort = F, allow.cartesian = T) %>%
       .[, N := length(unique(ee.ID)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
     
@@ -368,11 +337,8 @@ server <- function(input, output, session) {
       .[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, N, Evidence)] %>%
       unique %>%
       merge(conditions, by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), sort = F) %>%
-      .[, `Relatedness` := case_when(stat > 0 ~ 'Positive', stat < 0 ~ 'Anti', T ~ 'Non')] %>%
-      .[, stat := abs(stat)] %>%
-      setorder(-stat, na.last = T) %>%
-      setnames(c('stat', 'C', 'distance'), c('Test Statistic', 'Observations', 'Ontology Steps')) %>%
-      .[, Observations := round(Observations, 2)]
+      .[, `Relatedness` := case_when(stat > 1 ~ 'Positive', stat < 1 ~ 'Anti', T ~ 'Non')] %>%
+      setnames(c('stat', 'distance'), c('Test Statistic', 'Ontology Steps'))
   }
   
   #' Handle Search
@@ -383,7 +349,10 @@ server <- function(input, output, session) {
   #' @param options The search options
   handleSearch <- function(genes, options) {
     advanceProgress('Ranking experiments')
-    future({ search(genes, options) }, globals = 'DATA.HOLDER') %...>%(function(experiments) {
+    # Search is basically a passthrough when using the default method and no signature
+    # and returns a vector of gene indices. Otherwise in non-default operation,
+    # it returns a data.table with a row for each experiment and scores
+    future({ search(genes, options) }, globals = c('DATA.HOLDER', 'NULLS.EXP')) %...>%(function(experiments) {
       if(!is.null(session$userData$INTERRUPT))
         return(NULL)
       
@@ -391,7 +360,14 @@ server <- function(input, output, session) {
         endFailure()
       else {
         advanceProgress('Enriching')
-        future({ enrich(experiments, options, inprod = T) }, globals = c('CACHE.BACKGROUND', 'NULLS')) %...>%(function(conditions) {
+        
+        # Disable gene contributions tab if not applicable
+        if(!is.integer(experiments))
+          shinyjs::disable(selector = 'a[data-value="Gene Contributions"]')
+        else
+          shinyjs::enable(selector = 'a[data-value="Gene Contributions"]')
+        
+        future({ enrich(experiments, options) }, globals = c('CACHE.BACKGROUND')) %...>%(function(conditions) {
           if(!is.null(session$userData$INTERRUPT))
             return(NULL)
           
@@ -400,42 +376,32 @@ server <- function(input, output, session) {
           if(is.null(conditions))
             endEmpty()
           else {
-            conditions <- endSuccess(genes, experiments, conditions, options)
+            # TODO for "any"
+            geneInfo <- DATA.HOLDER[[options$taxa$value]]@gene.meta %>%
+              .[, .(.I, entrez.ID, gene.Name)] %>%
+              .[entrez.ID %in% genes, .(I, entrez.ID, gene.Name)]
+            
+            conditions <- endSuccess(geneInfo, experiments, conditions, options)
             
             if(!is.null(session$userData$INTERRUPT))
               return(NULL)
             
-            # TODO for "any"
-            geneInfo <- DATA.HOLDER[[options$taxa$value]]@gene.meta[entrez.ID %in% genes, .(entrez.ID, gene.Name)]
-            
             output$results <- generateResults(conditions)
-            
-            # TODO for "any"
-            geneAssociations <- merge(getTags(options$taxa$value)[, .(rsc.ID, cf.Cat, cf.BaseLongUri, cf.ValLongUri)],
-                                      conditions[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, `Test Statistic`)],
-                                      by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), sort = F, allow.cartesian = T) %>%
-              merge(experiments[, !c('is.passing', 'f.OUT', 'ee.q')],
-                    by.x = 'rsc.ID', by.y = 'rn', sort = F, allow.cartesian = T) %>%
-              .[f.IN > 0] %>% .[, !'f.IN'] %>%
-              .[, lapply(.SD, mean), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri),
-                .SDcols = Filter(function(x) !(x %in% c('rsc.ID', 'cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri', 'score')), colnames(.))] %>% {
-                  data.table(.[, 1:4], .[, -(1:4)] %>% as.matrix %>% `+`(abs(min(.))) %>% `/`(rowSums2(.)))
-                } %>% setorder(-`Test Statistic`) %>% .[, !'Test Statistic']
             
             # Prepare some plotting information.
             session$userData$plotData <- list(
               options = options,
               gene.ID = geneInfo$entrez.ID,
               gene.Name = geneInfo$gene.Name,
-              experiments = experiments$rn,
-              conditions = conditions[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, `Test Statistic`, `Ontology Steps`)] %>%
-                merge(geneAssociations, by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), all = T, sort = F)
+              conditions = conditions
             )
             
             output$dataDownload <- downloadHandler(function() {
               paste0('enrichment-', Sys.Date(), '.csv')
             }, function(file) {
-              write.csv(session$userData$plotData$conditions %>% copy %>% setnames(c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), c('Category', 'Baseline', 'Value')), file)
+              write.csv(session$userData$plotData$conditions %>%
+                          .[, !c('Contrast', 'Evidence')] %>%
+                          setnames(c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), c('Category', 'Baseline', 'Value')), file)
             }, 'text/csv')
           }
         })
@@ -503,6 +469,7 @@ server <- function(input, output, session) {
     if(is.null(taxa)) taxa <- options$taxa$value
     
     tidyGenes <- function(genes, taxa) {
+      # TODO Search each taxa separately
       if(taxa == 'any') {
         taxOptions <- getConfig(key = 'taxa')$core
         taxIDs <- getConfig(key = 'taxa')$mapping

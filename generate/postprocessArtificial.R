@@ -32,20 +32,12 @@ pv <- pv[, -1] %>% as.matrix
 
 N <- ncol(fc)
 
-letterWrap <- function(n, depth = 1) {
-  x <- do.call(paste0,
-               do.call(expand.grid, args = list(lapply(1:depth, function(x) return(LETTERS)), stringsAsFactors = F)) %>%
-                 .[, rev(names(.[])), drop = F])
-  
-  if(n <= length(x)) return(x[1:n])
-  
-  return(c(x, letterWrap(n - length(x), depth = depth + 1)))
-}
-
 EXPERIMENTS <- letterWrap(N)
 colnames(fc) <- EXPERIMENTS
 colnames(pv) <- EXPERIMENTS
 names(eContrasts) <- EXPERIMENTS
+
+source('/home/jsicherman/Thesis Work/dependencies.R')
 
 eMeta <- DATA.HOLDER$human@experiment.meta %>% copy
 eMeta[, c('cf.Cat', 'cf.Baseline', 'cf.Val', 'cf.BaseLongUri', 'cf.ValLongUri') := NULL]
