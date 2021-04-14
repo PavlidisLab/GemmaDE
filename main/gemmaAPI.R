@@ -4,7 +4,7 @@
 #' 
 #' @param genes The genes to query
 #' @param taxa The taxa to query
-geneEvidence <- async(function(genes, taxa = getOption('app.taxa')) {
+geneEvidence <- async(function(genes, taxa = getConfig('taxa')$value) {
   prettyPrint <- function(evidence) {
     list(cf.ValLongUri = evidence$phenotypes[[1]]$valueUri,
          cf.CatLongUri = evidence$phenotypes[[1]]$categoryUri,
@@ -23,6 +23,7 @@ geneEvidence <- async(function(genes, taxa = getOption('app.taxa')) {
     lapply(json$data[[1]]$evidence, prettyPrint)
   }
   
+  # TODO for multiple taxa
   lapply(genes, function(gene) {
     http_get(paste0('https://gemma.msl.ubc.ca/rest/v2/taxa/', taxa, '/genes/', gene, '/evidence'))$then(function(response) parse(parse_json(rawToChar(response$content))))
   }) %>% { when_all(.list = .)$then(function(x) x %>% `names<-`(genes)) }
@@ -102,10 +103,7 @@ geneExpression <- async(function(ee.IDs, rsc.IDs, taxa = getConfig('taxa')$value
   }
   
   # Get expression information for ee.ID by sending `length(ee.IDs)` async requests
-  if(taxa == 'any')
-    mLongData <- rbindlist(lapply(getConfig('taxa')$core, function(i) DATA.HOLDER[[i]]@experiment.meta[, .(ee.ID, rsc.ID, ee.Name = as.character(ee.Name), cf.Baseline, cf.Val, ee.Scale)]))
-  else
-    mLongData <- DATA.HOLDER[[taxa]]@experiment.meta[, .(ee.ID, rsc.ID, ee.Name = as.character(ee.Name), cf.Baseline, cf.Val, ee.Scale)]
+  mLongData <- rbindlist(lapply(taxa, function(i) DATA.HOLDER[[i]]@experiment.meta[, .(ee.ID, rsc.ID, ee.Name = as.character(ee.Name), cf.Baseline, cf.Val, ee.Scale)]))
   
   lapply(ee.IDs, function(dataset) {
     # No guarantee that the contrast ordering we have is the same as in Gemma :(

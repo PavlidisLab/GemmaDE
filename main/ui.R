@@ -39,7 +39,7 @@ ui <- fluidPage(style = 'height: 100%;',
                         
                         # Taxa entry
                         column(2,
-                               selectInput('taxa', 'Taxon', getConfig('taxa')$choices, getConfig('taxa')$value),
+                               pickerInput('taxa', 'Taxon', getConfig('taxa')$choices, getConfig('taxa')$value, multiple = T),
                                helpText(style = 'float: right;', HTML('<a data-toggle="collapse" data-target="#options">More options...</a>')))
                       ),
                       

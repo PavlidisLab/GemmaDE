@@ -194,8 +194,8 @@ search <- function(genes, options = getConfig(), inprod = T, DATA = NULL) {
 #' @param CACHE A cache to use. If null, uses the global CACHE.BACKGROUND
 getTags <- function(taxa = getConfig(key = 'taxa')$value,
                     rsc.IDs = NULL, max.distance = Inf, inv = F, CACHE = NULL) {
-  if(taxa == 'any')
-    return(rbindlist(lapply(getConfig('taxa')$core, getTags, rsc.IDs, max.distance, inv, CACHE)))
+  if(length(taxa) > 1)
+    return(rbindlist(lapply(taxa, getTags, rsc.IDs, max.distance, inv, CACHE)))
   
   if(is.null(CACHE)) # TODO Remove after doing scores as this might trigger a full copy
     CACHE <- CACHE.BACKGROUND
@@ -407,18 +407,18 @@ reorderTags2 <- function(cache) {
 #' @param rankings A named numeric (@seealso search).
 #' @param options The options
 #' @param inprod Whether to use the generated null distribution or not
+#' @param keepopen How many of the entire files (used when @param inprod is true) to keep in memory (per species)
 #' @param CACHE A cache to use. If null, uses the global CACHE.BACKGROUND
-enrich <- function(rankings, options = getConfig(), inprod = T, CACHE = NULL) {
+enrich <- function(rankings, options = getConfig(), inprod = T, keepopen = 0, CACHE = NULL) {
   if(inprod && is.numeric(rankings))
-    return(enrichMem(rankings, options))
+    return(enrichMem(rankings, options, keepopen))
   
   mMaps <- getTags(options$taxa$value, rankings$rn, CACHE = CACHE)
   
   # Stat of 0 means it's as expected (0 SD from mean)
   mMaps <- mMaps[as.character(cf.BaseLongUri) != as.character(cf.ValLongUri)] %>%
     merge(rankings[, .(rsc.ID = rn, stat)],
-          by = 'rsc.ID', sort = F, allow.cartesian = T) %>%
-    na.omit
+          by = 'rsc.ID', sort = F, allow.cartesian = T) %>% na.omit
   
   mMaps[, .(distance = round(mean(distance, na.rm = T), 2),
             stat = sum(stat + 1, na.rm = T) / .N),
@@ -434,11 +434,27 @@ maybeMemoise <- function(FUN, fname) {
   }
 }
 
-maybeMemoise(function(rankings, options) {
+maybeMemoise(function(rankings, options, keepopen = 0) {
+  if(keepopen > 0 && !exists('SINGLES'))
+    assign('SINGLES', new.env(parent = globalenv()), envir = globalenv())
+  
   # TODO it would be nice to have smaller clusters or cluster commonly searched genes together
   lapply(unique(ceiling(rankings / getOption('chunk.size', 200))), function(filenum) {
-    readRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/singlegene/', options$taxa$value, '_', filenum, '.rds')) %>%
-      .[I %in% rankings] %>% dcast(... ~ I, value.var = 'stat')
+    mFile <- paste0(options$taxa$value, '_', filenum)
+    if(exists('SINGLES', envir = globalenv()) &&
+       exists(mFile, envir = SINGLES))
+      fileConnection <- get(mFile, envir = SINGLES)
+    else
+      fileConnection <- readRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/singlegene/', mFile, '.rds'))
+    
+    fileConnection %>% {
+      if(keepopen > 0 && !exists(mFile, envir = SINGLES)) {
+        rm(list = ls(pattern = paste0(options$taxa$value, '_.*'), envir = SINGLES) %>%
+             head(ifelse(length(.) == keepopen, 1, 0)), envir = SINGLES)
+        assign(mFile, ., envir = SINGLES)
+      }
+      .
+    } %>% .[I %in% rankings] %>% dcast(... ~ I, value.var = 'stat')
   }) %>% Reduce(function(...) merge(..., by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri', 'distance')), .) %>%
     .[, stat := Rfast::rowmeans(as.matrix(.SD[, !c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri', 'distance')]))] %>%
     setorder(-stat, distance) %>%

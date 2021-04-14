@@ -80,6 +80,7 @@ addConfig(mfx = T, description = 'Score multifunctionality', category = 'Scoring
 addConfig(geeq = T, description = 'Score experiment quality (GEEQ)', category = 'Scoring')
 addConfig(method = 'diff', description = 'Scoring function', category = 'Scoring', extras = list(choices = list(`M-VSM` = 'mvsm', `Difference` = 'diff', `Correlation` = 'cor')))
 addConfig(gemmaLink = F, description = 'Add links to Gemma', category = 'Filtering')
+addConfig(liteVersion = F, description = 'Only fetch top 200', category = 'Filtering')
 addConfig(categories = c('age', 'behavior', 'biological process', 'biological sex',
                          'cell type', 'clinical history', 'diet', 'disease', 'environmental history',
                          'environmental stress', 'genotype', 'medical procedure', 'molecular entity',
@@ -105,9 +106,9 @@ addConfig(taxa = 'human', description = NA, category = NA,
           extras = list(choices = list(`H. sapiens` = 'human',
                                        `M. musculus` = 'mouse',
                                        `R. norvegicus` = 'rat',
-                                       `Any` = 'any',
                                        `artificial` = 'artificial'), # TODO remove for prod
                         core = c('human', 'mouse', 'rat'),
+                        multiple = T,
                         mapping = c(human = 9606, mouse = 10090, rat = 10116)))
 addConfig(sig = '', description = NA, category = NA)
 
