@@ -30,7 +30,7 @@ ui <- fluidPage(style = 'height: 100%;',
                       fluidRow(
                         # Gene entry
                         column(6,
-                               fluidRow(selectInput('genes', 'Input Gene(s) of Interest', list(`Enter query...` = ''), multiple = T)),
+                               fluidRow(selectInput('genes', 'Input gene(s) of interest', list(`Enter query...` = ''), multiple = T)),
                                fluidRow(helpText(HTML('Examples: <a genes=\'["RPS4Y1","EIF1AY","DDX3Y","KDM5D","XIST"]\'>RPS4Y1, EIF1AY, DDX3Y, KDM5D, XIST</a>, <a genes=\'["ENSG00000131095","ENSG00000110436"]\'>ENSG00000131095, ENSG00000110436</a>, <a style="color: #002145" genes=\'"random()"\'>I\'m feeling lucky</a>')))),
                         column(2, uiOutput('genes.csv.ui')),
                         

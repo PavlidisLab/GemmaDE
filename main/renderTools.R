@@ -16,7 +16,8 @@ generateGeneContribs <- function(data, options, plot_conditions = NULL) {
            'cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri')] %>%
     head(10) %>% # TODO This is a stopgap for picker
     melt(id.vars = 'Contrast') %>%
-    .[, value := log10(value / sum(value)), Contrast] %>% # TODO for negative/zero values
+    .[!is.finite(value), value := 0] %>%
+    .[, value := log10(1 + value / sum(value)), Contrast] %>%
     .[, value := (value - min(value)) / (max(value) - min(value)), Contrast]
 
   fig <- plot_ly(type = 'scatterpolar', fill = 'toself', mode = 'markers')
@@ -211,7 +212,7 @@ generateResults <- function(data) {
                                      ),
                                      buttons = list(
                                        list(extend = 'collection',
-                                            text = 'Visualize',
+                                            text = 'Visualize Expression',
                                             action = JS('plotData'))
                                      )
                       )

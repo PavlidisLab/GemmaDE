@@ -33,61 +33,17 @@ search <- function(genes, options = getConfig(), inprod = T, DATA = NULL) {
   if(is.null(DATA)) # TODO Remove after doing scores as this might trigger a full copy
     DATA <- DATA.HOLDER
   
-  if(options$taxa$value == 'any') {
-    mData <- new('EData')
-    
-    for(x in options$taxa$core) {
-      ID <- paste0(unname(options$taxa$mapping[x]), '_ID')
-      IDs <- genes[, ..ID] %>% unlist %>% unname
-      
-      gMeta <- DATA[[x]]@gene.meta %>% copy %>% .[, I := .I]
-      gMap <- merge(genes[, c('key', ID), with = F],
-                    gMeta %>% .[entrez.ID %in% IDs, .(entrez.ID, I)],
-                    by.x = ID, by.y = 'entrez.ID', all = T) %>%
-        .[, c(ID) := list(NULL)]
-      
-      pvData <- DATA[[x]]@data$adj.pv[gMap$I, ] %>% `rownames<-`(gMap$key)
-      pvData[is.na(pvData)] <- 1
-      
-      fcData <- DATA[[x]]@data$fc[gMap$I, ] %>% `rownames<-`(gMap$key)
-      fcData[is.na(fcData)] <- 0
-      
-      zScoreData <- DATA[[x]]@data$zscore[gMap$I, ] %>% `rownames<-`(gMap$key)
-      zScoreData[is.na(zScoreData)] <- 0
-      
-      mData@experiment.meta <- rbind(mData@experiment.meta, DATA[[x]]@experiment.meta)
-      
-      if(is.null(mData@data$adj.pv)) {
-        mData@data$adj.pv <- pvData
-        mData@data$fc <- fcData
-        mData@data$zscore <- zScoreData
-        
-        mData@gene.meta <- gMeta[gMap$I, ] %>% .[, entrez.ID := gMap$key]
-      } else {
-        mData@data$adj.pv <- merge(mData@data$adj.pv, pvData, by = 0, all = T) %>% `rownames<-`(.[, 1]) %>% .[, -1]
-        mData@data$fc <- merge(mData@data$fc, fcData, by = 0, all = T) %>% `rownames<-`(.[, 1]) %>% .[, -1]
-        mData@data$zscore <- merge(mData@data$zscore, zScoreData, by = 0, all = T) %>% `rownames<-`(.[, 1]) %>% .[, -1]
-        
-        mData@gene.meta$gene.Name <- coalesce(mData@gene.meta$gene.Name, gMeta[gMap$I, gene.Name])
-        mData@gene.meta$mfx.Rank <- rowMeans2(cbind(mData@gene.meta$mfx.Rank, gMeta[gMap$I, mfx.Rank]), na.rm = T)
-      }
-    }
-    
-    genes <- genes$key
-    geneMask <- which(!is.na(mData@gene.meta$mfx.Rank))
-  } else {
-    mData <- DATA[[options$taxa$value]]
-    
-    # Only retain GOI
-    geneMask <- which(mData@gene.meta$entrez.ID %in% genes)
-  }
+  mData <- DATA[[options$taxa$value]]
+  
+  # Only retain GOI
+  geneMask <- which(mData@gene.meta$entrez.ID %in% genes)
   
   n.genes <- length(geneMask)
   if(n.genes == 0)
     return(NULL)
   
   # No searching if we have this shortcut
-  # TODO Needs to be fixed for "any", and a more elegant solution would be nice
+  # A more elegant solution would be nice
   if(inprod && options$method$value == 'diff')
     return(mData@gene.meta[, .(I = .I, entrez.ID)] %>% .[entrez.ID %in% genes, I])
   
@@ -99,8 +55,7 @@ search <- function(genes, options = getConfig(), inprod = T, DATA = NULL) {
   # P-values for only the GOI
   pv <- mData@data$adj.pv[geneMask, ]
   
-  if(options$taxa$value != 'any') # For taxa == 'any', we do this on the fly
-    pv[is.na(pv)] <- 1
+  pv[is.na(pv)] <- 1
   
   if(n.genes == 1)
     pv <- t(pv)
@@ -111,10 +66,8 @@ search <- function(genes, options = getConfig(), inprod = T, DATA = NULL) {
   logFC <- mData@data$fc[geneMask, ]
   zScore <- mData@data$zscore[geneMask, ]
   
-  if(options$taxa$value != 'any') {
-    logFC[is.na(logFC)] <- 0
-    zScore[is.na(zScore)] <- 0
-  }
+  logFC[is.na(logFC)] <- 0
+  zScore[is.na(zScore)] <- 0
   
   if(n.genes == 1) {
     logFC <- t(logFC)
@@ -241,6 +194,9 @@ search <- function(genes, options = getConfig(), inprod = T, DATA = NULL) {
 #' @param CACHE A cache to use. If null, uses the global CACHE.BACKGROUND
 getTags <- function(taxa = getConfig(key = 'taxa')$value,
                     rsc.IDs = NULL, max.distance = Inf, inv = F, CACHE = NULL) {
+  if(taxa == 'any')
+    return(rbindlist(lapply(getConfig('taxa')$core, getTags, rsc.IDs, max.distance, inv, CACHE)))
+  
   if(is.null(CACHE)) # TODO Remove after doing scores as this might trigger a full copy
     CACHE <- CACHE.BACKGROUND
   
@@ -453,14 +409,10 @@ reorderTags2 <- function(cache) {
 #' @param inprod Whether to use the generated null distribution or not
 #' @param CACHE A cache to use. If null, uses the global CACHE.BACKGROUND
 enrich <- function(rankings, options = getConfig(), inprod = T, CACHE = NULL) {
-  if(inprod && is.integer(rankings))
+  if(inprod && is.numeric(rankings))
     return(enrichMem(rankings, options))
   
-  if(options$taxa$value == 'any') { # TODO This will include even species for which there were no homologs
-    mMaps <- list(rbindlist(lapply(options$taxa$core, function(x) getTags(x, NULL, CACHE = CACHE))),
-                  rbindlist(lapply(options$taxa$core, function(x) getTags(x, rankings$rn, CACHE = CACHE))))
-  } else
-    mMaps <- getTags(options$taxa$value, rankings$rn, CACHE = CACHE)
+  mMaps <- getTags(options$taxa$value, rankings$rn, CACHE = CACHE)
   
   # Stat of 0 means it's as expected (0 SD from mean)
   mMaps <- mMaps[as.character(cf.BaseLongUri) != as.character(cf.ValLongUri)] %>%

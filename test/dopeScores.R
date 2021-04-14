@@ -1,53 +1,18 @@
-# Visualizations
-library(shiny)
-library(shinyjs)
-library(shinyWidgets)
-library(shinycssloaders) # From jsicherman/shinycssloaders, NOT daattali
-library(htmlwidgets)
-library(DT)
-library(heatmaply)
-library(shinyHeatmaply)
-library(shinypanels) # From jsicherman/shinypanels, NOT datasketch
-library(circlepackeR)
-library(d3wordcloud)
-library(data.tree)
-# library(sparkline)
-library(RColorBrewer)
-
-library(async)
-library(memoise)
-
-# Data drivers
-library(matrixStats)
-library(Rfast)
-library(igraph)
-library(dplyr)
-library(data.table)
-library(stringr)
-library(bit)
-
-# Parsing helpers
-library(gemmaAPI, lib.loc = '/home/omancarci/R/x86_64-redhat-linux-gnu-library/3.6/')
-library(ermineR)
-library(mygene)
-library(homologene)
-library(jsonlite)
-library(XML)
-
-library(parallel)
-library(lhs)
+source('/home/jsicherman/Thesis Work/requirements.R')
 
 source('dependencies.R')
 
-DATA.HOLDER$artificial <- NULL
-DATA.HOLDER$mouse <- NULL
-DATA.HOLDER$rat <- NULL
-CACHE.BACKGROUND$artificial <- NULL
-CACHE.BACKGROUND$mouse <- NULL
-CACHE.BACKGROUND$rat <- NULL
-NULLS$artificial <- NULL
-NULLS$mouse <- NULL
-NULLS$rat <- NULL
+library(lhs)
+library(parallel)
+options(mc.cores = 6)
+
+mContrasts <- DATA.HOLDER$human@experiment.meta[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>% unique
+mGraph <- simplify(igraph::graph_from_data_frame(ONTOLOGIES[, .(ChildNode_Long, ParentNode_Long)]))
+graphTerms <- unique(ONTOLOGIES[, as.character(ChildNode_Long, ParentNode_Long)])
+
+DATA.HOLDER[c('human', 'mouse', 'rat')] <- NULL
+CACHE.BACKGROUND[c('human', 'mouse', 'rat')] <- NULL
+NULLS.EXP[c('human', 'mouse', 'rat')] <- NULL
 
 # Spike in scores by doing a search of the human corpus,
 # then adding a row at a certain index with a certain SD
@@ -56,20 +21,6 @@ NULLS$rat <- NULL
 # every time we add a row... But there must be a shortcut...
 
 # The CACHE can be updated by simply adding the appropriate new rows
-
-letterWrap <- function(n, depth = 1) {
-  x <- do.call(paste0,
-               do.call(expand.grid, args = list(lapply(1:depth, function(x) return(LETTERS)), stringsAsFactors = F)) %>%
-                 .[, rev(names(.[])), drop = F])
-  
-  if(n <= length(x)) return(x[1:n])
-  
-  return(c(x, letterWrap(n - length(x), depth = depth + 1)))
-}
-
-mContrasts <- DATA.HOLDER$human@experiment.meta[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>% unique
-mGraph <- simplify(igraph::graph_from_data_frame(ONTOLOGIES[, .(ChildNode_Long, ParentNode_Long)]))
-graphTerms <- unique(ONTOLOGIES[, as.character(ChildNode_Long, ParentNode_Long)])
 
 if(!exists('hypercube')) {
   print('Making hypercube')
@@ -80,7 +31,6 @@ if(!exists('hypercube')) {
   hypercube[, 5] <- 1L + as.integer(hypercube[, 5] * 49) # Experiments
 }
 
-options(mc.cores = 6)
 mclapply(1:nrow(hypercube), function(iter) {
   print(iter)
   genes <- DATA.HOLDER$human@gene.meta[sample(1:nrow(DATA.HOLDER$human@gene.meta), hypercube[iter, 2]), entrez.ID]
@@ -93,9 +43,8 @@ mclapply(1:nrow(hypercube), function(iter) {
   
   mRange <- pmax(0, as.integer(nrow(tmp) * hypercube[iter, 3]) - 3 * hypercube[iter, 4]):pmin(nrow(tmp), as.integer(nrow(tmp) * hypercube[iter, 3]) + 3 * hypercube[iter, 4])
   
-  mReplace <- F
-  if(length(mRange) < hypercube[iter, 5])
-    mReplace <- T
+  mReplace <- length(mRange) < hypercube[iter, 5]
+  
   mRange[mRange <= 0] <- 1
   mRange[mRange >= nrow(tmp)] <- nrow(tmp)
   

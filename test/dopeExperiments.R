@@ -1,75 +1,25 @@
-# Visualizations
-library(shiny)
-library(shinyjs)
-library(shinyWidgets)
-library(shinycssloaders) # From jsicherman/shinycssloaders, NOT daattali
-library(htmlwidgets)
-library(DT)
-library(heatmaply)
-library(shinyHeatmaply)
-library(shinypanels) # From jsicherman/shinypanels, NOT datasketch
-library(circlepackeR)
-library(d3wordcloud)
-library(data.tree)
-# library(sparkline)
-library(RColorBrewer)
+source('/home/jsicherman/Thesis Work/requirements.R')
 
-library(async)
-library(memoise)
-
-# Data drivers
-library(matrixStats)
-library(Rfast)
-library(igraph)
-library(dplyr)
-library(data.table)
-library(stringr)
-library(bit)
-
-# Parsing helpers
-library(gemmaAPI, lib.loc = '/home/omancarci/R/x86_64-redhat-linux-gnu-library/3.6/')
-library(ermineR)
-library(mygene)
-library(homologene)
-library(jsonlite)
-library(XML)
+source('dependencies.R')
 
 library(dqrng)
 library(DESeq2)
 library(limma)
 library(compcodeR)
-library(parallel)
 library(edgeR)
 library(lhs)
-
-source('dependencies.R')
-
-DATA.HOLDER$artificial <- NULL
-DATA.HOLDER$mouse <- NULL
-DATA.HOLDER$rat <- NULL
-CACHE.BACKGROUND$artificial <- NULL
-CACHE.BACKGROUND$mouse <- NULL
-CACHE.BACKGROUND$rat <- NULL
-NULLS$artificial <- NULL
-NULLS$mouse <- NULL
-NULLS$rat <- NULL
-
-letterWrap <- function(n, depth = 1) {
-  x <- do.call(paste0,
-               do.call(expand.grid, args = list(lapply(1:depth, function(x) return(LETTERS)), stringsAsFactors = F)) %>%
-                 .[, rev(names(.[])), drop = F])
-  
-  if(n <= length(x)) return(x[1:n])
-  
-  return(c(x, letterWrap(n - length(x), depth = depth + 1)))
-}
+library(parallel)
+options(mc.cores = 4)
 
 mContrasts <- DATA.HOLDER$human@experiment.meta[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>% unique
 mGraph <- simplify(igraph::graph_from_data_frame(ONTOLOGIES[, .(ChildNode_Long, ParentNode_Long)]))
 graphTerms <- unique(ONTOLOGIES[, as.character(ChildNode_Long, ParentNode_Long)])
 
+DATA.HOLDER[c('human', 'mouse', 'rat')] <- NULL
+CACHE.BACKGROUND[c('human', 'mouse', 'rat')] <- NULL
+NULLS.EXP[c('human', 'mouse', 'rat')] <- NULL
+
 SUFFIX <- '_lhs2'
-options(mc.cores = 4)
 
 N_GENES <- nrow(DATA.HOLDER$human@gene.meta)
 

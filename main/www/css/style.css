@@ -78,6 +78,11 @@ a:hover {
   flex: 1;
 }
 
+a[disabled="disabled"] {
+  background-color: rgba(0, 0, 0, 0.05);
+  cursor: not-allowed;
+}
+
 .well[well-name] {
   padding-top: 14px;
   flex: 1

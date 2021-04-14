@@ -1,53 +1,13 @@
-# Visualizations
-library(shiny)
-library(shinyjs)
-library(shinyWidgets)
-library(shinycssloaders) # From jsicherman/shinycssloaders, NOT daattali
-library(htmlwidgets)
-library(DT)
-library(heatmaply)
-library(shinyHeatmaply)
-library(shinypanels) # From jsicherman/shinypanels, NOT datasketch
-library(circlepackeR)
-library(d3wordcloud)
-library(data.tree)
-# library(sparkline)
-library(RColorBrewer)
-
-library(async)
-library(memoise)
-
-# Data drivers
-library(matrixStats)
-library(Rfast)
-library(igraph)
-library(dplyr)
-library(data.table)
-library(stringr)
-library(bit)
-
-# Parsing helpers
-library(gemmaAPI, lib.loc = '/home/omancarci/R/x86_64-redhat-linux-gnu-library/3.6/')
-library(ermineR)
-library(mygene)
-library(homologene)
-library(jsonlite)
-library(XML)
-
-library(parallel)
-library(lhs)
+source('/home/jsicherman/Thesis Work/requirements.R')
 
 source('dependencies.R')
 
-DATA.HOLDER$human <- NULL
-DATA.HOLDER$mouse <- NULL
-DATA.HOLDER$rat <- NULL
-CACHE.BACKGROUND$human <- NULL
-CACHE.BACKGROUND$mouse <- NULL
-CACHE.BACKGROUND$rat <- NULL
-NULLS$human <- NULL
-NULLS$mouse <- NULL
-NULLS$rat <- NULL
+library(lhs)
+library(parallel)
+
+DATA.HOLDER[c('human', 'mouse', 'rat')] <- NULL
+CACHE.BACKGROUND[c('human', 'mouse', 'rat')] <- NULL
+NULLS.EXP[c('human', 'mouse', 'rat')] <- NULL
 
 analyzeArtificial <- function(N_GROUPS, N_GENES, COI = NULL, GOI = NULL, seed = NULL,
                               max.distance = Inf, best.index = 1) {

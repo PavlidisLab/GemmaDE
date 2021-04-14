@@ -115,10 +115,6 @@ server <- function(input, output, session) {
       
       output$results_go <- generateGOPage(ora(hitlist = session$userData$plotData$gene.Name,
                                               annotation = paste0('Generic_', session$userData$plotData$options$taxa$value)))
-    } else if(input$tabs == 'Hierarchical View (beta)' && !is.null(session$userData$plotData) && is.null(session$userData$treeRendered)) {
-      session$userData$treeRendered <- T
-      
-      output$results_tree <- generateResultsTree(session$userData$plotData$conditions, session$userData$plotData$options)
     } else if(input$tabs == 'Word Cloud' && !is.null(session$userData$plotData) && is.null(session$userData$cloudRendered)) {
       session$userData$cloudRendered <- T
       
@@ -134,7 +130,6 @@ server <- function(input, output, session) {
   observeEvent(input$UPDATED, {
     session$userData$genesRendered <- NULL
     session$userData$goRendered <- NULL
-    session$userData$treeRendered <- NULL
     session$userData$cloudRendered <- NULL
     session$userData$contribsRendered <- NULL
 
@@ -157,10 +152,6 @@ server <- function(input, output, session) {
       
       output$results_go <- generateGOPage(ora(hitlist = session$userData$plotData$gene.Name, # TODO for "any"
                                               annotation = paste0('Generic_', session$userData$plotData$options$taxa$value)))
-    } else if(input$tabs == 'Hierarchical View (beta)') {
-      session$userData$treeRendered <- T
-      
-      output$results_tree <- generateResultsTree(session$userData$plotData$conditions, session$userData$plotData$options)
     } else if(input$tabs == 'Word Cloud' && !is.null(session$userData$plotData) && is.null(session$userData$cloudRendered)) {
       session$userData$cloudRendered <- T
       
@@ -174,7 +165,7 @@ server <- function(input, output, session) {
   
   observeEvent(input$RANDOM_GENES, {
     updateSelectizeInput(session, 'genes', options = list(persist = F, create = T, createOnBlur = T))
-    while(length(genes <- DATA.HOLDER[[input$taxa]]@gene.meta[sample(1:.N, sample(1:10, 1))] %>%
+    while(length(genes <- DATA.HOLDER[[ifelse(input$taxa == 'any', 'human', input$taxa)]]@gene.meta[sample(1:.N, sample(1:10, 1))] %>%
       as.data.frame %>% .[, sample(c(1, 3, 4, 6), 1)] %>%
       .[. != 'None']) == 0) {
     }
@@ -225,13 +216,19 @@ server <- function(input, output, session) {
       # If we didn't already process we need to give the UI a tick to update and then fetch the data.
       if(!is.null(session$userData$plotData$conditions)) {
         shinyjs::delay(1, { 
-          synchronise(getTags(session$userData$plotData$options$taxa$value) %>% # TODO Selection strategy
+          synchronise({
+            if(session$userData$plotData$options$taxa$value == 'any')
+              mExpData <- rbindlist(lapply(session$userData$plotData$options$taxa$core,
+                                           function(i) DATA.HOLDER[[i]]@experiment.meta[, .(rsc.ID, ee.ID, ee.NumSamples)]))
+            else
+              mExpData <- DATA.HOLDER[[session$userData$plotData$options$taxa$value]]@experiment.meta[, .(rsc.ID, ee.ID, ee.NumSamples)]
+            
+            getTags(session$userData$plotData$options$taxa$value) %>% # TODO Selection strategy
                         .[cf.Cat %in% (session$userData$plotData$conditions[`Ontology Steps` == 0] %>% .[1:5, unique(cf.Cat)]) &
                             cf.BaseLongUri %in% (session$userData$plotData$conditions[`Ontology Steps` == 0] %>% .[1:5, unique(cf.BaseLongUri)]) &
                             cf.ValLongUri %in% (session$userData$plotData$conditions[`Ontology Steps` == 0] %>% .[1:5, unique(cf.ValLongUri)])] %>%
-                        unique %>% # TODO for "any"
-                        merge(DATA.HOLDER[[session$userData$plotData$options$taxa$value]]@experiment.meta[, .(rsc.ID, ee.ID, ee.NumSamples)],
-                              by = c('rsc.ID', 'ee.ID'), sort = F, allow.cartesian = T) %>% {
+                        unique %>%
+                        merge(mExpData, by = c('rsc.ID', 'ee.ID'), sort = F, allow.cartesian = T) %>% {
                           if(nrow(.) == 0) return(NULL)
                           
                           # Select some samples to queue for gene expression visualization
@@ -241,10 +238,11 @@ server <- function(input, output, session) {
                           tmp[cumsum(ee.NumSamples) <= getOption('max.gemma')]
                         } %>% {
                           geneExpression(.[, unique(ee.ID)],
-                                         .[, unique(rsc.ID)], # TODO for "any"
+                                         .[, unique(rsc.ID)],
                                          session$userData$plotData$options$taxa$value,
                                          session$userData$plotData$gene.ID)$then(generatePlot)
-                        })
+                        }
+            })
         })
       }
     } else {
@@ -290,33 +288,45 @@ server <- function(input, output, session) {
   endSuccess <- function(genes, experiments, conditions, options) {
     # Generate the results header
     if(exists('output')) {
-      n_exp <- nrow(DATA.HOLDER[[options$taxa$value]]@experiment.meta)
+      if(options$taxa$value == 'any')
+        n_exp <- sapply(options$taxa$core, function(i) nrow(DATA.HOLDER[[i]]@experiment.meta)) %>% sum
+      else
+        n_exp <- nrow(DATA.HOLDER[[options$taxa$value]]@experiment.meta)
       
       output$results_header <- renderUI({
         generateResultsHeader(HTML(paste0('<div style="margin-bottom: 10px"><h2 style="display: inline">Enriched ',
-                                          n_exp, ' experiment', ifelse(n_exp > 1, 's', ''), ' for ',
+                                          format(n_exp, big.mark = ','), ' condition-control', ifelse(n_exp > 1, 's', ''), ' for ',
                                           ifelse(nrow(genes) == 1, genes[, gene.Name],
                                                  paste0('<span data-toggle="tooltip" data-placement="top" title="',
-                                                        paste0(genes[, gene.Name], collapse = ', '), '">',
-                                                        nrow(genes), ' gene', ifelse(nrow(genes) > 1, 's', ''), '</span>')),
+                                                        paste0(unique(genes[, gene.Name]), collapse = ', '), '">',
+                                                        nrow(genes), ' gene', ifelse(nrow(genes) > 1, 's', ''),  '</span>')),
+                                          ifelse(options$taxa$value == 'any',
+                                                 paste0(' across <span data-toggle="tooltip" data-placement="top" title="', paste0(options$taxa$core, collapse = ', '), '">',
+                                                 length(options$taxa$core), ' taxa</span>'), ''),
                                           '</h2><span class="timestamp">in ',
                                           format(difftime(session$userData$endTime, session$userData$startTime), digits = 3), '.</span></span>')))
       })
     }
     
     conditions <- conditions[cf.Cat %in% options$categories$value] %>%
-      .[, Contrast := paste0('<b>', cf.BaseLongUri, '</b> vs. <b>', cf.ValLongUri, '</b>')] %>%
-      setnames(as.character(genes[, I]), genes[, gene.Name])
+      .[, Contrast := paste0('<b>', cf.BaseLongUri, '</b> vs. <b>', cf.ValLongUri, '</b>')]
+    
+    if(options$taxa$value != 'any')
+      setnames(conditions, as.character(genes[, I]), genes[, gene.Name])
     
     advanceProgress('Cross-linking')
+    
+    if(options$taxa$value == 'any') {
+      tmp <- rbindlist(lapply(options$taxa$core, function(i) DATA.HOLDER[[i]]@experiment.meta[, .(rsc.ID, ee.ID, ee.Name)]))
+    } else
+      tmp <- DATA.HOLDER[[options$taxa$value]]@experiment.meta[, .(rsc.ID, ee.ID, ee.Name)]
     
     # Associating experiments with tags
     tmp <- getTags(options$taxa$value) %>%
       .[cf.Cat %in% conditions[, unique(cf.Cat)] &
           cf.BaseLongUri %in% conditions[, unique(cf.BaseLongUri)] &
-          cf.ValLongUri %in% conditions[, unique(cf.ValLongUri)]] %>% # TODO for "any"
-      merge(DATA.HOLDER[[options$taxa$value]]@experiment.meta[, .(rsc.ID, ee.ID, ee.Name)],
-            by = c('rsc.ID', 'ee.ID'), sort = F, allow.cartesian = T) %>%
+          cf.ValLongUri %in% conditions[, unique(cf.ValLongUri)]] %>%
+      merge(tmp, by = c('rsc.ID', 'ee.ID'), sort = F, allow.cartesian = T) %>%
       .[, N := length(unique(ee.ID)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
     
     # This chunk is costly, but associates all Gemma linkages. It would be great if we could defer this
@@ -352,22 +362,45 @@ server <- function(input, output, session) {
     # Search is basically a passthrough when using the default method and no signature
     # and returns a vector of gene indices. Otherwise in non-default operation,
     # it returns a data.table with a row for each experiment and scores
-    future({ search(genes, options) }, globals = c('DATA.HOLDER', 'NULLS.EXP')) %...>%(function(experiments) {
+    future({
+      if(options$taxa$value == 'any') {
+        lapply(options$taxa$core, function(t) {
+          mOp <- options
+          mOp$taxa$value <- t
+          search(genes[taxon == t, entrez.ID], mOp)
+        })
+      } else
+        search(genes, options)
+    }, globals = c('DATA.HOLDER', 'NULLS.EXP')) %...>%(function(experiments) {
       if(!is.null(session$userData$INTERRUPT))
         return(NULL)
       
-      if(is.null(experiments))
+      if(all(sapply(experiments, is.null)))
         endFailure()
       else {
         advanceProgress('Enriching')
         
         # Disable gene contributions tab if not applicable
-        if(!is.integer(experiments))
+        if(!all(sapply(experiments, is.integer)))
           shinyjs::disable(selector = 'a[data-value="Gene Contributions"]')
         else
           shinyjs::enable(selector = 'a[data-value="Gene Contributions"]')
         
-        future({ enrich(experiments, options) }, globals = c('CACHE.BACKGROUND')) %...>%(function(conditions) {
+        future({
+          if(length(experiments) == 1)
+            copy(enrich(experiments, options))
+          else {
+            lapply(1:length(options$taxa$core), function(t) {
+              mOp <- options
+              mOp$taxa$value <- options$taxa$core[t]
+              enrich(experiments[[t]], mOp) %>% copy %>%
+                setnames(as.character(genes[taxon == options$taxa$core[t], I]), genes[taxon == options$taxa$core[t], identifier])
+            }) %>% rbindlist(fill = T) %>%
+              .[, lapply(.SD, mean, na.rm = T),
+                .(cf.Cat, cf.BaseLongUri, cf.ValLongUri), .SDcols = !c('stat')] %>%
+              .[, stat := rowMeans2(as.matrix(.SD), na.rm = T), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri), .SDcols = !'distance']
+          }
+        }, globals = c('CACHE.BACKGROUND')) %...>%(function(conditions) {
           if(!is.null(session$userData$INTERRUPT))
             return(NULL)
           
@@ -376,12 +409,16 @@ server <- function(input, output, session) {
           if(is.null(conditions))
             endEmpty()
           else {
-            # TODO for "any"
-            geneInfo <- DATA.HOLDER[[options$taxa$value]]@gene.meta %>%
-              .[, .(.I, entrez.ID, gene.Name)] %>%
-              .[entrez.ID %in% genes, .(I, entrez.ID, gene.Name)]
+            if(options$taxa$value == 'any')
+              geneInfo <- genes %>% copy %>% setnames('identifier', 'gene.Name')
+            else {
+              geneInfo <- DATA.HOLDER[[options$taxa$value]]@gene.meta %>%
+                .[, .(.I, entrez.ID, gene.Name)] %>%
+                .[entrez.ID %in% genes, .(I, entrez.ID, gene.Name)]
+            }
             
-            conditions <- endSuccess(geneInfo, experiments, conditions, options)
+            conditions <- endSuccess(geneInfo, experiments, conditions, options) %>%
+              setorder(-`Test Statistic`)
             
             if(!is.null(session$userData$INTERRUPT))
               return(NULL)
@@ -391,8 +428,8 @@ server <- function(input, output, session) {
             # Prepare some plotting information.
             session$userData$plotData <- list(
               options = options,
-              gene.ID = geneInfo$entrez.ID,
-              gene.Name = geneInfo$gene.Name,
+              gene.ID = unique(geneInfo$entrez.ID),
+              gene.Name = unique(geneInfo$gene.Name),
               conditions = conditions
             )
             
@@ -469,35 +506,39 @@ server <- function(input, output, session) {
     if(is.null(taxa)) taxa <- options$taxa$value
     
     tidyGenes <- function(genes, taxa) {
-      # TODO Search each taxa separately
       if(taxa == 'any') {
         taxOptions <- getConfig(key = 'taxa')$core
         taxIDs <- getConfig(key = 'taxa')$mapping
         
-        orthologs <- lapply(taxOptions, function(i) {
-          lapply(taxOptions, function(j) {
-            homologene(genes, inTax = unname(taxIDs[i]), outTax = unname(taxIDs[j])) %>% {
-              if(nrow(.) > 0) {
-                if(i == j) {
-                  .[, !duplicated(colnames(.))] %>% .[, grepl('_ID', colnames(.))] %>% {
-                    data.frame(.) %>% `colnames<-`(paste0(unname(taxIDs[i]), '_ID')) %>%
-                      rbind(
-                        data.frame(
-                          DATA.HOLDER[[i]]@gene.meta[gene.Name %in% genes | entrez.ID %in% genes, entrez.ID]
-                        ) %>% `colnames<-`(paste0(unname(taxIDs[i]), '_ID'))
-                      )
-                  }
-                } else
-                  .[, grepl('_ID', colnames(.))]
-              }
-            }
-          }) %>% rbindlist(fill = T) %>% {
-            if(nrow(.) > 0) .
+        symbols <- lapply(taxOptions, function(x) {
+          data.table(entrez.ID = tidyGenes(genes, x), taxon = x) %>% {
+            if(ncol(.) == 1) NULL
+            else
+              merge(., DATA.HOLDER[[x]]@gene.meta[, .(.I, entrez.ID, gene.Name)], by = 'entrez.ID')
           }
-        }) %>% rbindlist(fill = T) %>% .[, names(.) := lapply(.SD, as.character)] %>%
-          .[, key := fcoalesce(.)] %>%
-          group_by(key) %>% summarise_all(~na.omit(unique(.))[1]) %>%
-          as.data.table
+        }) %>% rbindlist %>%
+          merge(data.table(taxon.ID = taxIDs, taxon = names(taxIDs)), by = 'taxon') %>%
+          .[, .SD[1], gene.Name]
+        
+        orthologs <- symbols[, list(lapply(taxIDs[taxIDs != unique(taxon.ID)], function(t) {
+          homologs <- homologene(entrez.ID, unique(taxon.ID), t)
+          if(nrow(homologs) == 0) NULL
+          else {
+            homologs %>%
+              .[, grepl('_ID', colnames(.))] %>%
+              setnames(gsub('_ID', '', colnames(.))) %>%
+              as.data.table %>%
+              melt(measure.vars = 1:2, value.name = 'entrez.ID', variable.name = 'taxon.ID') %>%
+              .[, taxon.ID := as.integer(levels(taxon.ID))[taxon.ID]] %>%
+              cbind(identifier = unique(homologs[, as.character(unique(taxon.ID))])) %>%
+              merge(DATA.HOLDER[[names(taxIDs)[taxIDs == t]]]@gene.meta[, .(.I, entrez.ID = as.integer(entrez.ID))], by = 'entrez.ID')
+          }
+        })), taxon] %>% .[, V1] %>% rbindlist %>%
+          rbind(symbols[, .(entrez.ID, taxon.ID, identifier = gene.Name, I)]) %>%
+          unique %>%
+          merge(data.table(taxon.ID = taxIDs, taxon = names(taxIDs)), by = 'taxon.ID') %>%
+          .[, entrez.ID := as.character(entrez.ID)] %>%
+          .[, identifier := make.names(identifier, T), taxon.ID]
         
         return(orthologs)
       }
@@ -535,28 +576,31 @@ server <- function(input, output, session) {
         }
       }
       
-      # Try to match to gene names and descriptions.
-      if(length(genes) > 0) { # TODO this could grepl, and likely the idMap is bad
-        descriptors <- DATA.HOLDER[[taxa]]@gene.meta[gene.Name %in% genes | gene.Desc %in% genes,
-                                                     .(entrez.ID, gene.Name, gene.Desc)]
+      # Try to match to gene names
+      if(length(genes) > 0) {
+        descriptors <- DATA.HOLDER[[taxa]]@gene.meta[gene.Name %in% genes, .(entrez.ID, gene.Name)]
         if(nrow(descriptors) != 0) {
           cleanGenes <- c(cleanGenes, descriptors[, entrez.ID])
           idMap <- c(idMap, sapply(descriptors[, gene.Name], function(x) which(oGenes == x), USE.NAMES = F))
-          idMap <- c(idMap, sapply(descriptors[, gene.Desc], function(x) which(oGenes == x), USE.NAMES = F))
 
-          genes <- genes[!(genes %in% descriptors[, c(gene.Name, gene.Desc)])]
+          genes <- genes[!(genes %in% descriptors[, gene.Name])]
         }
       }
       
-      # If anything is left, try to match it to gene aliases.
-      if(length(genes) > 0) { # TODO this can multimatch and shouldn't, also no idMap yet
-        aliases <- DATA.HOLDER[[taxa]]@gene.meta[, parseListEntry(alias.Name), entrez.ID] %>%
-          .[grepl(paste0(genes, collapse = '|'), V1)]
-        if(nrow(aliases) > 0)
-          cleanGenes <- c(cleanGenes, aliases[, unique(entrez.ID)])
+      if(F) {
+        # If anything is left, try to match it to gene aliases.
+        if(length(genes) > 0) { # TODO this can multimatch and shouldn't, also no idMap yet
+          aliases <- DATA.HOLDER[[taxa]]@gene.meta[, parseListEntry(alias.Name), entrez.ID] %>%
+            .[grepl(paste0(genes, collapse = '|'), V1)]
+          if(nrow(aliases) > 0)
+            cleanGenes <- c(cleanGenes, aliases[, unique(entrez.ID)])
+        }
       }
       
-      cleanGenes[order(unlist(idMap))]
+      if(length(cleanGenes) > 0)
+        cleanGenes[order(unlist(idMap))]
+      else
+        NULL
     }
     
     # Done processing, handle the search.

@@ -39,13 +39,3 @@ runApp('main', port = 18232, launch.browser = F)
 # Anecdotes (drug-related, metabolic alterations in PD astrocytes)
 # Demonstration through simulations
 # Breakdown of gaps in knowledge incl. counts for other tools (per species)
-
-# To discuss ----
-
-# 1. BIG poster
-# 2. Now have 3x simulations: entirely artificial, spiked in experiment scores and spiked in experiment data
-#      Finalizing analysis on spike-in of experiment data
-#      Effect of not recalculating prior is non negligible, calculating a few to try to interpolate
-# 3. Spent significant time learning about the way these experiments are actually kept in Gemma
-# 4. Worked on API wrapper which can soon be unified with the other wrapper (not x-compat but close)
-# 5. Dumping more data from API to verify my calculations (some differences)

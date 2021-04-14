@@ -102,26 +102,27 @@ geneExpression <- async(function(ee.IDs, rsc.IDs, taxa = getConfig('taxa')$value
   }
   
   # Get expression information for ee.ID by sending `length(ee.IDs)` async requests
+  if(taxa == 'any')
+    mLongData <- rbindlist(lapply(getConfig('taxa')$core, function(i) DATA.HOLDER[[i]]@experiment.meta[, .(ee.ID, rsc.ID, ee.Name = as.character(ee.Name), cf.Baseline, cf.Val, ee.Scale)]))
+  else
+    mLongData <- DATA.HOLDER[[taxa]]@experiment.meta[, .(ee.ID, rsc.ID, ee.Name = as.character(ee.Name), cf.Baseline, cf.Val, ee.Scale)]
+  
   lapply(ee.IDs, function(dataset) {
     # No guarantee that the contrast ordering we have is the same as in Gemma :(
-    meta <- DATA.HOLDER[[taxa]]@experiment.meta[ee.ID == dataset & rsc.ID %in% rsc.IDs,
-                                                .(rsc.ID, ee.Name = as.character(ee.Name), cf.Baseline, cf.Val, ee.Scale)] %>% {
-                                                  merge(.[, .(rsc.ID, ee.Name, ee.Scale)],
-                                                        merge(
-                                                          .[, .(cf.Baseline = parseListEntry(cf.Baseline) %>% {
-                                                            apply(permutation(1:length(.)), 1, function(perm) paste0(.[perm], collapse = ', '))
-                                                          }), rsc.ID],
-                                                          .[, .(cf.Val = parseListEntry(cf.Val) %>% {
-                                                            apply(permutation(1:length(.)), 1, function(perm) paste0(.[perm], collapse = ', '))
-                                                          }), rsc.ID],
-                                                          by = 'rsc.ID', sort = F, allow.cartesian = T
-                                                        ),
-                                                        by = 'rsc.ID', sort = F, allow.cartesian = T
-                                                  )
-                                                }
-    # %>%
-    # merge(DATA.HOLDER[[taxa]]@experiment.meta[ee.ID == dataset & rsc.ID %in% rsc.IDs, .(rsc.ID, ee.Scale)],
-    #       by = 'rsc.ID', sort = F, allow.cartesian = T)
+    meta <- mLongData[ee.ID == dataset & rsc.ID %in% rsc.IDs] %>% {
+      merge(.[, .(rsc.ID, ee.Name, ee.Scale)],
+            merge(
+              .[, .(cf.Baseline = parseListEntry(cf.Baseline) %>% {
+                apply(permutation(1:length(.)), 1, function(perm) paste0(.[perm], collapse = ', '))
+              }), rsc.ID],
+              .[, .(cf.Val = parseListEntry(cf.Val) %>% {
+                apply(permutation(1:length(.)), 1, function(perm) paste0(.[perm], collapse = ', '))
+              }), rsc.ID],
+              by = 'rsc.ID', sort = F, allow.cartesian = T
+            ),
+            by = 'rsc.ID', sort = F, allow.cartesian = T
+      )
+    }
     
     # TODO Look into these
     http_get(paste0('https://gemma.msl.ubc.ca/rest/v2/datasets/', dataset,
