@@ -45,7 +45,7 @@ search <- function(genes, options = getConfig(), inprod = T, DATA = NULL) {
   # No searching if we have this shortcut
   # A more elegant solution would be nice
   if(inprod && options$method$value == 'diff')
-    return(mData@gene.meta[, .(I = .I, entrez.ID)] %>% .[entrez.ID %in% genes, I])
+    return(geneMask)
   
   query <- suppressWarnings(options$sig$value %>% as.numeric)
   # TODO Should signal why it stopped (mismatch of signature length)
@@ -61,8 +61,7 @@ search <- function(genes, options = getConfig(), inprod = T, DATA = NULL) {
     pv <- t(pv)
   
   # Only retain experiments that have at least one of the GOI as DE (pv < threshold)
-  experimentN <- Rfast::colsums(pv <= options$pv$value) %>% as.integer
-  experimentMask <- Rfast::colsums(pv <= options$pv$value) >= min(options$req$value, n.genes) %>% as.bit
+  experimentMask <- pv <= options$pv$value
   logFC <- mData@data$fc[geneMask, ]
   zScore <- mData@data$zscore[geneMask, ]
   
@@ -85,7 +84,7 @@ search <- function(genes, options = getConfig(), inprod = T, DATA = NULL) {
     if(options$fc$value[1] != options$fc$value[2])
       exMask <- exMask & (abs(logFC) <= options$fc$value[2])
     
-    experimentMask <- experimentMask & as.bit(Rfast::colsums(exMask) >= min(options$req$value, n.genes))
+    experimentMask <- experimentMask & exMask
   }
   
   # Fail if 0 experiments show these genes as DE
@@ -111,9 +110,9 @@ search <- function(genes, options = getConfig(), inprod = T, DATA = NULL) {
     
     # TODO maybe this should come after pv weight
     if(n.genes == 1)
-      query <- max(zScore %>% as.matrix %>% .[, as.which(experimentMask)])
+      query <- max(zScore %>% as.matrix %>% `*`(experimentMask))
     else
-      query <- Rfast::rowMaxs(zScore %>% as.matrix %>% .[, as.which(experimentMask)], value = T)
+      query <- Rfast::rowMaxs(zScore %>% as.matrix %>% `*`(experimentMask), value = T)
   } else
     zScore <- logFC # Doesn't make sense to query a z-score
   # TODO it might if we only care about directionality
@@ -125,9 +124,11 @@ search <- function(genes, options = getConfig(), inprod = T, DATA = NULL) {
   
   zScore <- zScore * -log10(Rfast::Pmax(matrix(1e-10, ncol = ncol(pv), nrow = nrow(pv)), as.matrix(pv)))
   
+  mNames <- c(mData@gene.meta$gene.Name[geneMask], 'score')
+  
   if(options$method$value == 'diff') {
-    ret <- (zScore - query) %>% t %>% as.data.table %>% `*`(MFX_WEIGHT) %>%
-      .[, score := Rfast::rowsums(as.matrix(.))]
+    ret <- (zScore - query) %>% `*`(MFX_WEIGHT) %>% t %>% as.data.table
+    mNames <- mData@gene.meta$gene.Name[geneMask]
   } else if(options$method$value == 'cor') { # TODO Other methods should also mfx weight the gene matrix
     ret <- zScore %>% t %>% as.data.table %>%
       .[, score := abs(cor.wt(zScore %>% as.matrix, query, MFX_WEIGHT))] %>% # TODO abs?
@@ -160,25 +161,44 @@ search <- function(genes, options = getConfig(), inprod = T, DATA = NULL) {
   # (ie. 1e5, sufficiently large enough to guarantee it's always positive)
   # to prevent imprudent score deviations.
   # This seems to actually make it worse
-  ret <- ret %>% setnames(c(mData@gene.meta$gene.Name[geneMask], 'score')) %>%
-    .[, is.passing := experimentMask %>% as.booltype] %>%
+  experimentN <- Rfast::colsums(experimentMask)
+  
+  ret %>% setnames(mNames) %>%
+    .[, is.passing := experimentN >= options$req$value] %>%
     .[, f.IN := experimentN / n.genes] %>%
     .[, f.OUT := pmax(0, experimentMeta$n.DE - experimentN) / experimentMeta$n.detect] %>%
     .[, ee.q := experimentMeta$ee.qScore] %>%
-    .[, score := (score + abs(min(score))) * ee.q * (1 + f.IN) / (1 + 10^(f.OUT))] %>%
-    .[, score := score / max(score)] %>%
-    .[, rn := colnames(zScore)] %>%
-    setorder(-score)
+    .[, rn := colnames(zScore)]
   
-  if(exists('NULLS.EXP', envir = globalenv())) {
-    whichCols <- c('rn', paste0(c('M', 'S'), min(20, which(colnames(ret) == 'score') - 1)))
-    
+  if('score' %in% colnames(ret)) {
+    ret[, score := (score + abs(min(score))) * ee.q * (1 + f.IN) / (1 + 10^(f.OUT))] %>%
+      .[, score := score / max(score)] %>%
+      setorder(-score)
+  } else {
+    ret <- data.table(
+      rn = ret[, rn],
+      ret[, lapply(1:n.genes, function(i) {
+        col <- .SD[, i, with = F]
+        ((col + abs(min(col))) * ee.q * (1 + experimentMask[i, ] / n.genes) /
+            (1 + 10^(pmax(0, experimentMeta$n.DE - experimentMask[i, ]) / experimentMeta$n.detect))) %>%
+          `/`(max(.))
+      }), .SDcols = !c('rn', 'is.passing', 'f.IN', 'f.OUT', 'ee.q')],
+      ret[, .(is.passing, f.IN, f.OUT, ee.q)]
+    )
+  }
+  
+  # TODO What happens when these stats are negative? Taking abs for now
+  if(exists('NULLS.EXP', envir = globalenv()) && options$method$value == 'diff') {
     ret %>%
-      merge(NULLS.EXP[[options$taxa$value]][, ..whichCols],
-            by = 'rn', all = T, sort = F) %>%
-      .[, stat := (score - .SD[, whichCols[2], with = F]) / .SD[, whichCols[3], with = F]] %>%
-      .[!is.finite(stat), stat := NA] %>%
-      setorder(-stat)
+      merge(NULLS.EXP[[options$taxa$value]], by = 'rn', all = T, sort = F) %>% {
+        data.table(
+          rn = .[, rn],
+          .[, lapply(.SD, function(col) {
+            abs((col - M1) / S1)
+          }), .SDcols = !c('rn', 'is.passing', 'f.IN', 'f.OUT', 'ee.q', 'M1', 'S1')],
+          .[, .(is.passing, f.IN, f.OUT, ee.q)]
+        )
+      }
   } else
     ret
 }
@@ -386,15 +406,35 @@ reorderTags2 <- function(cache) {
     .[, N := N.x + N.y, cf.BaseLongUri] %>%
     .[, .(tag = cf.BaseLongUri, N)]
   
-  cache[, .(rsc.ID, cf.Cat, b = cf.BaseLongUri, v = cf.ValLongUri, distance, oreverse = reverse)] %>%
+  cache[, .(rsc.ID, ee.ID, cf.Cat, b = cf.BaseLongUri, v = cf.ValLongUri, distance, oreverse = reverse)] %>%
     merge(vals, by.x = 'b', by.y = 'tag', sort = F, allow.cartesian = T) %>%
     merge(vals, by.x = 'v', by.y = 'tag', sort = F, allow.cartesian = T) %>%
     .[, reverse := (N.y > N.x) | (N.y == N.x & as.character(b) < as.character(v))] %>%
     .[reverse == T, c('b', 'v') := list(v, b)] %>%
     .[, reverse := ifelse(oreverse, !reverse, reverse)] %>%
-    .[, .(rsc.ID = as.factor(rsc.ID),
+    .[, .(rsc.ID = as.factor(rsc.ID), ee.ID,
           cf.Cat = as.factor(cf.Cat), cf.BaseLongUri = as.factor(b), cf.ValLongUri = as.factor(v),
           reverse, distance)]
+}
+
+# TODO this could be merged with reorderTags2
+reorderTags3 <- function(data) {
+  vals <- data[, .N, cf.BaseLongUri] %>%
+    merge(data[, .N, cf.ValLongUri],
+          by.x = 'cf.BaseLongUri', by.y = 'cf.ValLongUri', all = T, sort = F, allow.cartesian = T) %>%
+    .[is.na(N.x), N.x := 0] %>% .[is.na(N.y), N.y := 0] %>%
+    .[, N := N.x + N.y, cf.BaseLongUri] %>%
+    .[, .(tag = cf.BaseLongUri, N)]
+  
+  data %>% copy %>%
+    setnames(c('cf.BaseLongUri', 'cf.ValLongUri'), c('b', 'v')) %>%
+    merge(vals, by.x = 'b', by.y = 'tag', sort = F, allow.cartesian = T) %>%
+    merge(vals, by.x = 'v', by.y = 'tag', sort = F, allow.cartesian = T) %>%
+    .[, reverse := (N.y > N.x) | (N.y == N.x & as.character(b) < as.character(v))] %>%
+    .[reverse == T, c('b', 'v') := list(v, b)] %>%
+    .[, c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri') :=
+        list(as.factor(cf.Cat), as.factor(b), as.factor(v))] %>%
+    .[, !c('reverse', 'b', 'v', 'N.x', 'N.y')]
 }
 
 # TODO this could be memoized when inprod && is.integer(rankings)
@@ -417,24 +457,38 @@ enrich <- function(rankings, options = getConfig(), inprod = T, keepopen = 0, CA
   
   # Stat of 0 means it's as expected (0 SD from mean)
   mMaps <- mMaps[as.character(cf.BaseLongUri) != as.character(cf.ValLongUri)] %>%
-    merge(rankings[, .(rsc.ID = rn, stat)],
-          by = 'rsc.ID', sort = F, allow.cartesian = T) %>% na.omit
+    merge(rankings[, !c('is.passing', 'f.IN', 'f.OUT', 'ee.q')],
+          by.x = 'rsc.ID', by.y = 'rn', sort = F, allow.cartesian = T)
   
-  mMaps[, .(distance = round(mean(distance, na.rm = T), 2),
-            stat = sum(stat + 1, na.rm = T) / .N),
-        .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
+  for(i in 8:ncol(mMaps))
+    set(mMaps, which(is.na(mMaps[[i]])), i, 0)
+  
+  mMaps[, lapply(.SD, function(stat) { sum(stat + 1, na.rm = T) / .N }),
+        .(cf.Cat, cf.BaseLongUri, cf.ValLongUri), .SDcols = !c('reverse', 'distance', 'rsc.ID', 'ee.ID')] %>%
+    merge(mMaps[, .(distance = round(mean(distance, na.rm = T), 2)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)],
+          by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri')) %>%
+    .[, stat := Rfast::rowmeans(as.matrix(.SD[, !c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri', 'distance')]))] %>%
+    setorder(-stat, distance) %>%
+    .[, .SD[1], stat]
 }
 
 maybeMemoise <- function(FUN, fname) {
   if(!exists(fname, envir = globalenv())) {
-    if(Sys.getenv('RSTUDIO') == '1')
+    if(Sys.getenv('RSTUDIO') == '1' || getOption('force.memoise', F))
       FUN <- memoise::memoise(FUN)
     
     assign(fname, FUN, envir = globalenv())
   }
 }
 
+enrichPreMem <- function(rankings, options, keepopen = 0, forceCache = NULL) {
+  enrichMem(rankings, options, keepopen)
+}
+
 maybeMemoise(function(rankings, options, keepopen = 0) {
+  if(exists('forceCache', envir = parent.frame(2)) && !is.null(get('forceCache', envir = parent.frame(2))))
+    return(get('forceCache', envir = parent.frame(2)))
+  
   if(keepopen > 0 && !exists('SINGLES'))
     assign('SINGLES', new.env(parent = globalenv()), envir = globalenv())
   

@@ -4,15 +4,15 @@ source('dependencies.R')
 
 library(lhs)
 library(parallel)
-options(mc.cores = 6)
+options(mc.cores = 5)
 
 mContrasts <- DATA.HOLDER$human@experiment.meta[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>% unique
 mGraph <- simplify(igraph::graph_from_data_frame(ONTOLOGIES[, .(ChildNode_Long, ParentNode_Long)]))
 graphTerms <- unique(ONTOLOGIES[, as.character(ChildNode_Long, ParentNode_Long)])
 
-DATA.HOLDER[c('human', 'mouse', 'rat')] <- NULL
-CACHE.BACKGROUND[c('human', 'mouse', 'rat')] <- NULL
-NULLS.EXP[c('human', 'mouse', 'rat')] <- NULL
+DATA.HOLDER[c('artificial', 'mouse', 'rat')] <- NULL
+CACHE.BACKGROUND[c('artificial', 'mouse', 'rat')] <- NULL
+NULLS.EXP[c('artificial', 'mouse', 'rat')] <- NULL
 
 # Spike in scores by doing a search of the human corpus,
 # then adding a row at a certain index with a certain SD
@@ -27,41 +27,33 @@ if(!exists('hypercube')) {
   hypercube <- improvedLHS(5000, 4)
   hypercube <- cbind(1, hypercube) #hypercube[, 1] <- pmin(hypercube[, 5], 1L + as.integer(hypercube[, 1] * 20)) # Groups
   hypercube[, 2] <- 1L + as.integer(hypercube[, 2] * 99) # Genes
-  hypercube[, 4] <- 1L + as.integer(hypercube[, 4] * rexp(nrow(hypercube), 0.0075)) # Mean SD
+  hypercube[, 4] <- 1 + hypercube[, 4] * rexp(nrow(hypercube), 1/15) # Mean SD from the mean
   hypercube[, 5] <- 1L + as.integer(hypercube[, 5] * 49) # Experiments
 }
 
 mclapply(1:nrow(hypercube), function(iter) {
   print(iter)
-  genes <- DATA.HOLDER$human@gene.meta[sample(1:nrow(DATA.HOLDER$human@gene.meta), hypercube[iter, 2]), entrez.ID]
-  tmp <- search(genes)
+  genes <- DATA.HOLDER$human@gene.meta[sample(1:nrow(DATA.HOLDER$human@gene.meta), hypercube[iter, 2]), .(gene.Name, entrez.ID)]
+  tmp <- search(genes$entrez.ID, inprod = F)
   
   if(is.null(tmp)) {
     message('No ranking on genes')
     return(NULL)
   }
   
-  mRange <- pmax(0, as.integer(nrow(tmp) * hypercube[iter, 3]) - 3 * hypercube[iter, 4]):pmin(nrow(tmp), as.integer(nrow(tmp) * hypercube[iter, 3]) + 3 * hypercube[iter, 4])
-  
-  mReplace <- length(mRange) < hypercube[iter, 5]
-  
-  mRange[mRange <= 0] <- 1
-  mRange[mRange >= nrow(tmp)] <- nrow(tmp)
-  
-  indices <- tryCatch({
-    sample(mRange, hypercube[iter, 5], replace = mReplace, prob = dnorm(mRange, as.integer(nrow(tmp) * hypercube[iter, 3]), hypercube[iter, 4]))
-  }, error = function(e) {
-    message('Resolving too few probs')
-    sample(mRange, hypercube[iter, 5], replace = mReplace, prob = 100 * dnorm(mRange, as.integer(nrow(tmp) * hypercube[iter, 3]), hypercube[iter, 4]))
-  })
-  
-  scores <- tmp[indices, score]
+  scores <- matrix(rnorm(hypercube[iter, 2] * hypercube[iter, 5], hypercube[iter, 4]),
+                   nrow = hypercube[iter, 5]) %>%
+    `*`(matrix(sample(c(rnorm(100, 0, 0.03),
+                        rnorm(100, 1, 0.03)), hypercube[iter, 2] * hypercube[iter, 5], T,
+                      rep(c(1 - hypercube[iter, 3], hypercube[iter, 3]), each = 100)),
+               nrow = hypercube[iter, 5])) %>%
+    abs
   
   # Insert experiments
   nExp <- letterWrap(hypercube[iter, 5])
-  tmp <- rbind(tmp, lapply(1:length(indices), function(i) {
-    tmp[indices[i]] %>% copy %>% .[, rn := nExp[i]]
-  }) %>% rbindlist) %>% setorder(-score)
+  tmp <- rbind(tmp, data.table(rn = nExp, data.table(scores) %>%
+                                 setnames(colnames(tmp[, !c('rn', 'is.passing', 'f.IN', 'f.OUT', 'ee.q')])),
+                               is.passing = NA, f.IN = NA, f.OUT = NA, ee.q = NA))
   
   # Select contrast groups
   mGroups <- sample(1:nrow(mContrasts), hypercube[iter, 1])
@@ -96,20 +88,19 @@ mclapply(1:nrow(hypercube), function(iter) {
     
     .[, !'N']
   
-  # TODO compute a new prior?
-  
   # Enrich
-  tmp2 <- enrich(tmp, CACHE = CACHE)
+  tmp2 <- enrich(tmp, CACHE = CACHE, inprod = F)
   
-  list(mean_index = hypercube[iter, 3],
-       mean_sd = hypercube[iter, 4],
-       genes = as.integer(genes),
+  list(mean_index = hypercube[iter, 4],
+       dropout = hypercube[iter, 3],
+       genes = as.integer(genes$entrez.ID),
        n_exp = hypercube[iter, 5],
        groups = mGroups,
        associations = mAssoc,
-       indices = indices,
-       scores = scores,
        enrich = tmp2 %>%
          .[, I := .I] %>%
-         .[, c(1:6, 8, 11)])
+         .[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, distance, I)] %>%
+         .[cf.Cat %in% CACHE$human[rsc.ID %in% nExp, cf.Cat] &
+             cf.BaseLongUri %in% CACHE$human[rsc.ID %in% nExp, cf.BaseLongUri] &
+             cf.ValLongUri %in% CACHE$human[rsc.ID %in% nExp, cf.ValLongUri]])
 }) %>% saveRDS('/space/scratch/jsicherman/Thesis Work/data/artificial/bootstrap_scores.rds')

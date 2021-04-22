@@ -40,12 +40,14 @@ generateGeneContribs <- function(data, options, plot_conditions = NULL) {
 #' @param conditions Conditions that can be visualized
 #' @param expr Expression information to plot
 #' @param options Any additional options 
+#' @param plot_taxa Taxa to visualize
 #' @param plot_genes Genes to visualize
 #' @param plot_conditions Conditions to visualize
 #' @param plot_type The plot type (heatmap, boxplot, etc.)
 #' @param plot_data The data to plot (gene expression data, etc.)
 generateResultsPlot <- function(genes, conditions, expr, options = getConfig(),
-                                plot_genes, plot_conditions, plot_type, plot_data) {
+                                plot_taxa, plot_genes, plot_conditions, plot_type, plot_data) {
+  # TODO Update this for plot_taxa and new genes (if taxa is any)
   if(is.null(expr) || is.null(plot_conditions))
     return(NULL)
   
@@ -162,7 +164,7 @@ generateResults <- function(data) {
                       callback = JS(
                         "var a = document.createElement('a');",
                         "$(a).addClass('dt-button');",
-                        "$(a).click(function() { $('#dataDownload')[0].click() });",
+                        "$(a).click(function() { window.open($('#dataDownload').attr('href')); });",
                         "$(a).text('Download');",
                         "$('div.dwnld').append(a);"
                       ),

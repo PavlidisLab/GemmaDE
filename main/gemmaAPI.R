@@ -23,10 +23,19 @@ geneEvidence <- async(function(genes, taxa = getConfig('taxa')$value) {
     lapply(json$data[[1]]$evidence, prettyPrint)
   }
   
-  # TODO for multiple taxa
-  lapply(genes, function(gene) {
-    http_get(paste0('https://gemma.msl.ubc.ca/rest/v2/taxa/', taxa, '/genes/', gene, '/evidence'))$then(function(response) parse(parse_json(rawToChar(response$content))))
-  }) %>% { when_all(.list = .)$then(function(x) x %>% `names<-`(genes)) }
+  if(length(taxa) > 1) {
+    lapply(unique(genes[, taxon]), function(tax) {
+      print(tax)
+      lapply(genes[tax == taxon, entrez.ID], function(gene) {
+        print(gene)
+        http_get(paste0('https://gemma.msl.ubc.ca/rest/v2/taxa/', tax, '/genes/', gene, '/evidence'))$then(function(response) parse(parse_json(rawToChar(response$content))))
+      }) %>% { when_all(.list = .)$then(function(x) x %>% `names<-`(paste0(genes[tax == taxon, gene.realName], ' (', tax, ')'))) }
+    }) %>% { when_all(.list = .)$then(function(x) unique(unlist(x, F))) }
+  } else {
+    lapply(genes, function(gene) {
+      http_get(paste0('https://gemma.msl.ubc.ca/rest/v2/taxa/', taxa, '/genes/', gene, '/evidence'))$then(function(response) parse(parse_json(rawToChar(response$content))))
+    }) %>% { when_all(.list = .)$then(function(x) x %>% `names<-`(genes)) }
+  }
 })
 
 #' Gene Expression
@@ -79,7 +88,7 @@ geneExpression <- async(function(ee.IDs, rsc.IDs, taxa = getConfig('taxa')$value
     ) %>% {
       if(length(.$geneData) == 0) NULL
       else {
-        # This gross block could be made nicer when I'm less lazy
+        # TODO this gross block could be made nicer when I'm less lazy
         expr <- rbindlist(lapply(.$geneData, '[[', 'expr'))
         expr.rn <- expr[, gene]
         expr <- expr[, !'gene']
@@ -122,9 +131,14 @@ geneExpression <- async(function(ee.IDs, rsc.IDs, taxa = getConfig('taxa')$value
       )
     }
     
+    if(length(taxa) > 1)
+      mGenes <- unique(genes[, entrez.ID])
+    else
+      mGenes <- unique(genes)
+    
     # TODO Look into these
     http_get(paste0('https://gemma.msl.ubc.ca/rest/v2/datasets/', dataset,
-                    '/expressions/genes/', paste0(genes, collapse = '%2C'),
+                    '/expressions/genes/', paste0(mGenes, collapse = '%2C'),
                     '?keepNonSpecific=', ifelse(keepNonSpecific, 'true', 'false'),
                     '&consolidate=', consolidate))$then(function(response) {
                       content <- response$content

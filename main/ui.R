@@ -68,12 +68,12 @@ ui <- fluidPage(style = 'height: 100%;',
                     downloadButton('dataDownload', '', style = 'visibility: hidden; height: 0'),
                     
                     fluidRow(
+                      column(12, htmlOutput('results_suggestions')),
                       column(12, htmlOutput('results_header')),
                       mainPanel(
                         tabsetPanel(id = 'tabs',
                                     tabPanel('Conditions', column(12, style = 'margin-top: 16px', dataTableOutput('results') %>% withSpinner(custom.class = 'DNA_cont', custom.html = div(lapply(1:10, function(x) div(class = 'nucleobase')))))),
                                     tabPanel('Gene Contributions', column(12, style = 'margin-top: 16px', plotlyOutput('results_contribs', height = '50vw'))),
-                                    #tabPanel('Hierarchical View (beta)', column(12, style = 'margin-top: 16px', circlepackeROutput('results_tree', height = '90vh') %>% withSpinner(custom.class = 'DNA_cont', custom.html = div(lapply(1:10, function(x) div(class = 'nucleobase')))))),
                                     tabPanel('Word Cloud', column(12, style = 'margin-top: 16px', d3wordcloudOutput('results_cloud', height = '90vh') %>% withSpinner(custom.class = 'DNA_cont', custom.html = div(lapply(1:10, function(x) div(class = 'nucleobase')))))),
                                     tabPanel('Gene Info', column(12, style = 'margin-top: 16px', htmlOutput('results_genes') %>% withSpinner(custom.class = 'DNA_cont', custom.html = div(lapply(1:10, function(x) div(class = 'nucleobase')))))),
                                     tabPanel('GO Enrichment', column(12, style = 'margin-top: 16px', dataTableOutput('results_go') %>% withSpinner(custom.class = 'DNA_cont', custom.html = div(lapply(1:10, function(x) div(class = 'nucleobase'))))))

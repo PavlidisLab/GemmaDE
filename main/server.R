@@ -43,26 +43,28 @@ server <- function(input, output, session) {
     options <- getConfig()
     
     genes <- query$genes %>% jsonify
+    taxa <- query$taxa %>% jsonify
     
     sig <- switch(is.null(query$sig) + 1, jsonify(query$sig), options$sig$value)
     fc <- switch(is.null(query$fc) + 1, jsonify(query$fc) %>% as.numeric, options$fc$value)
     categories <- switch(is.null(query$categories) + 1, jsonify(query$categories), options$categories$value)
     
     updateSelectizeInput(session, 'genes', options = list(persist = F, create = T, createOnBlur = T))
+    updatePickerInput(session, 'taxa', selected = taxa)
     session$sendCustomMessage('querySet', genes)
     
     updateTextInput(session, 'sig', value = sig)
     updateSliderInput(session, 'fc', value = fc)
     updateSelectizeInput(session, 'categories', selected = categories)
     
-    for(mName in Filter(function(x) !(x %in% c('sig', 'fc', 'categories')), names(options))) {
+    for(mName in Filter(function(x) !(x %in% c('sig', 'fc', 'categories', 'taxa')), names(options))) {
       do.update(session, options[[mName]], ifelse(is.null(query[[mName]]), options[[mName]]$value, query[[mName]]))
     }
 
     # Search if any genes are specified. Specify parameters to make sure no reactives.
     # Run it next ms to give the server time to propagate layout changes.
     if(!is.null(query$genes))
-      shinyjs::delay(1, searchGenes(genes, sig, query$taxa, update = F))
+      shinyjs::delay(1, searchGenes(genes, sig, jsonify(query$taxa), update = F))
   }, once = T, ignoreNULL = T)
   
   observeEvent(input$genes.csv, {
@@ -104,7 +106,7 @@ server <- function(input, output, session) {
       session$userData$genesRendered <- T
       
       synchronise({
-        geneEvidence(session$userData$plotData$gene.ID,
+        geneEvidence(session$userData$plotData$genes,
                      session$userData$plotData$options$taxa$value)$
           then(function(evidence) {
             output$results_genes <- generateGenePage(evidence)
@@ -113,8 +115,16 @@ server <- function(input, output, session) {
     } else if(input$tabs == 'GO Enrichment' && !is.null(session$userData$plotData) && is.null(session$userData$goRendered)) {
       session$userData$goRendered <- T
       
-      output$results_go <- generateGOPage(ora(hitlist = session$userData$plotData$gene.Name,
-                                              annotation = paste0('Generic_', session$userData$plotData$options$taxa$value)))
+      # TODO Only doing this on first taxon
+      if(length(session$userData$plotData$options$taxa$value) > 1)
+        mGenes <- mGenes[taxon == session$userData$plotData$options$taxa$value[1],
+                         unique(gene.Name)]
+      else
+        mGenes <- DATA.HOLDER[[session$userData$plotData$options$taxa$value]]@gene.meta[
+          entrez.ID %in% unique(session$userData$plotData$genes), gene.Name]
+      
+      output$results_go <- generateGOPage(ora(hitlist = mGenes,
+                                              annotation = paste0('Generic_', session$userData$plotData$options$taxa$value[1])))
     } else if(input$tabs == 'Word Cloud' && !is.null(session$userData$plotData) && is.null(session$userData$cloudRendered)) {
       session$userData$cloudRendered <- T
       
@@ -139,7 +149,7 @@ server <- function(input, output, session) {
           session$userData$genesRendered <- T
           
           synchronise({
-            geneEvidence(session$userData$plotData$gene.ID, # TODO for "any"
+            geneEvidence(session$userData$plotData$genes,
                          session$userData$plotData$options$taxa$value)$
               then(function(evidence) {
                 output$results_genes <- generateGenePage(evidence)
@@ -150,8 +160,16 @@ server <- function(input, output, session) {
     } else if(input$tabs == 'GO Enrichment') {
       session$userData$goRendered <- T
       
-      output$results_go <- generateGOPage(ora(hitlist = session$userData$plotData$gene.Name, # TODO for "any"
-                                              annotation = paste0('Generic_', session$userData$plotData$options$taxa$value)))
+      # TODO Only doing this on first taxon
+      if(length(session$userData$plotData$options$taxa$value) > 1)
+        mGenes <- mGenes[taxon == session$userData$plotData$options$taxa$value[1],
+                         unique(gene.Name)]
+      else
+        mGenes <- DATA.HOLDER[[session$userData$plotData$options$taxa$value]]@gene.meta[
+          entrez.ID %in% unique(session$userData$plotData$genes), gene.Name]
+      
+      output$results_go <- generateGOPage(ora(hitlist = mGenes,
+                                              annotation = paste0('Generic_', session$userData$plotData$options$taxa$value[1])))
     } else if(input$tabs == 'Word Cloud' && !is.null(session$userData$plotData) && is.null(session$userData$cloudRendered)) {
       session$userData$cloudRendered <- T
       
@@ -189,26 +207,36 @@ server <- function(input, output, session) {
                       selectInput('plot_type', 'Type', list('Boxplot', 'Violin plot', 'Heatmap', 'Scatterplot', 'Jitterplot')),
                       selectInput('plot_data', 'Data', list('Gene Expression')),
                       pickerInput('plot_genes', 'Genes', list('Loading...'), multiple = T),
-                      pickerInput('plot_conditions', 'Contrasts', list('Loading...'), multiple = T))
+                      pickerInput('plot_conditions', 'Contrasts', list('Loading...'), multiple = T),
+                      pickerInput('plot_taxa', 'Taxa', list('Loading...'), multiple = T))
       )
     ), session)
     
     generatePlot <- function(value) {
       session$userData$plotData$exprInfo <- value
       
+      updatePickerInput(session, 'plot_taxa',
+                        choices = as.list(session$userData$plotData$options$taxa$value),
+                        selected = session$userData$plotData$options$taxa$value[1])
+      
+      if(length(session$userData$plotData$options$taxa$value) > 1)
+        mGenes <- unique(session$userData$plotData$genes[, gene.realName])
+      else
+        mGenes <- DATA.HOLDER[[session$userData$plotData$options$taxa$value]]@gene.meta[entrez.ID %in% unique(session$userData$plotData$genes), gene.Name]
+      
       updatePickerInput(session, 'plot_genes',
-                        choices = as.list(intersect(session$userData$plotData$gene.Name, rownames(value$expr))),
-                        selected = intersect(session$userData$plotData$gene.Name, rownames(value$expr)))
+                        choices = as.list(intersect(mGenes, rownames(value$expr))),
+                        selected = intersect(mGenes, rownames(value$expr)))
       updatePickerInput(session, 'plot_conditions', # TODO Selection strategy
                         choices = as.list(session$userData$plotData$conditions[`Ontology Steps` == 0] %>% .[1:5, paste0(cf.BaseLongUri, ' vs. ', cf.ValLongUri)]),
                         selected = data.table::first(session$userData$plotData$conditions[`Ontology Steps` == 0] %>% .[1:5, paste0(cf.BaseLongUri, ' vs. ', cf.ValLongUri)]))
       
       output$plot <- renderPlotly({
-        generateResultsPlot(session$userData$plotData$gene.Name,
+        generateResultsPlot(session$userData$plotData$genes,
                             session$userData$plotData$conditions[`Ontology Steps` == 0] %>% .[1:5, paste0(cf.BaseLongUri, ' vs. ', cf.ValLongUri)],
                             value,
                             session$userData$plotData$options,
-                            input$plot_genes, input$plot_conditions, input$plot_type, input$plot_data)
+                            input$plot_taxa, input$plot_genes, input$plot_conditions, input$plot_type, input$plot_data)
       })
     }
     
@@ -237,7 +265,7 @@ server <- function(input, output, session) {
                           geneExpression(.[, unique(ee.ID)],
                                          .[, unique(rsc.ID)],
                                          session$userData$plotData$options$taxa$value,
-                                         session$userData$plotData$gene.ID)$then(generatePlot)
+                                         session$userData$plotData$genes)$then(generatePlot)
                         }
             })
         })
@@ -245,11 +273,11 @@ server <- function(input, output, session) {
     } else {
       # If we already processed then we can just display it
       output$plot <- renderPlotly({
-        generateResultsPlot(session$userData$plotData$gene.Name,
+        generateResultsPlot(session$userData$plotData$genes,
                             session$userData$plotData$conditions[`Ontology Steps` == 0] %>% .[1:5, paste0(cf.BaseLongUri, ' vs. ', cf.ValLongUri)],
                             session$userData$plotData$exprInfo,
                             session$userData$plotData$options,
-                            input$plot_genes, input$plot_conditions, input$plot_type, input$plot_data)
+                            input$plot_taxa, input$plot_genes, input$plot_conditions, input$plot_type, input$plot_data)
       })
     }
   })
@@ -263,6 +291,15 @@ server <- function(input, output, session) {
       generateResultsHeader(HTML('<h2 data-toggle="tooltip" data-placement="top" title="Relax thresholds or modify gene set.">Invalid search.</h2>'))
     })
     output$results <- NULL
+  }
+  
+  makeSuggestions <- function(suggestions) {
+    if(!is.null(suggestions)) {
+      output$results_suggestions <- renderUI({
+        fluidRow(class = 'info-text', column(12, HTML(paste0('Did you mean: ', paste0(paste0('<a genes=\'["', suggestions, '"]\'>', suggestions, '</a>'), collapse = ', '), '?'))))
+      })
+      shinyjs::delay(100, { shinyjs::runjs('loadExamples();') })
+    }
   }
   
   #' Display an empty message
@@ -359,19 +396,25 @@ server <- function(input, output, session) {
   #' @param options The search options
   handleSearch <- function(genes, options) {
     advanceProgress('Ranking experiments')
+    
+    # For some reason this becomes a Promise and this resolves it?
+    genes
     # Search is basically a passthrough when using the default method and no signature
     # and returns a vector of gene indices. Otherwise in non-default operation,
     # it returns a data.table with a row for each experiment and scores
     future({
-      if(length(options$taxa$value) > 1) {
+      if(!is.null(genes) && length(options$taxa$value) > 1 && 'data.table' %in% class(genes)) {
         lapply(options$taxa$value, function(t) {
           mOp <- options
           mOp$taxa$value <- t
           search(genes[taxon == t, entrez.ID], mOp)
         })
-      } else
-        search(genes, options)
+      } else if(length(options$taxa$value) == 1)
+        search(genes$genes, options)
     }, globals = c('DATA.HOLDER', 'NULLS.EXP')) %...>%(function(experiments) {
+      if(!is.null(genes) && !('data.table' %in% class(genes)))
+        makeSuggestions(genes$suggestions)
+      
       if(!is.null(session$userData$INTERRUPT))
         return(NULL)
       
@@ -386,22 +429,7 @@ server <- function(input, output, session) {
         else
           shinyjs::enable(selector = 'a[data-value="Gene Contributions"]')
         
-        future({
-          if(length(options$taxa$value) == 1)
-            copy(enrich(experiments, options[-which(names(options) %in% c('gemmaLink', 'liteVersion'))]))
-          else {
-            # TODO Reordering contrasts here would be useful
-            lapply(1:length(options$taxa$value), function(t) {
-              mOp <- options
-              mOp$taxa$value <- options$taxa$value[t]
-              enrich(experiments[[t]], mOp) %>% copy %>%
-                setnames(as.character(genes[taxon == options$taxa$value[t], I]), genes[taxon == options$taxa$value[t], identifier])
-            }) %>% rbindlist(fill = T) %>%
-              .[, lapply(.SD, mean, na.rm = T),
-                .(cf.Cat, cf.BaseLongUri, cf.ValLongUri), .SDcols = !c('stat')] %>%
-              .[, stat := rowMeans2(as.matrix(.SD), na.rm = T), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri), .SDcols = !'distance']
-          }
-        }, globals = c('CACHE.BACKGROUND')) %...>%(function(conditions) {
+        doFinalize <- function(conditions) {
           if(!is.null(session$userData$INTERRUPT))
             return(NULL)
           
@@ -410,12 +438,14 @@ server <- function(input, output, session) {
           if(is.null(conditions))
             endEmpty()
           else {
-            if(length(options$taxa$value) > 1)
+            if(length(options$taxa$value) > 1) {
               geneInfo <- genes %>% copy %>% setnames('identifier', 'gene.Name')
-            else {
+              mGenes <- genes %>% copy
+            } else {
               geneInfo <- DATA.HOLDER[[options$taxa$value]]@gene.meta %>%
                 .[, .(.I, entrez.ID, gene.Name)] %>%
-                .[entrez.ID %in% genes, .(I, entrez.ID, gene.Name)]
+                .[entrez.ID %in% genes$genes, .(I, entrez.ID, gene.Name)]
+              mGenes <- genes$genes
             }
             
             conditions <- endSuccess(geneInfo, experiments, conditions, options) %>%
@@ -429,8 +459,7 @@ server <- function(input, output, session) {
             # Prepare some plotting information.
             session$userData$plotData <- list(
               options = options,
-              gene.ID = unique(geneInfo$entrez.ID),
-              gene.Name = unique(geneInfo$gene.Name),
+              genes = mGenes,
               conditions = conditions
             )
             
@@ -442,7 +471,43 @@ server <- function(input, output, session) {
                           setnames(c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), c('Category', 'Baseline', 'Value')), file)
             }, 'text/csv')
           }
-        })
+        }
+        
+        # Gross extraction of memoised copies
+        if(memoise::is.memoised(enrichMem) &&
+           is.numeric(experiments) &&
+           memoise::has_cache(enrichMem)(experiments[order(experiments)],
+                                         options[-which(names(options) %in% c('gemmaLink', 'liteVersion'))],
+                                         0)) {
+          doFinalize(enrichMem(experiments[order(experiments)],
+                               options[-which(names(options) %in% c('gemmaLink', 'liteVersion'))],
+                               0))
+        } else {
+          future({
+            if(length(options$taxa$value) == 1)
+              copy(enrich(experiments, options))
+            else {
+              lapply(1:length(options$taxa$value), function(t) {
+                mOp <- options
+                mOp$taxa$value <- options$taxa$value[t]
+                mSearchable <- experiments[[t]]
+                
+                enrich(mSearchable, mOp) %>% copy %>%
+                  setnames(as.character(genes[taxon == options$taxa$value[t], I]), genes[taxon == options$taxa$value[t], identifier])
+              }) %>% rbindlist(fill = T) %>%
+                reorderTags3 %>%
+                .[, lapply(.SD, mean, na.rm = T),
+                  .(cf.Cat, cf.BaseLongUri, cf.ValLongUri), .SDcols = !'stat'] %>%
+                .[, stat := rowMeans2(as.matrix(.SD), na.rm = T), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri), .SDcols = !'distance']
+            }
+          }, globals = c('CACHE.BACKGROUND')) %...>%(function(conditions) {# Sort the genes so that caching is easy
+            if(is.numeric(experiments))
+              enrichPreMem(experiments[order(experiments)],
+                           options[-which(names(options) %in% c('gemmaLink', 'liteVersion'))], 0, conditions)
+            
+            doFinalize(conditions)
+          })
+        }
       }
     })
   }
@@ -460,6 +525,8 @@ server <- function(input, output, session) {
                           signature = input$signature,
                           taxa = input$taxa,
                           update = T) {
+    output$results_suggestions <- NULL
+    
     shinyjs::disable('search')
     shinyjs::disable('reset')
     
@@ -511,30 +578,37 @@ server <- function(input, output, session) {
         taxIDs <- getConfig(key = 'taxa')$mapping[taxa]
         
         symbols <- lapply(taxa, function(x) {
-          data.table(entrez.ID = tidyGenes(genes, x), taxon = x) %>% {
-            if(ncol(.) == 1) NULL
+          data.table(entrez.ID = tidyGenes(genes, x)$genes, taxon = x) %>% {
+            if(is.null(.) || ncol(.) == 1) NULL
             else
               merge(., DATA.HOLDER[[x]]@gene.meta[, .(.I, entrez.ID, gene.Name)], by = 'entrez.ID')
           }
-        }) %>% rbindlist %>%
-          merge(data.table(taxon.ID = taxIDs, taxon = names(taxIDs)), by = 'taxon') %>%
-          .[, .SD[1], gene.Name]
+        }) %>% rbindlist
+        
+        if(!is.null(symbols) && nrow(symbols) > 0) {
+          symbols <- symbols %>%
+            merge(data.table(taxon.ID = taxIDs, taxon = names(taxIDs)), by = 'taxon') %>%
+            .[, .SD[1], gene.Name]
+        } else
+          return(tidyGenes(genes, taxa[1]))
         
         orthologs <- symbols[, list(lapply(taxIDs[taxIDs != unique(taxon.ID)], function(t) {
           homologs <- homologene(entrez.ID, unique(taxon.ID), t)
           if(nrow(homologs) == 0) NULL
           else {
             homologs %>%
-              .[, grepl('_ID', colnames(.))] %>%
-              setnames(gsub('_ID', '', colnames(.))) %>%
               as.data.table %>%
-              melt(measure.vars = 1:2, value.name = 'entrez.ID', variable.name = 'taxon.ID') %>%
+              melt(measure.vars = which(!grepl('_ID', colnames(.))), value.name = 'gene.realName', variable.name = 'taxon.ID') %>%
+              .[, entrez.ID := unlist(lapply(1:nrow(.), function(I) {
+                .SD[I, grepl(paste0(taxon.ID[I], '_ID'), colnames(.SD)), with = F]
+              }))] %>%
+              .[, !grepl('_ID', colnames(.)), with = F] %>%
               .[, taxon.ID := as.integer(levels(taxon.ID))[taxon.ID]] %>%
               cbind(identifier = unique(homologs[, as.character(unique(taxon.ID))])) %>%
               merge(DATA.HOLDER[[names(taxIDs)[taxIDs == t]]]@gene.meta[, .(.I, entrez.ID = as.integer(entrez.ID))], by = 'entrez.ID')
           }
         })), taxon] %>% .[, V1] %>% rbindlist %>%
-          rbind(symbols[, .(entrez.ID, taxon.ID, identifier = gene.Name, I)]) %>%
+          rbind(symbols[, .(entrez.ID, taxon.ID, gene.realName = gene.Name, identifier = gene.Name, I)]) %>%
           unique %>%
           merge(data.table(taxon.ID = taxIDs, taxon = names(taxIDs)), by = 'taxon.ID') %>%
           .[, entrez.ID := as.character(entrez.ID)] %>%
@@ -597,14 +671,28 @@ server <- function(input, output, session) {
         }
       }
       
+      mSuggestions <- NULL
+      if(length(genes) > 0) {
+        mSuggestions <- sapply(genes, function(gene) {
+          stringdist(tolower(gene), tolower(DATA.HOLDER[[taxa]]@gene.meta[, gene.Name])) %>% {
+            DATA.HOLDER[[taxa]]@gene.meta[which.min(.), gene.Name]
+          }
+        }) %>% setNames(genes)
+      }
+      
+      mGenes <- NULL
       if(length(cleanGenes) > 0)
-        cleanGenes[order(unlist(idMap))]
+        mGenes <- cleanGenes[order(unlist(idMap))]
+      
+      if(length(mGenes) > 0 || length(mSuggestions) > 0)
+        list(genes = mGenes, suggestions = mSuggestions)
       else
         NULL
     }
     
     # Done processing, handle the search.
-    # TODO should prevent signature from working for taxa == 'all'
-    handleSearch(tidyGenes(genes, taxa), options)
+    # TODO should prevent signature from working for length(taxa) > 1
+    # TODO This { . } is a weird way to prevent lazy evaluation. Probably a better way
+    tidyGenes(genes, taxa) %>% { . } %>% handleSearch(options)
   }
 }

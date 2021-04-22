@@ -34,6 +34,7 @@ library(homologene)
 library(jsonlite)
 library(XML)
 library(sass)
+library(stringdist)
 
 # Concurrent users
 library(promises)
