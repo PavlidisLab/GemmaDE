@@ -13,6 +13,7 @@ generateGeneContribs <- function(data, options, plot_conditions = NULL) {
   mData <- data %>%
     setorder(-`Test Statistic`) %>%
     .[, !c('Test Statistic', 'Ontology Steps', 'N', 'Evidence', 'Relatedness',
+           'P-value', 'Z-score', 'FDR',
            'cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri')] %>%
     head(10) %>% # TODO This is a stopgap for picker
     melt(id.vars = 'Contrast') %>%
@@ -156,7 +157,7 @@ generateResultsCloud <- function(data, options) {
 #'
 #' @param session The Shiny session storing our data
 generateResults <- function(data) {
-  outputColumns <- c('Contrast', 'Evidence', 'Ontology Steps', 'Relatedness', 'Test Statistic')
+  outputColumns <- c('Contrast', 'Evidence', 'Ontology Steps', 'Relatedness', 'Test Statistic', 'FDR')
   
   mTable <- datatable(data[, outputColumns, with = F] %>% as.data.frame,
                       extensions = 'Buttons',
@@ -206,7 +207,11 @@ generateResults <- function(data) {
                                        list(targets = which(outputColumns == 'Ontology Steps'),
                                             width = '5%'),
                                        list(targets = which(outputColumns == 'Relatedness'),
-                                            width = '5%')
+                                            width = '5%'),
+                                       list(targets = which(outputColumns == 'FDR'),
+                                            render = JS('asPval'),
+                                            width = '5%',
+                                            searchable = F)
                                      ),
                                      search = list(
                                        list(regex = T),

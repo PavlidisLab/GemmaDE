@@ -385,7 +385,8 @@ server <- function(input, output, session) {
       unique %>%
       merge(conditions, by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), sort = F) %>%
       .[, `Relatedness` := case_when(stat > 1 ~ 'Positive', stat < 1 ~ 'Anti', T ~ 'Non')] %>%
-      setnames(c('stat', 'distance'), c('Test Statistic', 'Ontology Steps'))
+      setnames(c('stat', 'distance', 'zscore', 'pval', 'padj'), c('Test Statistic', 'Ontology Steps',
+                                                                  'Z-score', 'P-value', 'FDR'))
   }
   
   #' Handle Search

@@ -511,6 +511,13 @@ maybeMemoise(function(rankings, options, keepopen = 0) {
     } %>% .[I %in% rankings] %>% dcast(... ~ I, value.var = 'stat')
   }) %>% Reduce(function(...) merge(..., by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri', 'distance')), .) %>%
     .[, stat := Rfast::rowmeans(as.matrix(.SD[, !c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri', 'distance')]))] %>%
-    setorder(-stat, distance) %>%
+    .[, sumstat := sum(stat)] %>%
+    .[, zscore := (stat / sumstat - .N / nrow(.)) /
+        sqrt(((stat + .N) / (sumstat + nrow(.))) * (1 - (stat + .N) / (sumstat + nrow(.))) * (1 / sumstat + 1 / nrow(.))),
+      .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
+    .[, pval := pnorm(-zscore)] %>%
+    .[, padj := p.adjust(pval, 'fdr')] %>%
+    .[, !'sumstat'] %>%
+    setorder(pval, distance) %>%
     .[, .SD[1], stat]
 }, 'enrichMem')
