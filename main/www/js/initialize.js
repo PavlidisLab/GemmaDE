@@ -3,7 +3,10 @@ var fileValidated = false;
 $(document).one('shiny:connected', function() {
   Shiny.addCustomMessageHandler('querySet', querySet);
   Shiny.addCustomMessageHandler('queryReset', queryReset);
-  Shiny.addCustomMessageHandler('fileUpload', message => fileValidated = message);
+  Shiny.addCustomMessageHandler('fileUpload', message => {
+    fileValidated = message;
+    validate();
+  });
   Shiny.setInputValue('LOAD', true);
   
   // Clickable examples below entries
@@ -37,6 +40,11 @@ function loadExamples() {
     } else {
       addGenes(JSON.parse($(this).attr('genes')));
     }
+  });
+  
+  $('a[taxon]').click(function() {
+    $('#taxa').selectpicker('val', $(this).attr('taxon'))
+    Shiny.setInputValue('taxa', $(this).attr('taxon'));
   });
 }
 
@@ -76,8 +84,8 @@ function onTableCreated() {
   $('[data-toggle="tooltip"]').tooltip();
 }
 
-$(document).click(function (e) {
-  if($(e.target).parent().find('[data-toggle="popover"]').length > 0) {
+$(document).click(function(e) {
+  if($(e.target).attr('data-toggle') !== 'popover' && $(e.target).parent().find('[data-toggle="popover"]').length > 0) {
     $('[data-toggle="popover"]').popover('hide');
     e.preventDefault();
   }
@@ -91,8 +99,6 @@ function onTableDraw() {
   $('[data-toggle="popover"]').popover();
   
   $('[data-toggle="popover"]').click(function(e) {
-    e.preventDefault();
-    
     $('[data-toggle="popover"]').not(this).popover('hide');
     $(this).popover('toggle');
   });

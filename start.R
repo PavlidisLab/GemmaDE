@@ -39,3 +39,28 @@ runApp('main', port = 18232, launch.browser = F)
 # Anecdotes (drug-related, metabolic alterations in PD astrocytes)
 # Demonstration through simulations
 # Breakdown of gaps in knowledge incl. counts for other tools (per species)
+
+
+# Interesting searches ----
+
+# Pathways
+# --------
+# http://www.gsea-msigdb.org/gsea/msigdb/cards/BIOCARTA_ACETAMINOPHEN_PATHWAY.html
+# CYP1A2,CYP2E1,PTGS1,PTGS2,NR1I3
+# doxorubicin interaction with acetaminophen https://go.drugbank.com/drugs/DB00316
+
+# Others
+# ------
+# Targets of corticosteroids
+# KLF9,PER1,TSC22D3,ZBTB16
+
+# Sex markers
+# RPS4Y1,EIF1AY,DDX3Y,KDM5D,XIST
+
+# Astrocyte markers
+# GFAP,SLC1A2,ALDH1L1,APP
+
+# Heart-enriched
+# MYL7,NPPA,NPPB
+
+# 

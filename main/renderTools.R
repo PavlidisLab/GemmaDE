@@ -161,6 +161,7 @@ generateResults <- function(data) {
   
   mTable <- datatable(data[, outputColumns, with = F] %>% as.data.frame,
                       extensions = 'Buttons',
+                      selection = 'none',
                       rownames = data[, as.character(cf.Cat)],
                       callback = JS(
                         "var a = document.createElement('a');",

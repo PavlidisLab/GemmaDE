@@ -36,3 +36,9 @@ We are currently working on a REST API for accessing Gemma DE.
 
 # Evaluation of Gemma DE
 The performance of Gemma DE was evaluated in large part by running enrichments on either entirely or partially simulated data. Other metrics were obtained on real data by searching gene sets with known expression differences in some biological processes (ie. biological sex).
+
+# Future work
+This can be used for a number of related analyses and some improvements to the codebase will help support them.
+
+1. The reverse operation of this condition enrichment is relatively straightforward (query with a condition-comparison and get back a ranked set of genes). This might be interesting, and it is theoretically possible to construct a network of condition-comparisons in terms of how closely coincident their gene sets are.
+2. Currently this depends on chunked flatfiles to quickly recall single gene search scores. This should be converted to a SQL database, which would speed everything up

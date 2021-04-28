@@ -60,7 +60,7 @@ server <- function(input, output, session) {
     for(mName in Filter(function(x) !(x %in% c('sig', 'fc', 'categories', 'taxa')), names(options))) {
       do.update(session, options[[mName]], ifelse(is.null(query[[mName]]), options[[mName]]$value, query[[mName]]))
     }
-
+    
     # Search if any genes are specified. Specify parameters to make sure no reactives.
     # Run it next ms to give the server time to propagate layout changes.
     if(!is.null(query$genes))
@@ -142,7 +142,7 @@ server <- function(input, output, session) {
     session$userData$goRendered <- NULL
     session$userData$cloudRendered <- NULL
     session$userData$contribsRendered <- NULL
-
+    
     if(input$tabs == 'Gene Info') {
       shinyjs::delay(100, {
         if(input$tabs == 'Gene Info' && !is.null(session$userData$plotData) && is.null(session$userData$genesRendered)) {
@@ -184,8 +184,8 @@ server <- function(input, output, session) {
   observeEvent(input$RANDOM_GENES, {
     updateSelectizeInput(session, 'genes', options = list(persist = F, create = T, createOnBlur = T))
     while(length(genes <- DATA.HOLDER[[ifelse(length(input$taxa) > 1, 'human', input$taxa)]]@gene.meta[sample(1:.N, sample(1:10, 1))] %>%
-      as.data.frame %>% .[, sample(c(1, 3, 4, 6), 1)] %>%
-      .[. != 'None']) == 0) {
+                 as.data.frame %>% .[, sample(c(1, 3, 4, 6), 1)] %>%
+                 .[. != 'None']) == 0) {
     }
     
     genes <- genes %>% {
@@ -249,25 +249,25 @@ server <- function(input, output, session) {
                                          function(i) DATA.HOLDER[[i]]@experiment.meta[, .(rsc.ID, ee.ID, ee.NumSamples)]))
             
             getTags(session$userData$plotData$options$taxa$value) %>% # TODO Selection strategy
-                        .[cf.Cat %in% (session$userData$plotData$conditions[`Ontology Steps` == 0] %>% .[1:5, unique(cf.Cat)]) &
-                            cf.BaseLongUri %in% (session$userData$plotData$conditions[`Ontology Steps` == 0] %>% .[1:5, unique(cf.BaseLongUri)]) &
-                            cf.ValLongUri %in% (session$userData$plotData$conditions[`Ontology Steps` == 0] %>% .[1:5, unique(cf.ValLongUri)])] %>%
-                        unique %>%
-                        merge(mExpData, by = c('rsc.ID', 'ee.ID'), sort = F, allow.cartesian = T) %>% {
-                          if(nrow(.) == 0) return(NULL)
-                          
-                          # Select some samples to queue for gene expression visualization
-                          while((tmp <- .[sample(1:nrow(.))])[1, ee.NumSamples] > getOption('max.gemma')) {
-                          }
-                          
-                          tmp[cumsum(ee.NumSamples) <= getOption('max.gemma')]
-                        } %>% {
-                          geneExpression(.[, unique(ee.ID)],
-                                         .[, unique(rsc.ID)],
-                                         session$userData$plotData$options$taxa$value,
-                                         session$userData$plotData$genes)$then(generatePlot)
-                        }
-            })
+              .[cf.Cat %in% (session$userData$plotData$conditions[`Ontology Steps` == 0] %>% .[1:5, unique(cf.Cat)]) &
+                  cf.BaseLongUri %in% (session$userData$plotData$conditions[`Ontology Steps` == 0] %>% .[1:5, unique(cf.BaseLongUri)]) &
+                  cf.ValLongUri %in% (session$userData$plotData$conditions[`Ontology Steps` == 0] %>% .[1:5, unique(cf.ValLongUri)])] %>%
+              unique %>%
+              merge(mExpData, by = c('rsc.ID', 'ee.ID'), sort = F, allow.cartesian = T) %>% {
+                if(nrow(.) == 0) return(NULL)
+                
+                # Select some samples to queue for gene expression visualization
+                while((tmp <- .[sample(1:nrow(.))])[1, ee.NumSamples] > getOption('max.gemma')) {
+                }
+                
+                tmp[cumsum(ee.NumSamples) <= getOption('max.gemma')]
+              } %>% {
+                geneExpression(.[, unique(ee.ID)],
+                               .[, unique(rsc.ID)],
+                               session$userData$plotData$options$taxa$value,
+                               session$userData$plotData$genes)$then(generatePlot)
+              }
+          })
         })
       }
     } else {
@@ -288,15 +288,43 @@ server <- function(input, output, session) {
   endFailure <- function() {
     setProgress()
     output$results_header <- renderUI({ # TODO Tooltips aren't beautiful
-      generateResultsHeader(HTML('<h2 data-toggle="tooltip" data-placement="top" title="Relax thresholds or modify gene set.">Invalid search.</h2>'))
+      generateResultsHeader(HTML('<h2 style="margin-top: 0;">No results</h2>'))
     })
     output$results <- NULL
   }
   
-  makeSuggestions <- function(suggestions) {
+  makeSuggestions <- function(original, taxon, suggestions) {
     if(!is.null(suggestions)) {
+      if(length(taxon) == 1) {
+        suggested <- lapply(getConfig('taxa')$core, function(t) {
+          i <- 0
+          tmp <- tidyGenes(original, t)
+          if(!is.null(tmp))
+            i <- length(tmp$genes)
+          list(n = i,
+               taxon = t)
+        }) %>% {
+          suggestedTaxon <- lapply(., '[[', 'n') %>% which.max
+          .[[suggestedTaxon]]$taxon
+        }
+        
+        if(suggested != taxon) {
+          output$results_suggestions <- renderUI({
+            fluidRow(class = 'info-text', column(12, HTML(paste0('Did you mean to search ', paste0('<a taxon=\'', suggested, '\'>', suggested, '</a>'), ' experiments?'))))
+          })
+          shinyjs::delay(100, { shinyjs::runjs('loadExamples();') })
+          
+          return(NULL)
+        }
+      }
+      
+      revisedSearch <- original
+      for(i in names(suggestions)) {
+        revisedSearch <- gsub(i, suggestions[i], revisedSearch, fixed = T)
+      }
+      
       output$results_suggestions <- renderUI({
-        fluidRow(class = 'info-text', column(12, HTML(paste0('Did you mean: ', paste0(paste0('<a genes=\'["', suggestions, '"]\'>', suggestions, '</a>'), collapse = ', '), '?'))))
+        fluidRow(class = 'info-text', column(12, HTML(paste0('Did you mean: ', paste0('<a genes=\'[', paste0(paste0('"', revisedSearch, '"'), collapse = ','), ']\'>', paste0(suggestions, collapse = ', '), '</a>'), '?'))))
       })
       shinyjs::delay(100, { shinyjs::runjs('loadExamples();') })
     }
@@ -333,7 +361,7 @@ server <- function(input, output, session) {
                                                         nrow(genes), ' gene', ifelse(nrow(genes) > 1, 's', ''),  '</span>')),
                                           ifelse(length(options$taxa$value) > 1,
                                                  paste0(' across <span data-toggle="tooltip" data-placement="top" title="', paste0(options$taxa$value, collapse = ', '), '">',
-                                                 length(options$taxa$value), ' taxa</span>'), ''),
+                                                        length(options$taxa$value), ' taxa</span>'), ''),
                                           '</h2><span class="timestamp">in ',
                                           format(difftime(session$userData$endTime, session$userData$startTime), digits = 3), '.</span></span>')))
       })
@@ -350,6 +378,7 @@ server <- function(input, output, session) {
     }
     
     conditions[, Contrast := paste0('<b>', cf.BaseLongUri, '</b> vs. <b>', cf.ValLongUri, '</b>')]
+    conditions[, distance := round(distance, 3)]
     
     if(length(options$taxa$value) == 1)
       setnames(conditions, as.character(genes[, I]), genes[, gene.Name])
@@ -371,12 +400,14 @@ server <- function(input, output, session) {
     # It's much faster to not query ee.Name though
     if(options$gemmaLink$value) {
       tmp[, Evidence :=
-          paste0('<span data-toggle="popover" title="Experiments" data-html="true" data-content="',
-                 paste0('<a target=_blank href=https://gemma.msl.ubc.ca/expressionExperiment/showExpressionExperiment.html?id=', unique(ee.ID), '>', unique(ee.Name), '</a>') %>% paste0(collapse = ', '),
-                 '">',
-                 paste(N, paste0('Experiment', ifelse(N > 1, 's', '')), '<i class="fas fa-question-circle" style="cursor: pointer;"></i>'),
-                 '</span>'),
-        .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
+            ifelse(N > 1,
+                   paste0('<span class="pseudo-a" data-toggle="popover" title="Experiments" data-html="true" data-content="',
+                          paste0('<a target=_blank href=https://gemma.msl.ubc.ca/expressionExperiment/showExpressionExperiment.html?id=', unique(ee.ID), '>', unique(ee.Name), '</a>') %>% paste0(collapse = ', '),
+                          '">',
+                          paste(N, 'Experiments</span>')),
+                   paste0('<a target=_blank href=https://gemma.msl.ubc.ca/expressionExperiment/showExpressionExperiment.html?id=', unique(ee.ID), '>1 Experiment</a>')
+            ),
+          .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
     } else
       tmp[, Evidence := paste(N, paste0('Experiment', ifelse(N > 1, 's', ''))), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
     
@@ -395,11 +426,12 @@ server <- function(input, output, session) {
   #'
   #' @param genes A character vector of entrez IDs
   #' @param options The search options
-  handleSearch <- function(genes, options) {
+  handleSearch <- function(genes, rawGenes, options) {
     advanceProgress('Ranking experiments')
     
-    # For some reason this becomes a Promise and this resolves it?
+    # For some reason genes becomes a Promise and this resolves it?
     genes
+    
     # Search is basically a passthrough when using the default method and no signature
     # and returns a vector of gene indices. Otherwise in non-default operation,
     # it returns a data.table with a row for each experiment and scores
@@ -414,7 +446,7 @@ server <- function(input, output, session) {
         search(genes$genes, options)
     }, globals = c('DATA.HOLDER', 'NULLS.EXP')) %...>%(function(experiments) {
       if(!is.null(genes) && !('data.table' %in% class(genes)))
-        makeSuggestions(genes$suggestions)
+        makeSuggestions(rawGenes, options$taxa$value, genes$suggestions)
       
       if(!is.null(session$userData$INTERRUPT))
         return(NULL)
@@ -513,6 +545,123 @@ server <- function(input, output, session) {
     })
   }
   
+  tidyGenes <- function(genes, taxa) {
+    if(length(taxa) > 1) {
+      taxIDs <- getConfig(key = 'taxa')$mapping[taxa]
+      
+      symbols <- lapply(taxa, function(x) {
+        data.table(entrez.ID = tidyGenes(genes, x)$genes, taxon = x) %>% {
+          if(is.null(.) || ncol(.) == 1) NULL
+          else
+            merge(., DATA.HOLDER[[x]]@gene.meta[, .(.I, entrez.ID, gene.Name)], by = 'entrez.ID')
+        }
+      }) %>% rbindlist
+      
+      if(!is.null(symbols) && nrow(symbols) > 0) {
+        symbols <- symbols %>%
+          merge(data.table(taxon.ID = taxIDs, taxon = names(taxIDs)), by = 'taxon') %>%
+          .[, .SD[1], gene.Name]
+      } else
+        return(tidyGenes(genes, taxa[1]))
+      
+      orthologs <- symbols[, list(lapply(taxIDs[taxIDs != unique(taxon.ID)], function(t) {
+        homologs <- homologene(entrez.ID, unique(taxon.ID), t)
+        if(nrow(homologs) == 0) NULL
+        else {
+          homologs %>%
+            as.data.table %>%
+            melt(measure.vars = which(!grepl('_ID', colnames(.))), value.name = 'gene.realName', variable.name = 'taxon.ID') %>%
+            .[, entrez.ID := unlist(lapply(1:nrow(.), function(I) {
+              .SD[I, grepl(paste0(taxon.ID[I], '_ID'), colnames(.SD)), with = F]
+            }))] %>%
+            .[, !grepl('_ID', colnames(.)), with = F] %>%
+            .[, taxon.ID := as.integer(levels(taxon.ID))[taxon.ID]] %>%
+            cbind(identifier = unique(homologs[, as.character(unique(taxon.ID))])) %>%
+            merge(DATA.HOLDER[[names(taxIDs)[taxIDs == t]]]@gene.meta[, .(.I, entrez.ID = as.integer(entrez.ID))], by = 'entrez.ID')
+        }
+      })), taxon] %>% .[, V1] %>% rbindlist %>%
+        rbind(symbols[, .(entrez.ID, taxon.ID, gene.realName = gene.Name, identifier = gene.Name, I)]) %>%
+        unique %>%
+        merge(data.table(taxon.ID = taxIDs, taxon = names(taxIDs)), by = 'taxon.ID') %>%
+        .[, entrez.ID := as.character(entrez.ID)] %>%
+        .[, identifier := make.names(identifier, T), taxon.ID]
+      
+      return(orthologs)
+    }
+    
+    oGenes <- genes
+    # Clean numerics (interpreted as entrez IDs) and remove them from further processing.
+    cleanGenes <- suppressWarnings(Filter(function(x) !is.na(as.integer(x)), genes))
+    idMap <- sapply(as.character(cleanGenes), function(x) which(goGenes == x), USE.NAMES = F)
+    
+    genes <- genes[!(genes %in% cleanGenes)]
+    
+    # If it matches (ENSG|ENSMUS|ENSRNO)\d{11}, it's an Ensembl ID (for human, mouse or rat).
+    if(length(genes) > 0) {
+      ensembl <- grep('(ENSG|ENSMUS|ENSRNO)\\d{11}', genes, value = T)
+      
+      if(length(ensembl) != 0) {
+        # Extract genes with a matching Ensembl ID and clean them too.
+        ensembls <- DATA.HOLDER[[taxa]]@gene.meta[ensembl.ID %in% ensembl, .(entrez.ID, ensembl.ID)]
+        cleanGenes <- c(cleanGenes, ensembls[, entrez.ID])
+        idMap <- c(idMap, sapply(ensembls[, ensembl.ID], function(x) which(oGenes == x), USE.NAMES = F))
+        
+        genes <- genes[!(genes %in% ensembls[, ensembl.ID])]
+      }
+    }
+    
+    if(length(genes > 0)) {
+      go <- grep('(GO:)\\d{7}', genes, value = T)
+      
+      if(length(go) != 0) {
+        gos <- DATA.HOLDER[[taxa]]@go[id %in% go, .(id, entrez.ID)]
+        cleanGenes <- c(cleanGenes, gos[, entrez.ID])
+        idMap <- c(idMap, sapply(gos[, id], function(x) which(oGenes == x), USE.NAMES = F))
+        
+        genes <- genes[!(genes %in% gos[, id])]
+      }
+    }
+    
+    # Try to match to gene names
+    if(length(genes) > 0) {
+      descriptors <- DATA.HOLDER[[taxa]]@gene.meta[gene.Name %in% genes, .(entrez.ID, gene.Name)]
+      if(nrow(descriptors) != 0) {
+        cleanGenes <- c(cleanGenes, descriptors[, entrez.ID])
+        idMap <- c(idMap, sapply(descriptors[, gene.Name], function(x) which(oGenes == x), USE.NAMES = F))
+        
+        genes <- genes[!(genes %in% descriptors[, gene.Name])]
+      }
+    }
+    
+    if(F) {
+      # If anything is left, try to match it to gene aliases.
+      if(length(genes) > 0) { # TODO this can multimatch and shouldn't, also no idMap yet
+        aliases <- DATA.HOLDER[[taxa]]@gene.meta[, parseListEntry(alias.Name), entrez.ID] %>%
+          .[grepl(paste0(genes, collapse = '|'), V1)]
+        if(nrow(aliases) > 0)
+          cleanGenes <- c(cleanGenes, aliases[, unique(entrez.ID)])
+      }
+    }
+    
+    mSuggestions <- NULL
+    if(length(genes) > 0) {
+      mSuggestions <- sapply(genes, function(gene) {
+        stringdist(tolower(gene), tolower(DATA.HOLDER[[taxa]]@gene.meta[, gene.Name])) %>% {
+          DATA.HOLDER[[taxa]]@gene.meta[which.min(.), gene.Name]
+        }
+      }) %>% setNames(genes)
+    }
+    
+    mGenes <- NULL
+    if(length(cleanGenes) > 0)
+      mGenes <- cleanGenes[order(unlist(idMap))]
+    
+    if(length(mGenes) > 0 || length(mSuggestions) > 0)
+      list(genes = mGenes, suggestions = mSuggestions)
+    else
+      NULL
+  }
+  
   #' Search Genes
   #' 
   #' Begin the gene search process. Cleans the parameters as necessary and calls a function to
@@ -574,126 +723,9 @@ server <- function(input, output, session) {
     
     if(is.null(taxa)) taxa <- options$taxa$value
     
-    tidyGenes <- function(genes, taxa) {
-      if(length(taxa) > 1) {
-        taxIDs <- getConfig(key = 'taxa')$mapping[taxa]
-        
-        symbols <- lapply(taxa, function(x) {
-          data.table(entrez.ID = tidyGenes(genes, x)$genes, taxon = x) %>% {
-            if(is.null(.) || ncol(.) == 1) NULL
-            else
-              merge(., DATA.HOLDER[[x]]@gene.meta[, .(.I, entrez.ID, gene.Name)], by = 'entrez.ID')
-          }
-        }) %>% rbindlist
-        
-        if(!is.null(symbols) && nrow(symbols) > 0) {
-          symbols <- symbols %>%
-            merge(data.table(taxon.ID = taxIDs, taxon = names(taxIDs)), by = 'taxon') %>%
-            .[, .SD[1], gene.Name]
-        } else
-          return(tidyGenes(genes, taxa[1]))
-        
-        orthologs <- symbols[, list(lapply(taxIDs[taxIDs != unique(taxon.ID)], function(t) {
-          homologs <- homologene(entrez.ID, unique(taxon.ID), t)
-          if(nrow(homologs) == 0) NULL
-          else {
-            homologs %>%
-              as.data.table %>%
-              melt(measure.vars = which(!grepl('_ID', colnames(.))), value.name = 'gene.realName', variable.name = 'taxon.ID') %>%
-              .[, entrez.ID := unlist(lapply(1:nrow(.), function(I) {
-                .SD[I, grepl(paste0(taxon.ID[I], '_ID'), colnames(.SD)), with = F]
-              }))] %>%
-              .[, !grepl('_ID', colnames(.)), with = F] %>%
-              .[, taxon.ID := as.integer(levels(taxon.ID))[taxon.ID]] %>%
-              cbind(identifier = unique(homologs[, as.character(unique(taxon.ID))])) %>%
-              merge(DATA.HOLDER[[names(taxIDs)[taxIDs == t]]]@gene.meta[, .(.I, entrez.ID = as.integer(entrez.ID))], by = 'entrez.ID')
-          }
-        })), taxon] %>% .[, V1] %>% rbindlist %>%
-          rbind(symbols[, .(entrez.ID, taxon.ID, gene.realName = gene.Name, identifier = gene.Name, I)]) %>%
-          unique %>%
-          merge(data.table(taxon.ID = taxIDs, taxon = names(taxIDs)), by = 'taxon.ID') %>%
-          .[, entrez.ID := as.character(entrez.ID)] %>%
-          .[, identifier := make.names(identifier, T), taxon.ID]
-        
-        return(orthologs)
-      }
-      
-      oGenes <- genes
-      # Clean numerics (interpreted as entrez IDs) and remove them from further processing.
-      cleanGenes <- suppressWarnings(Filter(function(x) !is.na(as.integer(x)), genes))
-      idMap <- sapply(as.character(cleanGenes), function(x) which(goGenes == x), USE.NAMES = F)
-      
-      genes <- genes[!(genes %in% cleanGenes)]
-      
-      # If it matches (ENSG|ENSMUS|ENSRNO)\d{11}, it's an Ensembl ID (for human, mouse or rat).
-      if(length(genes) > 0) {
-        ensembl <- grep('(ENSG|ENSMUS|ENSRNO)\\d{11}', genes, value = T)
-        
-        if(length(ensembl) != 0) {
-          # Extract genes with a matching Ensembl ID and clean them too.
-          ensembls <- DATA.HOLDER[[taxa]]@gene.meta[ensembl.ID %in% ensembl, .(entrez.ID, ensembl.ID)]
-          cleanGenes <- c(cleanGenes, ensembls[, entrez.ID])
-          idMap <- c(idMap, sapply(ensembls[, ensembl.ID], function(x) which(oGenes == x), USE.NAMES = F))
-          
-          genes <- genes[!(genes %in% ensembls[, ensembl.ID])]
-        }
-      }
-      
-      if(length(genes > 0)) {
-        go <- grep('(GO:)\\d{7}', genes, value = T)
-        
-        if(length(go) != 0) {
-          gos <- DATA.HOLDER[[taxa]]@go[id %in% go, .(id, entrez.ID)]
-          cleanGenes <- c(cleanGenes, gos[, entrez.ID])
-          idMap <- c(idMap, sapply(gos[, id], function(x) which(oGenes == x), USE.NAMES = F))
-          
-          genes <- genes[!(genes %in% gos[, id])]
-        }
-      }
-      
-      # Try to match to gene names
-      if(length(genes) > 0) {
-        descriptors <- DATA.HOLDER[[taxa]]@gene.meta[gene.Name %in% genes, .(entrez.ID, gene.Name)]
-        if(nrow(descriptors) != 0) {
-          cleanGenes <- c(cleanGenes, descriptors[, entrez.ID])
-          idMap <- c(idMap, sapply(descriptors[, gene.Name], function(x) which(oGenes == x), USE.NAMES = F))
-
-          genes <- genes[!(genes %in% descriptors[, gene.Name])]
-        }
-      }
-      
-      if(F) {
-        # If anything is left, try to match it to gene aliases.
-        if(length(genes) > 0) { # TODO this can multimatch and shouldn't, also no idMap yet
-          aliases <- DATA.HOLDER[[taxa]]@gene.meta[, parseListEntry(alias.Name), entrez.ID] %>%
-            .[grepl(paste0(genes, collapse = '|'), V1)]
-          if(nrow(aliases) > 0)
-            cleanGenes <- c(cleanGenes, aliases[, unique(entrez.ID)])
-        }
-      }
-      
-      mSuggestions <- NULL
-      if(length(genes) > 0) {
-        mSuggestions <- sapply(genes, function(gene) {
-          stringdist(tolower(gene), tolower(DATA.HOLDER[[taxa]]@gene.meta[, gene.Name])) %>% {
-            DATA.HOLDER[[taxa]]@gene.meta[which.min(.), gene.Name]
-          }
-        }) %>% setNames(genes)
-      }
-      
-      mGenes <- NULL
-      if(length(cleanGenes) > 0)
-        mGenes <- cleanGenes[order(unlist(idMap))]
-      
-      if(length(mGenes) > 0 || length(mSuggestions) > 0)
-        list(genes = mGenes, suggestions = mSuggestions)
-      else
-        NULL
-    }
-    
     # Done processing, handle the search.
     # TODO should prevent signature from working for length(taxa) > 1
     # TODO This { . } is a weird way to prevent lazy evaluation. Probably a better way
-    tidyGenes(genes, taxa) %>% { . } %>% handleSearch(options)
+    tidyGenes(genes, taxa) %>% { . } %>% handleSearch(genes, options)
   }
 }
