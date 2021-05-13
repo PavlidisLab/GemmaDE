@@ -287,7 +287,7 @@ server <- function(input, output, session) {
   #' Ends the search protocol with a failure message
   endFailure <- function() {
     setProgress()
-    output$results_header <- renderUI({ # TODO Tooltips aren't beautiful
+    output$results_header <- renderUI({
       generateResultsHeader(HTML('<h2 style="margin-top: 0;">No results</h2>'))
     })
     output$results <- NULL
@@ -298,19 +298,26 @@ server <- function(input, output, session) {
       if(length(taxon) == 1) {
         suggested <- lapply(getConfig('taxa')$core, function(t) {
           i <- 0
+          oGenes <- NA
           tmp <- tidyGenes(original, t)
-          if(!is.null(tmp))
+          if(!is.null(tmp)) {
             i <- length(tmp$genes)
+            oGenes <- tmp$genes
+          }
+          
           list(n = i,
+               genes = oGenes,
                taxon = t)
         }) %>% {
           suggestedTaxon <- lapply(., '[[', 'n') %>% which.max
-          .[[suggestedTaxon]]$taxon
+          list(taxon = .[[suggestedTaxon]]$taxon, genes = .[[suggestedTaxon]]$genes)
         }
         
-        if(suggested != taxon) {
+        if(suggested$taxon != taxon) {
           output$results_suggestions <- renderUI({
-            fluidRow(class = 'info-text', column(12, HTML(paste0('Did you mean to search ', paste0('<a taxon=\'', suggested, '\'>', suggested, '</a>'), ' experiments?'))))
+            fluidRow(class = 'info-text',
+                     column(12, HTML(paste0('Did you mean to search ', paste0('<a search taxon=\'', suggested$taxon, '\'>', suggested$taxon, '</a>'),
+                                            ' experiments? Otherwise, try using <a search genes=\'[', paste0(paste0('"', tidyGenes(suggested$genes, c(taxon, suggested$taxon))[taxon != suggested$taxon, gene.realName], '"'), collapse = ','), ']\'>', taxon, ' orthologs', '</a> of these ', suggested$taxon, ' genes.'))))
           })
           shinyjs::delay(100, { shinyjs::runjs('loadExamples();') })
           
@@ -324,7 +331,7 @@ server <- function(input, output, session) {
       }
       
       output$results_suggestions <- renderUI({
-        fluidRow(class = 'info-text', column(12, HTML(paste0('Did you mean: ', paste0('<a genes=\'[', paste0(paste0('"', revisedSearch, '"'), collapse = ','), ']\'>', paste0(suggestions, collapse = ', '), '</a>'), '?'))))
+        fluidRow(class = 'info-text', column(12, HTML(paste0('Did you mean: ', paste0('<a search genes=\'[', paste0(paste0('"', revisedSearch, '"'), collapse = ','), ']\'>', paste0(suggestions, collapse = ', '), '</a>'), '?'))))
       })
       shinyjs::delay(100, { shinyjs::runjs('loadExamples();') })
     }
@@ -354,7 +361,7 @@ server <- function(input, output, session) {
       
       output$results_header <- renderUI({
         generateResultsHeader(HTML(paste0('<div style="margin-bottom: 10px"><h2 style="display: inline">Enriched ',
-                                          format(n_exp, big.mark = ','), ' condition-control', ifelse(n_exp > 1, 's', ''), ' for ',
+                                          format(n_exp, big.mark = ','), ' condition comparison', ifelse(n_exp > 1, 's', ''), ' for ',
                                           ifelse(nrow(genes) == 1, genes[, gene.Name],
                                                  paste0('<span data-toggle="tooltip" data-placement="top" title="',
                                                         paste0(unique(genes[, gene.Name]), collapse = ', '), '">',
@@ -367,21 +374,8 @@ server <- function(input, output, session) {
       })
     }
     
-    conditions <- conditions[cf.Cat %in% options$categories$value]
-    
-    if(options$liteVersion$value) {
-      conditions <- conditions %>%
-        setorder(-stat) %>% {
-          rbind(head(., 100),
-                tail(., 100))
-        }
-    }
-    
-    conditions[, Contrast := paste0('<b>', cf.BaseLongUri, '</b> vs. <b>', cf.ValLongUri, '</b>')]
+    conditions[, `Condition Comparison` := stringi::stri_c('<b>', cf.BaseLongUri, '</b> vs. <b>', cf.ValLongUri, '</b>')]
     conditions[, distance := round(distance, 3)]
-    
-    if(length(options$taxa$value) == 1)
-      setnames(conditions, as.character(genes[, I]), genes[, gene.Name])
     
     advanceProgress('Cross-linking')
     
@@ -395,29 +389,19 @@ server <- function(input, output, session) {
       merge(tmp, by = c('rsc.ID', 'ee.ID'), sort = F, allow.cartesian = T) %>%
       .[, N := length(unique(ee.ID)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
     
-    # This chunk is costly, but associates all Gemma linkages. It would be great if we could defer this
-    # but I don't know how to :(
-    # It's much faster to not query ee.Name though
-    if(options$gemmaLink$value) {
-      tmp[, Evidence :=
-            ifelse(N > 1,
-                   paste0('<span class="pseudo-a" data-toggle="popover" title="Experiments" data-html="true" data-content="',
-                          paste0('<a target=_blank href=https://gemma.msl.ubc.ca/expressionExperiment/showExpressionExperiment.html?id=', unique(ee.ID), '>', unique(ee.Name), '</a>') %>% paste0(collapse = ', '),
-                          '">',
-                          paste(N, 'Experiments</span>')),
-                   paste0('<a target=_blank href=https://gemma.msl.ubc.ca/expressionExperiment/showExpressionExperiment.html?id=', unique(ee.ID), '>1 Experiment</a>')
-            ),
-          .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
-    } else
-      tmp[, Evidence := paste(N, paste0('Experiment', ifelse(N > 1, 's', ''))), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
+    tmp[, Evidence := ifelse(N == 1,
+                             stringi::stri_c('<span data-id="', ee.ID[1], '>1 Experiment</span>'),
+                             {
+                               dedup <- !duplicated(ee.ID)
+                               stringi::stri_c('<span data-id="', stringi::stri_c(ee.ID[dedup], collapse = ','),
+                                               '" data-ee="', stringi::stri_c(ee.Name[dedup], collapse = ','), '">', N, ' Experiments</span>')
+                             }),
+        .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
     
-    tmp %>%
-      .[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, N, Evidence)] %>%
+    tmp[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, N, Evidence)] %>%
       unique %>%
       merge(conditions, by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), sort = F) %>%
-      .[, `Relatedness` := case_when(stat > 1 ~ 'Positive', stat < 1 ~ 'Anti', T ~ 'Non')] %>%
-      setnames(c('stat', 'distance', 'zscore', 'pval', 'padj'), c('Test Statistic', 'Ontology Steps',
-                                                                  'Z-score', 'P-value', 'FDR'))
+      setnames(c('stat', 'score', 'distance'), c('Effect Size', 'Test Statistic', 'Ontology Steps'))
   }
   
   #' Handle Search
@@ -432,9 +416,6 @@ server <- function(input, output, session) {
     # For some reason genes becomes a Promise and this resolves it?
     genes
     
-    # Search is basically a passthrough when using the default method and no signature
-    # and returns a vector of gene indices. Otherwise in non-default operation,
-    # it returns a data.table with a row for each experiment and scores
     future({
       if(!is.null(genes) && length(options$taxa$value) > 1 && 'data.table' %in% class(genes)) {
         lapply(options$taxa$value, function(t) {
@@ -444,7 +425,7 @@ server <- function(input, output, session) {
         })
       } else if(length(options$taxa$value) == 1)
         search(genes$genes, options)
-    }, globals = c('DATA.HOLDER', 'NULLS.EXP')) %...>%(function(experiments) {
+    }, globals = 'DATA.HOLDER') %...>%(function(experiments) {
       if(!is.null(genes) && !('data.table' %in% class(genes)))
         makeSuggestions(rawGenes, options$taxa$value, genes$suggestions)
       
@@ -456,13 +437,23 @@ server <- function(input, output, session) {
       else {
         advanceProgress('Enriching')
         
-        # Disable gene contributions tab if not applicable
-        if(!all(sapply(experiments, is.integer)))
-          shinyjs::disable(selector = 'a[data-value="Gene Contributions"]')
-        else
-          shinyjs::enable(selector = 'a[data-value="Gene Contributions"]')
-        
-        doFinalize <- function(conditions) {
+        future({
+          if(length(options$taxa$value) == 1)
+            copy(enrich(experiments, options))
+          else {
+            lapply(1:length(options$taxa$value), function(t) {
+              mOp <- options
+              mOp$taxa$value <- options$taxa$value[t]
+              mSearchable <- experiments[[t]]
+              
+              enrich(mSearchable, mOp) %>%
+                setnames(genes[taxon == options$taxa$value[t], gene.realName],
+                         genes[taxon == options$taxa$value[t], identifier], skip_absent = T) # TODO ?
+            }) %>% rbindlist(fill = T) %>%
+              reorderTags3 %>%
+              .[, lapply(.SD, mean, na.rm = T), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
+          }
+        }, globals = c('CACHE.BACKGROUND', 'NULLS')) %...>%(function(conditions) {
           if(!is.null(session$userData$INTERRUPT))
             return(NULL)
           
@@ -481,8 +472,7 @@ server <- function(input, output, session) {
               mGenes <- genes$genes
             }
             
-            conditions <- endSuccess(geneInfo, experiments, conditions, options) %>%
-              setorder(-`Test Statistic`)
+            conditions <- endSuccess(geneInfo, experiments, conditions, options)
             
             if(!is.null(session$userData$INTERRUPT))
               return(NULL)
@@ -493,54 +483,19 @@ server <- function(input, output, session) {
             session$userData$plotData <- list(
               options = options,
               genes = mGenes,
-              conditions = conditions
+              conditions = conditions %>% copy
             )
             
             output$dataDownload <- downloadHandler(function() {
               paste0('enrichment-', Sys.Date(), '.csv')
             }, function(file) {
               write.csv(session$userData$plotData$conditions %>%
-                          .[, !c('Contrast', 'Evidence')] %>%
+                          .[, !c('Condition Comparison', 'Evidence')] %>%
+                          setorder(-`Test Statistic`, `Ontology Steps`) %>%
                           setnames(c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), c('Category', 'Baseline', 'Value')), file)
             }, 'text/csv')
           }
-        }
-        
-        # Gross extraction of memoised copies
-        if(memoise::is.memoised(enrichMem) &&
-           is.numeric(experiments) &&
-           memoise::has_cache(enrichMem)(experiments[order(experiments)],
-                                         options[-which(names(options) %in% c('gemmaLink', 'liteVersion'))],
-                                         0)) {
-          doFinalize(enrichMem(experiments[order(experiments)],
-                               options[-which(names(options) %in% c('gemmaLink', 'liteVersion'))],
-                               0))
-        } else {
-          future({
-            if(length(options$taxa$value) == 1)
-              copy(enrich(experiments, options))
-            else {
-              lapply(1:length(options$taxa$value), function(t) {
-                mOp <- options
-                mOp$taxa$value <- options$taxa$value[t]
-                mSearchable <- experiments[[t]]
-                
-                enrich(mSearchable, mOp) %>% copy %>%
-                  setnames(as.character(genes[taxon == options$taxa$value[t], I]), genes[taxon == options$taxa$value[t], identifier])
-              }) %>% rbindlist(fill = T) %>%
-                reorderTags3 %>%
-                .[, lapply(.SD, mean, na.rm = T),
-                  .(cf.Cat, cf.BaseLongUri, cf.ValLongUri), .SDcols = !'stat'] %>%
-                .[, stat := rowMeans2(as.matrix(.SD), na.rm = T), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri), .SDcols = !'distance']
-            }
-          }, globals = c('CACHE.BACKGROUND')) %...>%(function(conditions) {# Sort the genes so that caching is easy
-            if(is.numeric(experiments))
-              enrichPreMem(experiments[order(experiments)],
-                           options[-which(names(options) %in% c('gemmaLink', 'liteVersion'))], 0, conditions)
-            
-            doFinalize(conditions)
-          })
-        }
+        })
       }
     })
   }
@@ -592,7 +547,7 @@ server <- function(input, output, session) {
     oGenes <- genes
     # Clean numerics (interpreted as entrez IDs) and remove them from further processing.
     cleanGenes <- suppressWarnings(Filter(function(x) !is.na(as.integer(x)), genes))
-    idMap <- sapply(as.character(cleanGenes), function(x) which(goGenes == x), USE.NAMES = F)
+    idMap <- sapply(as.character(cleanGenes), function(x) which(oGenes == x), USE.NAMES = F)
     
     genes <- genes[!(genes %in% cleanGenes)]
     

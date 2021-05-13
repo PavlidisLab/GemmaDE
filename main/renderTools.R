@@ -12,20 +12,19 @@ generateResultsHeader <- function(title) {
 generateGeneContribs <- function(data, options, plot_conditions = NULL) {
   mData <- data %>%
     setorder(-`Test Statistic`) %>%
-    .[, !c('Test Statistic', 'Ontology Steps', 'N', 'Evidence', 'Relatedness',
-           'P-value', 'Z-score', 'FDR',
+    .[, !c('Test Statistic', 'Effect Size', 'Ontology Steps', 'N', 'Evidence',
            'cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri')] %>%
     head(10) %>% # TODO This is a stopgap for picker
-    melt(id.vars = 'Contrast') %>%
-    .[!is.finite(value), value := 0] %>%
-    .[, value := log10(1 + value / sum(value)), Contrast] %>%
-    .[, value := (value - min(value)) / (max(value) - min(value)), Contrast]
+    melt(id.vars = 'Condition Comparison') %>%
+    .[!is.finite(value), value := 0]# %>%
+    #.[, value := log10(1 + value / sum(value)), `Condition Comparison`] %>%
+    #.[, value := (value - min(value)) / (max(value) - min(value)), `Condition Comparison`]
 
   fig <- plot_ly(type = 'scatterpolar', fill = 'toself', mode = 'markers')
-  for(group in unique(mData[, Contrast])) {
+  for(group in unique(mData[, `Condition Comparison`])) {
     fig <- fig %>%
-      add_trace(r = mData[Contrast == group, value],
-                theta = mData[Contrast == group, variable],
+      add_trace(r = mData[`Condition Comparison` == group, value],
+                theta = mData[`Condition Comparison` == group, variable],
                 visible = 'legendonly',
                 name = group)
   }
@@ -83,24 +82,24 @@ generateResultsPlot <- function(genes, conditions, expr, options = getConfig(),
     if(plot_data == 'Gene Expression')
       ret <- heatmaply(expr$expr, labRow = NULL, showticklabels = c(F, T), scale = 'row',
                        Rowv = NULL, dendrogram = 'none', colors = cool_warm,
-                       col_side_colors = expr$metadata[, .(Contrast = baseline)])
+                       col_side_colors = expr$metadata[, .(`Condition Comparison` = baseline)])
   } else {
     if(plot_data == 'Gene Expression') {
       data <- expr$expr %>% reshape2::melt(value.name = 'Expression', varnames = c('Gene', 'Sample')) %>%
         merge(expr$metadata, by.x = 'Sample', by.y = 'name') %>%
-        mutate(Gene = as.factor(Gene), Contrast = baseline)
+        mutate(Gene = as.factor(Gene), `Condition Comparison` = baseline)
     }
     
     if(plot_type == 'Scatterplot') {
       ret <- (data %>% ggplot(aes(color = Gene, x = Sample, y = Expression)) +
-                geom_point(aes(text = paste('Accession:', accession), shape = Contrast), size = 2) +
+                geom_point(aes(text = paste('Accession:', accession), shape = `Condition Comparison`), size = 2) +
                 scale_color_brewer(palette = 'Dark2') +
-                geom_line(aes(group = interaction(Gene, Contrast))) +
+                geom_line(aes(group = interaction(Gene, `Condition Comparison`))) +
                 theme_classic() + theme(axis.text.x = element_blank())) %>%
         ggplotly %>%
         layout(yaxis = list(title = 'Expression (log<sub>2</sub> CPM)'))
     } else if(plot_type == 'Boxplot') {
-      ret <- suppressWarnings(suppressMessages((data %>% ggplot(aes(fill = Contrast,
+      ret <- suppressWarnings(suppressMessages((data %>% ggplot(aes(fill = `Condition Comparison`,
                                                                     x = Gene, y = Expression)) +
                                                   geom_boxplot() +
                                                   scale_fill_brewer(palette = 'Dark2') +
@@ -112,7 +111,7 @@ generateResultsPlot <- function(genes, conditions, expr, options = getConfig(),
       data <- data %>% mutate(GeneID = Gene, Gene = as.numeric(Gene))
       
       ret <- suppressWarnings(suppressMessages((data %>% ggplot(aes(text = paste0('Accession: ', accession, '<br>Gene: ', GeneID),
-                                                                    fill = Contrast, group = interaction(Gene, Contrast),
+                                                                    fill = `Condition Comparison`, group = interaction(Gene, `Condition Comparison`),
                                                                     x = Gene, y = Expression)) +
                                                   geom_jitter(position = position_jitterdodge(), alpha = 0.8) +
                                                   scale_fill_brewer(palette = 'Dark2') +
@@ -122,7 +121,7 @@ generateResultsPlot <- function(genes, conditions, expr, options = getConfig(),
                                                         xaxis = list(title = 'Gene', tickmode = 'array', autotick = F, tickvals = 1:(length(unique(data$Gene))), ticktext = unique(data$GeneID)),
                                                         yaxis = list(title = 'Expression (log<sub>2</sub> CPM)'))))
     } else if(plot_type == 'Violin plot') {
-      ret <- suppressWarnings(suppressMessages((data %>% ggplot(aes(fill = Contrast,
+      ret <- suppressWarnings(suppressMessages((data %>% ggplot(aes(fill = `Condition Comparison`,
                                                                     x = Gene, y = Expression)) +
                                                   geom_violin(alpha = 0.9) +
                                                   scale_fill_brewer(palette = 'Dark2') +
@@ -157,7 +156,8 @@ generateResultsCloud <- function(data, options) {
 #'
 #' @param session The Shiny session storing our data
 generateResults <- function(data) {
-  outputColumns <- c('Contrast', 'Evidence', 'Ontology Steps', 'Relatedness', 'Test Statistic', 'FDR')
+  print('Sending')
+  outputColumns <- c('Condition Comparison', 'Evidence', 'Ontology Steps', 'Effect Size', 'Test Statistic')
   
   mTable <- datatable(data[, outputColumns, with = F] %>% as.data.frame,
                       extensions = 'Buttons',
@@ -170,17 +170,17 @@ generateResults <- function(data) {
                         "$(a).text('Download');",
                         "$('div.dwnld').append(a);"
                       ),
-                      escape = -(c(which(outputColumns == 'Contrast'), which(outputColumns == 'Evidence')) + 1),
+                      escape = -(c(which(outputColumns == 'Condition Comparison'), which(outputColumns == 'Evidence')) + 1),
                       filter = 'top',
                       options = list(pageLength = 10,
                                      order = list(
                                        list(which(outputColumns == 'Test Statistic'), 'desc'),
                                        list(which(outputColumns == 'Ontology Steps'), 'asc')),
-                                     language = list(lengthMenu = 'Show _MENU_ conditions per page',
+                                     language = list(lengthMenu = 'Show _MENU_ condition comparisons per page',
                                                      processing = '',
-                                                     emptyTable = 'No matching conditions found.',
-                                                     infoEmpty = 'Showing 0 to 0 of 0 over condition-comparisons',
-                                                     info = 'Showing _START_ to _END_ of _TOTAL_ condition-comparisons',
+                                                     emptyTable = 'No matching condition comparisons found.',
+                                                     infoEmpty = 'Showing 0 to 0 of 0 over condition comparisons',
+                                                     info = 'Showing _START_ to _END_ of _TOTAL_ condition comparisons',
                                                      infoFiltered = '(filtered from over _MAX_)'),
                                      fixedHeader = T,
                                      initComplete = JS('onTableCreated'),
@@ -192,10 +192,9 @@ generateResults <- function(data) {
                                      columnDefs = list(
                                        list(targets = 0,
                                             width = '10%',
-                                            searchable = T,
                                             className = 'cf-cat'),
-                                       list(targets = which(outputColumns == 'Contrast'),
-                                            width = '50%',
+                                       list(targets = which(outputColumns == 'Condition Comparison'),
+                                            width = '46%',
                                             searchable = T, orderable = F),
                                        list(targets = which(outputColumns == 'Evidence'),
                                             width = '10%',
@@ -203,19 +202,14 @@ generateResults <- function(data) {
                                             searchable = F, orderable = F),
                                        list(targets = which(outputColumns == 'Test Statistic'),
                                             render = JS('asPval'),
-                                            width = '5%',
-                                            searchable = F),
-                                       list(targets = which(outputColumns == 'Ontology Steps'),
-                                            width = '5%'),
-                                       list(targets = which(outputColumns == 'Relatedness'),
-                                            width = '5%'),
-                                       list(targets = which(outputColumns == 'FDR'),
+                                            width = '12%'),
+                                       list(targets = which(outputColumns == 'Effect Size'),
                                             render = JS('asPval'),
-                                            width = '5%',
-                                            searchable = F)
+                                            width = '12%'),
+                                       list(targets = which(outputColumns == 'Ontology Steps'),
+                                            width = '10%')
                                      ),
                                      search = list(
-                                       list(regex = T),
                                        list(regex = T)
                                      ),
                                      buttons = list(

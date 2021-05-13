@@ -59,17 +59,17 @@ gMeta <- data.table(entrez.ID = as.character(1:nrow(fc)),
                     gene.Desc = NA_character_,
                     mfx.Rank = contrasts[, sum(probability), entrez.ID][, sqrt(V1 / max(V1))])
 
-DATA.HOLDER$artificial <- new('EData', taxon = 'artificial', data = list(fc = fc, adj.pv = pv),
+DATA.HOLDER$artificial <- new('EData', taxon = 'artificial', data = list(adj.pv = pv),
                               experiment.meta = eMeta, gene.meta = gMeta,
                               go = data.table(entrez.ID = NA, category = NA, id = NA, term = NA))
-rm(fc, pv, N, EXPERIMENTS, eMeta, gMeta, eContrasts)
+rm(pv, N, EXPERIMENTS, eMeta, gMeta, eContrasts)
 
 DATA.HOLDER$artificial@gene.meta <- DATA.HOLDER$artificial@gene.meta[, c('n.DE', 'dist.Mean', 'dist.SD') :=
                                                                        list(rowSums2(DATA.HOLDER$artificial@data$adj.pv < 0.05, na.rm = T),
-                                                                            rowMeans2(DATA.HOLDER$artificial@data$fc, na.rm = T),
-                                                                            Rfast::rowVars(DATA.HOLDER$artificial@data$fc, std = T, na.rm = T))]
+                                                                            rowMeans2(fc, na.rm = T),
+                                                                            Rfast::rowVars(fc, std = T, na.rm = T))]
 
-DATA.HOLDER$artificial@data$zscore <- (DATA.HOLDER$artificial@data$fc - DATA.HOLDER$artificial@gene.meta$dist.Mean) / DATA.HOLDER$artificial@gene.meta$dist.SD
+DATA.HOLDER$artificial@data$zscore <- (fc - DATA.HOLDER$artificial@gene.meta$dist.Mean) / DATA.HOLDER$artificial@gene.meta$dist.SD
 
 CACHE.BACKGROUND$artificial <- precomputeTags('artificial')
 

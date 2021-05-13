@@ -11,6 +11,8 @@ $(document).one('shiny:connected', function() {
   
   // Clickable examples below entries
   loadExamples();
+  
+  $('[data-toggle="tooltip"]').tooltip();
 });
 
 $(document).on('shiny:value', function(event) {
@@ -45,6 +47,9 @@ function loadExamples() {
   $('a[taxon]').click(function() {
     $('#taxa').selectpicker('val', $(this).attr('taxon'))
     Shiny.setInputValue('taxa', $(this).attr('taxon'));
+    
+    if($(this)[0].hasAttribute('search'))
+      $('#search').click();
   });
 }
 
@@ -96,6 +101,18 @@ function addMathJax() {
 }
 
 function onTableDraw() {
+  $('span[data-id]').each(function(i) {
+    if(!$(this)[0].hasAttribute('data-ee')) {
+      $(this).replaceWith('<a target=_blank href=https://gemma.msl.ubc.ca/expressionExperiment/showExpressionExperiment.html?id=' + $(this).attr('data-id') + '>1 Experiment</a>');
+    } else {
+      var names = $(this).attr('data-ee').split(',');
+      
+      $(this).replaceWith('<span class="pseudo-a" data-toggle="popover" title="Experiments" data-html="true" data-content="' + $(this).attr('data-id').split(',').map(function(el, index) {
+        return '<a target=_blank href=https://gemma.msl.ubc.ca/expressionExperiment/showExpressionExperiment.html?id=' + el + '>' + names[index] + '</a>';
+      }).join(', ') + '">' + names.length + ' Experiments</span>');
+    }
+  });
+  
   $('[data-toggle="popover"]').popover();
   
   $('[data-toggle="popover"]').click(function(e) {

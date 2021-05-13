@@ -1,11 +1,13 @@
 source('/home/jsicherman/Thesis Work/requirements.R')
-source('dependencies.R')
+source('/home/jsicherman/Thesis Work/dependencies.R')
 
 library(parallel)
+library(edgeR)
+library(compcodeR)
 options(mc.cores = 5)
 USE <- 'simulated'
 
-rm(NULLS.EXP, CACHE.BACKGROUND, ONTOLOGIES, ONTOLOGIES.DEFS)
+rm(NULLS, CACHE.BACKGROUND, ONTOLOGIES, ONTOLOGIES.DEFS)
 DATA.HOLDER[c('artificial', 'mouse', 'rat')] <- NULL
 
 mu.phi.estimates <- system.file("extdata", "Pickrell.Cheung.Mu.Phi.Estimates.rds",
@@ -289,7 +291,7 @@ CONTRAST_AFFINITY <- lapply(unique(EXP_CONTRASTS), function(contrast) {
   data.table(contrast = contrast,
              entrez.ID = 1:N_GENES,
              probability = r1exp(N_GENES, n.1 = 10)) %>%
-    .[, effect := 1.5 + probability/2] %>%
+    .[, effect := 1.5 + probability / 2] %>%
     .[sample(c(T, F), N_GENES, T, c(0.5012399, 0.4987578)), effect := 1 / effect]
 }) %>% rbindlist
 

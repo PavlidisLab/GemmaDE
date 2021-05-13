@@ -7,7 +7,7 @@ options(max.progress.steps = 3)
 options(max.gemma = 1000)
 options(chunk.size = 200)
 
-addConfig <- function(description, category, extras = NULL, ...) {
+addConfig <- function(description, tooltip = '', category, extras = NULL, ...) {
   mList <- getOption('app.registered')
   mNew <- list(...)
   if(names(mNew) %in% unlist(mList)) return(NULL)
@@ -18,6 +18,8 @@ addConfig <- function(description, category, extras = NULL, ...) {
       mEntry[[mName]] <- extras[[mName]]
     }
   }
+  
+  mEntry[['tooltip']] <- tooltip
   
   if(is.null(mList))
     mList <- list(mEntry)
@@ -47,17 +49,21 @@ getConfig <- function(key = NULL, category = NULL, ...) {
 }
 
 as.input <- function(entry) {
-  if(is.numeric(entry$value)) {
-    if(length(entry$value) == 1)
-      numericInput(entry$name, entry$description, value = entry$value,
-                   min = entry$min, max = entry$max, step = entry$step)
-    else
-      sliderInput(entry$name, entry$description, value = entry$value,
-                  min = entry$min, max = entry$max, step = entry$step, ticks = entry$ticks)
-  } else if(is.character(entry$value)) {
-    pickerInput(entry$name, entry$description, entry$choices, entry$value, switch(is.null(entry$multiple) + 1, entry$multiple, F))
-  } else if(is.logical(entry$value))
-    materialSwitch(entry$name, entry$description, entry$value, right = T)
+  as_input <- function() {
+    if(is.numeric(entry$value)) {
+      if(length(entry$value) == 1)
+        numericInput(entry$name, entry$description, value = entry$value,
+                     min = entry$min, max = entry$max, step = entry$step)
+      else
+        sliderInput(entry$name, entry$description, value = entry$value,
+                    min = entry$min, max = entry$max, step = entry$step, ticks = entry$ticks)
+    } else if(is.character(entry$value)) {
+      pickerInput(entry$name, entry$description, entry$choices, entry$value, switch(is.null(entry$multiple) + 1, entry$multiple, F))
+    } else if(is.logical(entry$value))
+      materialSwitch(entry$name, entry$description, entry$value, right = T)
+  }
+  
+  span(as_input(), `data-toggle` = 'tooltip', title = entry$tooltip)
 }
 
 do.update <- function(sess, entry, val) {
@@ -73,19 +79,16 @@ do.update <- function(sess, entry, val) {
 }
 
 options(app.registered = NULL)
-addConfig(pv = 0.05, description = 'Significance threshold', category = 'Scoring', extras = list(min = 0, max = 1, step = 0.01))
-addConfig(req = 1, description = 'Required DEG count', category = 'Scoring', extras = list(min = 1, max = NA, step = 1))
-addConfig(fc = c(0, 100), description = 'Fold-change threshold', category = 'Filtering', extras = list(min = 0, max = 100, step = 1, ticks = F))
-addConfig(mfx = T, description = 'Score multifunctionality', category = 'Scoring')
-addConfig(geeq = T, description = 'Score experiment quality (GEEQ)', category = 'Scoring')
-addConfig(method = 'diff', description = 'Scoring function', category = 'Scoring', extras = list(choices = list(`M-VSM` = 'mvsm', `Difference` = 'diff', `Correlation` = 'cor')))
-addConfig(gemmaLink = T, description = 'Add links to Gemma', category = 'Filtering')
-addConfig(liteVersion = T, description = 'Only fetch top 200', category = 'Filtering')
+addConfig(pv = 0.05, description = 'Significance threshold', tooltip = 'The maximum FDR-corrected p-value to consider a gene differentially expressed', category = 'Scoring', extras = list(min = 0, max = 1, step = 0.01))
+addConfig(dist = 1, description = 'Maximum term distance', tooltip = 'The maximum distance each condition comparison can be from the annotated one. Larger values will take longer to search, but will allow for greater grouping', category = 'Filtering', extras = list(min = 0, max = 1.5, step = 0.25))
+addConfig(mfx = T, description = 'Score multifunctionality', tooltip = 'Whether or not to weight each gene\'s contribution by its multifunctionality rank', category = 'Scoring')
+addConfig(geeq = T, description = 'Score experiment quality (GEEQ)', tooltip = 'Whether or not to weight each experiment\'s contribution by its GEEQ score', category = 'Scoring')
+addConfig(method = 'diff', description = 'Scoring function', tooltip = 'Which scoring algorithm to use. You should use the default unless you want to search for conditions that resemble a specific DE signature', category = 'Scoring', extras = list(choices = list(`M-VSM` = 'mvsm', `Default` = 'diff', `Correlation` = 'cor')))
 addConfig(categories = c('age', 'behavior', 'biological process', 'biological sex',
                          'cell type', 'clinical history', 'diet', 'disease', 'environmental history',
                          'environmental stress', 'genotype', 'medical procedure', 'molecular entity',
                          'organism part', 'phenotype', 'temperature', 'treatment'),
-          description = 'Categories to display', category = 'Filtering',
+          description = 'Categories to display', tooltip = 'Which topics to include. Limiting these will speed up the computation at the cost of potentially missing significant results', category = 'Filtering',
           extras = list(choices = list(`age` = 'age', `behavior` = 'behavior',
                                        `biological process` = 'biological process', `biological sex` = 'biological sex',
                                        `block` = 'block', `cell line` = 'cell line', `cell type` = 'cell type',
@@ -114,6 +117,7 @@ addConfig(taxa = 'human', description = NA, category = NA,
                         core = c('human', 'mouse', 'rat'),
                         multiple = T,
                         mapping = c(human = 9606, mouse = 10090, rat = 10116)))
+rm(mChoices)
 addConfig(sig = '', description = NA, category = NA)
 
 source('/home/jsicherman/Thesis Work/main/process.R')

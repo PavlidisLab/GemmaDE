@@ -29,8 +29,8 @@ cor.wt <- function(x, y, w = rep(1, length(y))) {
 #' * mfx: Whether or not to scale by gene multifunctionality
 #' * geeq: Whether or not to scale by GEEQ score
 #' @param inprod Whether to use the generated null distribution or not
-search <- function(genes, options = getConfig(), inprod = T, DATA = NULL) {
-  if(is.null(DATA)) # TODO Remove after doing scores as this might trigger a full copy
+search <- function(genes, options = getConfig(), DATA = NULL) {
+  if(is.null(DATA))
     DATA <- DATA.HOLDER
   
   mData <- DATA[[options$taxa$value]]
@@ -42,14 +42,12 @@ search <- function(genes, options = getConfig(), inprod = T, DATA = NULL) {
   if(n.genes == 0)
     return(NULL)
   
-  # No searching if we have this shortcut
-  # A more elegant solution would be nice
-  if(inprod && options$method$value == 'diff')
-    return(geneMask)
-  
   query <- suppressWarnings(options$sig$value %>% as.numeric)
   # TODO Should signal why it stopped (mismatch of signature length)
   if(length(query) > 1 && length(query) != n.genes)
+    return(NULL)
+  
+  if(length(query) == 0 && options$method$value != 'diff')
     return(NULL)
   
   # P-values for only the GOI
@@ -61,40 +59,20 @@ search <- function(genes, options = getConfig(), inprod = T, DATA = NULL) {
     pv <- t(pv)
   
   # Only retain experiments that have at least one of the GOI as DE (pv < threshold)
-  experimentMask <- pv <= options$pv$value
-  logFC <- mData@data$fc[geneMask, ]
+  significanceMask <- pv <= options$pv$value
   zScore <- mData@data$zscore[geneMask, ]
   
-  logFC[is.na(logFC)] <- 0
   zScore[is.na(zScore)] <- 0
   
-  if(n.genes == 1) {
-    logFC <- t(logFC)
+  if(n.genes == 1)
     zScore <- t(zScore)
-  }
   
-  logFC <- logFC %>% as.data.table
-  zScore <- zScore %>% as.data.table
-  pv <- pv %>% as.data.table
-  
-  # Mask experiments that have at least n of the GOI with threshold_u > abs(logFC) > threshold_l
-  if(options$fc$value[1] != 0 || options$fc$value[2] != 0) {
-    exMask <- abs(logFC) >= options$fc$value[1]
-    
-    if(options$fc$value[1] != options$fc$value[2])
-      exMask <- exMask & (abs(logFC) <= options$fc$value[2])
-    
-    experimentMask <- experimentMask & exMask
-  }
-  
-  # Fail if 0 experiments show these genes as DE
-  # TODO Not technically necessary anymore?
-  if(sum(experimentMask) == 0)
-    return(NULL)
+  zScore <- as.data.table(zScore)
+  pv <- as.data.table(pv)
   
   # Number of DEGs for experiments that pass thresholds
-  experimentMeta <- mData@experiment.meta %>% copy %>% as.data.frame %>%
-    `rownames<-`(.[, 'rsc.ID']) %>% .[, c('ee.qScore', 'n.DE', 'n.detect')]
+  experimentMeta <- mData@experiment.meta[, .(rsc.ID, ee.qScore, n.DE, n.detect)] %>%
+    as.data.frame %>% `rownames<-`(.[, 'rsc.ID'])
   
   experimentMeta$n.DE[is.na(experimentMeta$n.DE)] <- 0
   
@@ -103,19 +81,6 @@ search <- function(genes, options = getConfig(), inprod = T, DATA = NULL) {
   else
     experimentMeta$ee.qScore <- pmax(experimentMeta$ee.qScore + 1, 0, na.rm = T)
   experimentMeta$ee.qScore <- sqrt(experimentMeta$ee.qScore / 2)
-  
-  if(length(query) == 0 || any(is.na(query))) {
-    # TODO Consider warning if length(query) > 1 (some number was invalid)
-    zScore <- abs(zScore)
-    
-    # TODO maybe this should come after pv weight
-    if(n.genes == 1)
-      query <- max(zScore %>% as.matrix %>% `*`(experimentMask))
-    else
-      query <- Rfast::rowMaxs(zScore %>% as.matrix %>% `*`(experimentMask), value = T)
-  } else
-    zScore <- logFC # Doesn't make sense to query a z-score
-  # TODO it might if we only care about directionality
   
   if(options$mfx$value)
     MFX_WEIGHT <- 1 - mData@gene.meta$mfx.Rank[geneMask]
@@ -127,10 +92,10 @@ search <- function(genes, options = getConfig(), inprod = T, DATA = NULL) {
   mNames <- c(mData@gene.meta$gene.Name[geneMask], 'score')
   
   if(options$method$value == 'diff') {
-    ret <- (zScore - query) %>% `*`(MFX_WEIGHT) %>% t %>% as.data.table
-    mNames <- mData@gene.meta$gene.Name[geneMask]
-  } else if(options$method$value == 'cor') { # TODO Other methods should also mfx weight the gene matrix
-    ret <- zScore %>% t %>% as.data.table %>%
+    ret <- zScore %>% abs %>% `*`(MFX_WEIGHT) %>% t %>% as.data.table %>%
+      .[, score := Rfast::rowsums(as.matrix(.))]
+  } else if(options$method$value == 'cor') {
+    ret <- zScore %>% `*`(MFX_WEIGHT) %>% t %>% as.data.table %>%
       .[, score := abs(cor.wt(zScore %>% as.matrix, query, MFX_WEIGHT))] %>% # TODO abs?
       .[is.nan(score), score := 0]
   } else if(options$method$value == 'mvsm') {
@@ -152,55 +117,19 @@ search <- function(genes, options = getConfig(), inprod = T, DATA = NULL) {
       else cross_q / sqrt(cross_x * crossprod(zScore[, i]))
     })
     
-    ret <- zScore %>% t %>% as.data.table %>%
+    ret <- zScore %>% `*`(MFX_WEIGHT) %>% t %>% as.data.table %>%
       .[, score := abs(scores)] %>%
       .[is.nan(score), score := 0]
   }
   
-  # TODO it may be more appropriate to add and divide by constants
-  # (ie. 1e5, sufficiently large enough to guarantee it's always positive)
-  # to prevent imprudent score deviations.
-  # This seems to actually make it worse
-  experimentN <- Rfast::colsums(experimentMask)
+  experimentN <- Rfast::colsums(significanceMask)
   
   ret %>% setnames(mNames) %>%
-    .[, is.passing := experimentN >= options$req$value] %>%
     .[, f.IN := experimentN / n.genes] %>%
     .[, f.OUT := pmax(0, experimentMeta$n.DE - experimentN) / experimentMeta$n.detect] %>%
     .[, ee.q := experimentMeta$ee.qScore] %>%
-    .[, rn := colnames(zScore)]
-  
-  if('score' %in% colnames(ret)) {
-    ret[, score := (score + abs(min(score))) * ee.q * (1 + f.IN) / (1 + 10^(f.OUT))] %>%
-      .[, score := score / max(score)] %>%
-      setorder(-score)
-  } else {
-    ret <- data.table(
-      rn = ret[, rn],
-      ret[, lapply(1:n.genes, function(i) {
-        col <- .SD[, i, with = F]
-        ((col + abs(min(col))) * ee.q * (1 + experimentMask[i, ] / n.genes) /
-            (1 + 10^(pmax(0, experimentMeta$n.DE - experimentMask[i, ]) / experimentMeta$n.detect))) %>%
-          `/`(max(.))
-      }), .SDcols = !c('rn', 'is.passing', 'f.IN', 'f.OUT', 'ee.q')],
-      ret[, .(is.passing, f.IN, f.OUT, ee.q)]
-    )
-  }
-  
-  # TODO What happens when these stats are negative? Taking abs for now
-  if(exists('NULLS.EXP', envir = globalenv()) && options$method$value == 'diff') {
-    ret %>%
-      merge(NULLS.EXP[[options$taxa$value]], by = 'rn', all = T, sort = F) %>% {
-        data.table(
-          rn = .[, rn],
-          .[, lapply(.SD, function(col) {
-            abs((col - M1) / S1)
-          }), .SDcols = !c('rn', 'is.passing', 'f.IN', 'f.OUT', 'ee.q', 'M1', 'S1')],
-          .[, .(is.passing, f.IN, f.OUT, ee.q)]
-        )
-      }
-  } else
-    ret
+    .[, rn := colnames(zScore)] %>%
+    setorder(-score)
 }
 
 #' getTags
@@ -240,6 +169,9 @@ getTags <- function(taxa = getConfig(key = 'taxa')$value,
 #' @param POST Whether to do "post-pre-processing" like reordering and trimming
 precomputeTags <- function(taxa = getConfig(key = 'taxa')$value, mGraph = NULL, graphTerms = NULL,
                            DATA = NULL, POST = T) {
+  if(is.null(DATA))
+    DATA <- DATA.HOLDER
+  
   if(is.null(mGraph))
     mGraph <- simplify(igraph::graph_from_data_frame(ONTOLOGIES[, .(as.character(ChildNode_Long), as.character(ParentNode_Long))]))
   if(is.null(graphTerms))
@@ -269,10 +201,10 @@ precomputeTags <- function(taxa = getConfig(key = 'taxa')$value, mGraph = NULL, 
   else
     mBagOfWords <- DATA[[taxa]]@experiment.meta[bagged, .(tag = unique(as.character(cf.BaseLongUri)),
                                                           type = 'cf.BaseLongUri'), .(rsc.ID, ee.ID)] %>%
-    .[!(tag %in% graphTerms)] %>%
+    #.[!(tag %in% graphTerms)] %>%
     rbind(DATA[[taxa]]@experiment.meta[bagged, .(tag = unique(as.character(cf.ValLongUri)),
-                                                 type = 'cf.ValLongUri'), .(rsc.ID, ee.ID)] %>%
-            .[!(tag %in% graphTerms)]) %>%
+                                                 type = 'cf.ValLongUri'), .(rsc.ID, ee.ID)]) %>%
+    #.[!(tag %in% graphTerms)]) %>%
     .[, lapply(.SD, function(x) parseListEntry(as.character(x))), .(rsc.ID, ee.ID, type)] %>%
     .[, ID := 1:length(tag), .(rsc.ID, ee.ID, type)]
   
@@ -318,10 +250,9 @@ precomputeTags <- function(taxa = getConfig(key = 'taxa')$value, mGraph = NULL, 
   
   # Do a grid expansion of bagged terms, maintaining indexed ordering
   if(nrow(mBagOfWords) > 0 && nrow(mTags[!is.na(ID) & distance < 1]) > 0)
-    mTagsExpanded <- mTags # TODO this loses tags?
-  #  mTagsExpanded <- mTags %>% .[!is.na(ID) & distance < 1, expand.grid(aggregate(.SD[, tag], by = list(.SD[, ID]), FUN = list)[[-1]]) %>%
-  #                                 apply(1, paste0, collapse = '; ') %>% unique, .(rsc.ID, ee.ID, type)] %>%
-  #  .[, c('tag', 'V1') := list(V1, NULL)] %>% rbind(mTags[is.na(ID) | distance >= 1, .(rsc.ID, ee.ID, type, tag)])
+    mTagsExpanded <- mTags %>% .[!is.na(ID) & distance < 1, expand.grid(aggregate(.SD[, tag], by = list(.SD[, ID]), FUN = list)[[-1]]) %>%
+                                   apply(1, paste0, collapse = '; ') %>% unique, .(rsc.ID, ee.ID, type)] %>%
+    .[, c('tag', 'V1') := list(V1, NULL)] %>% rbind(mTags[is.na(ID) | distance >= 1, .(rsc.ID, ee.ID, type, tag)])
   else
     mTagsExpanded <- mTags
   
@@ -437,87 +368,54 @@ reorderTags3 <- function(data) {
     .[, !c('reverse', 'b', 'v', 'N.x', 'N.y')]
 }
 
-# TODO this could be memoized when inprod && is.integer(rankings)
+#' Normalize scores
+#' 
+#' Convert raw rankings (@seealso search) to z-scores, and also calculate a column needed for experiment-wise
+#' normalization.
+#'
+#' @param scores The output of (@seealso search).
+#' @param taxa The taxon
+normalize <- function(scores, taxa = getConfig(key = 'taxa')$value) {
+  scores %>%
+    merge(NULLS[[taxa]], by = 'rn', sort = F) %>%
+    .[, lapply(.SD,
+               function(x) (x - score.mean) / score.sd),
+      .SDcols = !c('score.mean', 'score.sd', 'rn', 'score', 'f.IN', 'f.OUT' ,'ee.q')] %>% {
+        data.table(rn = scores$rn, ., scores[, .(score, f.IN, f.OUT, ee.q)])
+      } %>%
+    .[, score := rowSums2(as.matrix(.SD), na.rm = T), .SDcols = !c('rn', 'score', 'f.IN', 'f.OUT', 'ee.q')] %>%
+    .[, normalization := ee.q * (1 + f.IN) / (1 + 10^f.OUT)]
+}
 
 #' Enrich
 #' 
 #' Given rankings (@seealso search), generate a ranking-weighted count of all terms that can be
 #' derived from tags present in the experiment.
 #'
-#' @param rankings A named numeric (@seealso search).
+#' @param rankings The output of (@seealso search).
 #' @param options The options
-#' @param inprod Whether to use the generated null distribution or not
-#' @param keepopen How many of the entire files (used when @param inprod is true) to keep in memory (per species)
 #' @param CACHE A cache to use. If null, uses the global CACHE.BACKGROUND
-enrich <- function(rankings, options = getConfig(), inprod = T, keepopen = 0, CACHE = NULL) {
-  if(inprod && is.numeric(rankings))
-    return(enrichMem(rankings, options, keepopen))
-  
-  mMaps <- getTags(options$taxa$value, rankings$rn, CACHE = CACHE)
+enrich <- function(rankings, options = getConfig(), CACHE = NULL) {
+  terms <- getTags(options$taxa$value, rankings$rn, CACHE = CACHE)
   
   # Stat of 0 means it's as expected (0 SD from mean)
-  mMaps <- mMaps[as.character(cf.BaseLongUri) != as.character(cf.ValLongUri)] %>%
-    merge(rankings[, !c('is.passing', 'f.IN', 'f.OUT', 'ee.q')],
-          by.x = 'rsc.ID', by.y = 'rn', sort = F, allow.cartesian = T)
+  terms <- rankings %>% normalize(options$taxa$value) %>%
+    merge(terms, by.x = 'rn', by.y = 'rsc.ID', sort = F, allow.cartesian = T) %>%
+    .[distance <= options$dist$value & cf.Cat %in% options$categories$value]
   
-  for(i in 8:ncol(mMaps))
-    set(mMaps, which(is.na(mMaps[[i]])), i, 0)
-  
-  mMaps[, lapply(.SD, function(stat) { sum(stat + 1, na.rm = T) / .N }),
-        .(cf.Cat, cf.BaseLongUri, cf.ValLongUri), .SDcols = !c('reverse', 'distance', 'rsc.ID', 'ee.ID')] %>%
-    merge(mMaps[, .(distance = round(mean(distance, na.rm = T), 2)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)],
-          by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri')) %>%
-    .[, stat := Rfast::rowmeans(as.matrix(.SD[, !c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri', 'distance')]))] %>%
+  terms[, .(distance = round(mean(distance, na.rm = T), 2),
+            stat = mean(score),
+            normalization = mean(normalization)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
     setorder(-stat, distance) %>%
-    .[, .SD[1], stat]
+    .[, .SD[1], stat] %>%
+    merge(
+      terms[cf.Cat %in% .$cf.Cat & cf.BaseLongUri %in% .$cf.BaseLongUri & cf.ValLongUri %in% .$cf.ValLongUri,
+            suppressWarnings(col_wilcoxon_onesample(as.matrix(.SD), alternative = 'greater', exact = F) %>% {
+              setNames(as.list(1 - .[, 3]), rownames(.))
+            }),
+            .(cf.Cat, cf.BaseLongUri, cf.ValLongUri),
+            .SDcols = !c('reverse', 'distance', 'ee.ID', 'rn', 'score', 'f.IN', 'f.OUT', 'ee.q', 'normalization')],
+      by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), sort = F) %>%
+    .[, score := Rfast::rowsums(as.matrix(.SD) * normalization), .SDcols = !c('stat', 'cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri', 'distance', 'normalization')] %>%
+    .[, !'normalization']
 }
-
-maybeMemoise <- function(FUN, fname) {
-  if(!exists(fname, envir = globalenv())) {
-    if(Sys.getenv('RSTUDIO') == '1' || getOption('force.memoise', F))
-      FUN <- memoise::memoise(FUN)
-    
-    assign(fname, FUN, envir = globalenv())
-  }
-}
-
-enrichPreMem <- function(rankings, options, keepopen = 0, forceCache = NULL) {
-  enrichMem(rankings, options, keepopen)
-}
-
-maybeMemoise(function(rankings, options, keepopen = 0) {
-  if(exists('forceCache', envir = parent.frame(2)) && !is.null(get('forceCache', envir = parent.frame(2))))
-    return(get('forceCache', envir = parent.frame(2)))
-  
-  if(keepopen > 0 && !exists('SINGLES'))
-    assign('SINGLES', new.env(parent = globalenv()), envir = globalenv())
-  
-  # TODO it would be nice to have smaller clusters or cluster commonly searched genes together
-  lapply(unique(ceiling(rankings / getOption('chunk.size', 200))), function(filenum) {
-    mFile <- paste0(options$taxa$value, '_', filenum)
-    if(exists('SINGLES', envir = globalenv()) &&
-       exists(mFile, envir = SINGLES))
-      fileConnection <- get(mFile, envir = SINGLES)
-    else
-      fileConnection <- readRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/singlegene/', mFile, '.rds'))
-    
-    fileConnection %>% {
-      if(keepopen > 0 && !exists(mFile, envir = SINGLES)) {
-        rm(list = ls(pattern = paste0(options$taxa$value, '_.*'), envir = SINGLES) %>%
-             head(ifelse(length(.) == keepopen, 1, 0)), envir = SINGLES)
-        assign(mFile, ., envir = SINGLES)
-      }
-      .
-    } %>% .[I %in% rankings] %>% dcast(... ~ I, value.var = 'stat')
-  }) %>% Reduce(function(...) merge(..., by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri', 'distance')), .) %>%
-    .[, stat := Rfast::rowmeans(as.matrix(.SD[, !c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri', 'distance')]))] %>%
-    .[, sumstat := sum(stat)] %>%
-    .[, zscore := (stat / sumstat - .N / nrow(.)) /
-        sqrt(((stat + .N) / (sumstat + nrow(.))) * (1 - (stat + .N) / (sumstat + nrow(.))) * (1 / sumstat + 1 / nrow(.))),
-      .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
-    .[, pval := pnorm(-zscore)] %>%
-    .[, padj := p.adjust(pval, 'fdr')] %>%
-    .[, !'sumstat'] %>%
-    setorder(pval, distance) %>%
-    .[, .SD[1], stat]
-}, 'enrichMem')

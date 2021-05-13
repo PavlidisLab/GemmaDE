@@ -6,6 +6,23 @@ html, body {
   height: 100%;
 }
 
+.tooltip {
+  font-size: unset !important;
+}
+
+.tooltip-inner {
+  max-width: 300px !important;
+}
+
+#results_suggestions .info-text {
+  background: #ffc107;
+  border-left: #ffa406 solid 14px;
+  border-radius: 3px;
+  padding: 7px;
+  font-size: medium;
+  margin: 0 0 14px 0;
+}
+
 .pseudo-a {
   color: #337ab7;
   text-decoration: none;

@@ -132,29 +132,25 @@ if(!exists('DATA.HOLDER')) {
       metaData[grepl('NA', cf.BaseLongUri, fixed = T), cf.BaseLongUri := clean(cf.Baseline, cf.BaseLongUri)]
       metaData[grepl('NA', cf.ValLongUri, fixed = T), cf.ValLongUri := clean(cf.Val, cf.ValLongUri)]
       
-      # If it was a free-text entry, it becomes NA here.
-      metaData[grepl('NA', cf.BaseLongUri, fixed = T), cf.BaseLongUri := gsub('; $', '', gsub('NA(; )?', '', cf.BaseLongUri))]
-      metaData[grepl('NA', cf.ValLongUri, fixed = T), cf.ValLongUri := gsub('; $', '', gsub('NA(; )?', '', cf.ValLongUri))]
-      
       # After filtering NAs, we should make them real NAs
       metaData[cf.BaseLongUri == '', cf.BaseLongUri := NA]
       metaData[cf.ValLongUri == '', cf.ValLongUri := NA]
       
       # Experiments who have any rsc that are DE_Exclude or Include should be ignored
-      bad.ees <- metaData[sf.ValLongUri == 'http://purl.obolibrary.org/obo/TGEMO_00014' |
-                            sf.Val == 'DE_Exclude' |
-                            sf.ValLongUri == 'http://purl.obolibrary.org/obo/TGEMO_00013' |
-                            sf.Val == 'DE_Include', ee.ID]
-      bad.rscs <- metaData[ee.ID %in% bad.ees, rsc.ID]
+      #bad.ees <- metaData[sf.ValLongUri == 'http://purl.obolibrary.org/obo/TGEMO_00014' |
+      #                      sf.Val == 'DE_Exclude' |
+      #                      sf.ValLongUri == 'http://purl.obolibrary.org/obo/TGEMO_00013' |
+      #                      sf.Val == 'DE_Include', ee.ID]
+      #bad.rscs <- metaData[ee.ID %in% bad.ees, rsc.ID]
       
       # We don't want:
       # Troubled or private experiments
       # Experiments where one/both contrasts is/are unknown
       # Experiments when the contrasts are identical (seemingly dose-dependent?)
-      bad.rscs <- c(bad.rscs, metaData[ee.Troubled | !ee.Public |
-                                         is.na(cf.BaseLongUri) |
-                                         is.na(cf.ValLongUri) |
-                                         cf.BaseLongUri == cf.ValLongUri, rsc.ID]) %>% unique
+      bad.rscs <- metaData[ee.Troubled | !ee.Public |
+                             is.na(cf.BaseLongUri) |
+                             is.na(cf.ValLongUri) |
+                             cf.BaseLongUri == cf.ValLongUri, rsc.ID] %>% unique
       
       # Drop experiment samples that don't meet our needs
       dataHolder$fc <- dataHolder$fc[, !(colnames(dataHolder$fc) %in% bad.rscs)]
@@ -181,8 +177,9 @@ if(!exists('DATA.HOLDER')) {
       metaGene[, dist.Mean := rowMeans2(dataHolder$fc, na.rm = T)]
       metaGene[, dist.SD := Rfast::rowVars(dataHolder$fc, na.rm = T, std = T)]
       
-      # Precompute z-scores. Need to maintain logFC and adj.pv for user-selected filtering
+      # Precompute z-scores. Need to maintain adj.pv for user-selected filtering
       dataHolder$zscore <- (dataHolder$fc - metaGene$dist.Mean) / metaGene$dist.SD
+      dataHolder$fc <- NULL
       
       # Split into 500 ee.ID chunks (so the URI doesn't get too long) and fetch quality scores 
       # from Gemma for all experiments.
@@ -221,9 +218,8 @@ if(!exists('DATA.HOLDER')) {
       
       new('EData', taxon = taxon, data = dataHolder,
           experiment.meta = metaData, gene.meta = metaGene, go = unique(goTerms))
-    })
-    
-    names(DATA.HOLDER) <- getConfig(key = 'taxa')$core
+    }) %>%
+      setNames(getConfig(key = 'taxa')$core)
     
     saveRDS(DATA.HOLDER, '/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER.rds')
   }
@@ -236,32 +232,18 @@ if(!exists('CACHE.BACKGROUND')) {
   if(file.exists('/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND.rds'))
     CACHE.BACKGROUND <- readRDS('/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND.rds')
   else {
-    CACHE.BACKGROUND <- lapply(names(DATA.HOLDER), precomputeTags)
-    names(CACHE.BACKGROUND) <- names(DATA.HOLDER)
+    CACHE.BACKGROUND <- lapply(names(DATA.HOLDER), precomputeTags) %>%
+      setNames(names(DATA.HOLDER))
     
     saveRDS(CACHE.BACKGROUND, '/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND.rds')
   }
 }
 
-if(!exists('NULLS.EXP')) {
-  mFiles <- list.files('/space/scratch/jsicherman/Thesis Work/data/nulls2')
-  NULLS.EXP <- lapply(names(DATA.HOLDER), function(taxa) {
-    mDT <- NULL
-    for(f in mFiles[startsWith(mFiles, taxa)]) {
-      message(paste('Loading', f))
-      N <- gsub(paste0(taxa, '_(\\d+)\\.rds'), '\\1', f)
-      dt <- readRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/nulls2/', f)) %>%
-        .[, .(score.mean, score.sd), rn] %>%
-        setnames(2:3, paste0(c('M', 'S'), N))
-      if(is.null(mDT))
-        mDT <- dt
-      else
-        mDT <- merge(mDT, dt, by = 'rn', all = T, sort = F)
-    }
-    
-    mDT
+if(!exists('NULLS')) {
+  NULLS <- lapply(names(DATA.HOLDER), function(taxa) {
+    readRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/updated_nulls/', taxa, '.rds')) %>%
+      .[, .(rn, score.mean, score.sd)]
   }) %>% `names<-`(names(DATA.HOLDER))
-  rm(mFiles)
 }
 
 if(!exists('DRUGBANK') && Sys.getenv('RSTUDIO') == '1') {

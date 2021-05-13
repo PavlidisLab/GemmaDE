@@ -19,15 +19,14 @@ geneEvidence <- async(function(genes, taxa = getConfig('taxa')$value) {
   }
   
   parse <- function(json) {
+    print(json)
     if(length(json$data) == 0) return(NULL)
     lapply(json$data[[1]]$evidence, prettyPrint)
   }
   
   if(length(taxa) > 1) {
     lapply(unique(genes[, taxon]), function(tax) {
-      print(tax)
       lapply(genes[tax == taxon, entrez.ID], function(gene) {
-        print(gene)
         http_get(paste0('https://gemma.msl.ubc.ca/rest/v2/taxa/', tax, '/genes/', gene, '/evidence'))$then(function(response) parse(parse_json(rawToChar(response$content))))
       }) %>% { when_all(.list = .)$then(function(x) x %>% `names<-`(paste0(genes[tax == taxon, gene.realName], ' (', tax, ')'))) }
     }) %>% { when_all(.list = .)$then(function(x) unique(unlist(x, F))) }

@@ -30,16 +30,16 @@ ui <- fluidPage(style = 'height: 100%;',
                       fluidRow(
                         # Gene entry
                         column(6,
-                               fluidRow(selectInput('genes', 'Input gene(s) of interest', list(`Enter query...` = ''), multiple = T)),
+                               fluidRow(span(selectInput('genes', 'Input gene(s) of interest', list(`Enter query...` = ''), multiple = T), `data-toggle` = 'tooltip', title = 'May be NCBI IDs, Ensembl IDs, official symbols or GO groups')),
                                fluidRow(helpText(HTML('Examples: <a genes=\'["RPS4Y1","EIF1AY","DDX3Y","KDM5D","XIST"]\'>RPS4Y1, EIF1AY, DDX3Y, KDM5D, XIST</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a genes=\'["ENSG00000131095","ENSG00000110436"]\'>ENSG00000131095, ENSG00000110436</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a style="color: #002145" genes=\'"random()"\'>I\'m feeling lucky</a>')))),
                         column(2, uiOutput('genes.csv.ui')),
                         
                         # Signature entry
-                        column(2, textInput('sig', 'DE signature', placeholder = '(optional)')),
+                        column(2, span(textInput('sig', 'DE signature', placeholder = '(optional)'), `data-toggle` = 'tooltip', title = 'If providing a signature, you should use M-VSM or Correlation as the search algorithm')),
                         
                         # Taxa entry
                         column(2,
-                               pickerInput('taxa', 'Taxon', getConfig('taxa')$choices, getConfig('taxa')$value, multiple = T),
+                               span(pickerInput('taxa', 'Taxon', getConfig('taxa')$choices, getConfig('taxa')$value, multiple = T), `data-toggle` = 'tooltip', title = 'Taxa to include. Orthologs are automatically detected'),
                                helpText(style = 'float: right;', HTML('<a data-toggle="collapse" data-target="#options">More options...</a>')))
                       ),
                       
@@ -72,7 +72,8 @@ ui <- fluidPage(style = 'height: 100%;',
                       column(12, htmlOutput('results_header')),
                       mainPanel(
                         tabsetPanel(id = 'tabs',
-                                    tabPanel('Conditions', column(12, style = 'margin-top: 16px', dataTableOutput('results') %>% withSpinner(custom.class = 'DNA_cont', custom.html = div(lapply(1:10, function(x) div(class = 'nucleobase')))))),
+                                    tabPanel('Conditions',
+                                             column(12, style = 'margin-top: 16px', dataTableOutput('results') %>% withSpinner(custom.class = 'DNA_cont', custom.html = div(lapply(1:10, function(x) div(class = 'nucleobase')))))),
                                     tabPanel('Gene Contributions', column(12, style = 'margin-top: 16px', plotlyOutput('results_contribs', height = '50vw'))),
                                     tabPanel('Word Cloud', column(12, style = 'margin-top: 16px', d3wordcloudOutput('results_cloud', height = '90vh') %>% withSpinner(custom.class = 'DNA_cont', custom.html = div(lapply(1:10, function(x) div(class = 'nucleobase')))))),
                                     tabPanel('Gene Info', column(12, style = 'margin-top: 16px', htmlOutput('results_genes') %>% withSpinner(custom.class = 'DNA_cont', custom.html = div(lapply(1:10, function(x) div(class = 'nucleobase')))))),
@@ -85,7 +86,7 @@ ui <- fluidPage(style = 'height: 100%;',
                 
                 HTML('
 <footer>
-  <div class="text-center">© 2020 Copyright: <a href="mailto:jordan.sicherman@msl.ubc.ca">Jordan Sicherman</a></div>
+  <div class="text-center">© 2020-2021 <a href="mailto:jordan.sicherman@msl.ubc.ca">Jordan Sicherman</a></div>
 </footer>'
                 )
 )
