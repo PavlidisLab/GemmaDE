@@ -136,7 +136,7 @@ search <- function(genes, options = getConfig(), DATA = NULL) {
 #' 
 #' Get tags for the specified experiments within a specified distance.
 #'
-#' @param taxa A taxa scope. Can be one of [human, mouse, rat, any].
+#' @param taxa A taxa scope. Can be one of [human, mouse, rat].
 #' @param rsc.IDs A list of experiment rsc IDs or NULL for everything
 #' @param max.distance The maximum tree traversal distance to include
 #' @param inv Whether or not to inverse the selected rscs
@@ -162,7 +162,7 @@ getTags <- function(taxa = getConfig(key = 'taxa')$value,
 #' 
 #' Get all the expanded ontology tags within a given taxon.
 #'
-#' @param taxa A taxa scope. Can be one of [human, mouse, rat, any].
+#' @param taxa A taxa scope. Can be one of [human, mouse, rat].
 #' @param mGraph The igraph form of the ontologies. Computes internally if not supplied
 #' @param graphTerms The unique ontology terms. Computes internally if not supplied
 #' @param DATA Data to use. If null, uses the global DATA.HOLDER
@@ -221,7 +221,7 @@ precomputeTags <- function(taxa = getConfig(key = 'taxa')$value, mGraph = NULL, 
     data.table(startTag = uri, tag = names(tag), distance = c(distance))
   }))
   
-  if(nrow(mComputedTags) > 0)
+  if(nrow(mSimpleTags) > 0 && nrow(mComputedTags) > 0)
     # Simple (ontology) tags get associated with their parents from mComputedTags
     mTags <- mSimpleTags %>% merge(mComputedTags[startTag %in% mSimpleTags[, unique(tag)]],
                                    by.x = 'tag', by.y = 'startTag', sort = F, allow.cartesian = T) %>%
@@ -246,13 +246,22 @@ precomputeTags <- function(taxa = getConfig(key = 'taxa')$value, mGraph = NULL, 
     merge(unique(ONTOLOGIES.DEFS[, .(Node_Long = as.character(Node_Long), Definition = as.character(Definition))]),
           by.x = 'tag', by.y = 'Node_Long', sort = F, allow.cartesian = T, all.x = T) %>%
     .[is.na(Definition), Definition := tag] %>%
-    .[, .(rsc.ID, ee.ID, type, tag = Definition, distance, ID)]
+    .[, .(rsc.ID, ee.ID, type, tag = Definition, distance, ID)] %>%
+    unique
   
   # Do a grid expansion of bagged terms, maintaining indexed ordering
+  # TODO This only works with 0 dist tags. Increasing the dist threshold is too memory hungry
   if(nrow(mBagOfWords) > 0 && nrow(mTags[!is.na(ID) & distance < 1]) > 0)
-    mTagsExpanded <- mTags %>% .[!is.na(ID) & distance < 1, expand.grid(aggregate(.SD[, tag], by = list(.SD[, ID]), FUN = list)[[-1]]) %>%
-                                   apply(1, paste0, collapse = '; ') %>% unique, .(rsc.ID, ee.ID, type)] %>%
-    .[, c('tag', 'V1') := list(V1, NULL)] %>% rbind(mTags[is.na(ID) | distance >= 1, .(rsc.ID, ee.ID, type, tag)])
+    mTagsExpanded <- mTags %>% rbind(
+      .[!is.na(ID) & distance < 1, expand.grid(aggregate(tag, by = list(ID), FUN = list)[[-1]]) %>% apply(1, paste0, collapse = '; '),
+        .(rsc.ID, ee.ID, type)] %>%
+      cbind(distance = 
+        mTags %>%
+          .[!is.na(ID) & distance < 1, expand.grid(aggregate(distance, by = list(ID), FUN = list)[[-1]]) %>% apply(1, sum),
+            .(rsc.ID, ee.ID, type)] %>% .[, V1]
+      ) %>% setnames('V1', 'tag') %>%
+        .[, .(tag, rsc.ID, ee.ID, type, distance, ID = NA)]
+    )
   else
     mTagsExpanded <- mTags
   
@@ -268,7 +277,8 @@ precomputeTags <- function(taxa = getConfig(key = 'taxa')$value, mGraph = NULL, 
     merge(mTags[type == 'cf.ValLongUri', .(rsc.ID, ee.ID, tag, distance)],
           by.x = c('rsc.ID', 'ee.ID', 'cf.ValLongUri'), by.y = c('rsc.ID', 'ee.ID', 'tag'), all.x = T, sort = F, allow.cartesian = T) %>%
     
-    # Recombinants have unknown distances. Let's just make them 0
+    # Recombinants have unknown distances. Let's just make them 0 since that's
+    # the memory prohibitive limit
     .[is.na(distance.x), distance.x := 0] %>% .[is.na(distance.y), distance.y := 0] %>%
     
     # Compute net distance as the mean of distances to the base and contrasting factor
@@ -276,7 +286,7 @@ precomputeTags <- function(taxa = getConfig(key = 'taxa')$value, mGraph = NULL, 
     
     # And add back categories
     merge(DATA[[taxa]]@experiment.meta[, .(rsc.ID, ee.ID, cf.Cat)], by = c('rsc.ID', 'ee.ID'), all.x = T, sort = F, allow.cartesian = T) %>%
-    .[cf.BaseLongUri != cf.ValLongUri] %>% {
+    .[cf.BaseLongUri != cf.ValLongUri] %>% unique %>% {
       if(!POST) {
         .[, .(rsc.ID, ee.ID, cf.Cat, cf.BaseLongUri, cf.ValLongUri, reverse = F, distance)]
       } else {
@@ -284,12 +294,12 @@ precomputeTags <- function(taxa = getConfig(key = 'taxa')$value, mGraph = NULL, 
         reorderTags(.) %>%
           
           # And use some heuristics to make our corpus a little more lean
-          .[, N := .N, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
-          .[distance == 0 | (N > 1 & N < 500 & distance < 5)] %>%
+          .[, N := length(unique(ee.ID)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
+          .[distance == 0 | (N > 1 & N < 200 & distance < 3)] %>%
           
           # This is annoying but the filter should be applied twice
-          .[, N := .N, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
-          .[distance == 0 | (N > 1 & N < 500 & distance < 5)] %>%
+          .[, N := length(unique(ee.ID)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
+          .[distance == 0 | (N > 1 & N < 200 & distance < 3)] %>%
           
           .[, !'N']
       }
@@ -400,8 +410,12 @@ enrich <- function(rankings, options = getConfig(), CACHE = NULL) {
   
   # Stat of 0 means it's as expected (0 SD from mean)
   terms <- rankings %>% normalize(options$taxa$value) %>%
-    merge(terms, by.x = 'rn', by.y = 'rsc.ID', sort = F, allow.cartesian = T) %>%
-    .[distance <= options$dist$value & cf.Cat %in% options$categories$value]
+    merge(terms, by.x = 'rn', by.y = 'rsc.ID', sort = F) %>%
+    .[cf.Cat %in% options$categories$value]# %>% # TODO distance <= options$dist$value
+    #.[, N := .N, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
+    #.[N > 1, !'N']
+  # TODO Excluding singles because their p-value will always be 0.5
+  # and so score highly driven by fIN/fOUT... This is maybe okay
   
   terms[, .(distance = round(mean(distance, na.rm = T), 2),
             stat = mean(score),
@@ -411,7 +425,7 @@ enrich <- function(rankings, options = getConfig(), CACHE = NULL) {
     merge(
       terms[cf.Cat %in% .$cf.Cat & cf.BaseLongUri %in% .$cf.BaseLongUri & cf.ValLongUri %in% .$cf.ValLongUri,
             suppressWarnings(col_wilcoxon_onesample(as.matrix(.SD), alternative = 'greater', exact = F) %>% {
-              setNames(as.list(1 - .[, 3]), rownames(.))
+              setNames(as.list(1 - .[, 3]), rownames(.)) # Small p-value if real effect (= score closer to 1)
             }),
             .(cf.Cat, cf.BaseLongUri, cf.ValLongUri),
             .SDcols = !c('reverse', 'distance', 'ee.ID', 'rn', 'score', 'f.IN', 'f.OUT', 'ee.q', 'normalization')],

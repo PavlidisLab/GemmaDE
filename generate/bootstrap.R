@@ -6,7 +6,7 @@ options(mc.cores = 14)
 ITERS <- 1000
 BLOCK <- 500
 
-OPTIONS <- c('human', 'mouse', 'rat')
+OPTIONS <- c('human', 'artificial', 'mouse', 'rat')
 
 for(x in OPTIONS) {
   if(!exists('DATA.HOLDER') || names(DATA.HOLDER) != x) {
@@ -17,7 +17,7 @@ for(x in OPTIONS) {
   }
   
   message(paste0(Sys.time(), ' ... Starting ', x))
-  if(F && file.exists(paste0('/space/scratch/jsicherman/Thesis Work/data/updated_nulls/', x, '.rds'))) {
+  if(file.exists(paste0('/space/scratch/jsicherman/Thesis Work/data/updated_nulls/', x, '.rds'))) {
     message(paste0('File for ', x, ' already exists... Skipping.'))
   } else {
     mclapply(1:ITERS, function(j) {

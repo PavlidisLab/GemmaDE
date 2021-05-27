@@ -82,7 +82,7 @@ options(app.registered = NULL)
 addConfig(pv = 0.05, description = 'Significance threshold', tooltip = 'The maximum FDR-corrected p-value to consider a gene differentially expressed', category = 'Scoring', extras = list(min = 0, max = 1, step = 0.01))
 addConfig(dist = 1, description = 'Maximum term distance', tooltip = 'The maximum distance each condition comparison can be from the annotated one. Larger values will take longer to search, but will allow for greater grouping', category = 'Filtering', extras = list(min = 0, max = 1.5, step = 0.25))
 addConfig(mfx = T, description = 'Score multifunctionality', tooltip = 'Whether or not to weight each gene\'s contribution by its multifunctionality rank', category = 'Scoring')
-addConfig(geeq = T, description = 'Score experiment quality (GEEQ)', tooltip = 'Whether or not to weight each experiment\'s contribution by its GEEQ score', category = 'Scoring')
+addConfig(geeq = F, description = 'Score experiment quality (GEEQ)', tooltip = 'Whether or not to weight each experiment\'s contribution by its GEEQ score', category = 'Scoring')
 addConfig(method = 'diff', description = 'Scoring function', tooltip = 'Which scoring algorithm to use. You should use the default unless you want to search for conditions that resemble a specific DE signature', category = 'Scoring', extras = list(choices = list(`M-VSM` = 'mvsm', `Default` = 'diff', `Correlation` = 'cor')))
 addConfig(categories = c('age', 'behavior', 'biological process', 'biological sex',
                          'cell type', 'clinical history', 'diet', 'disease', 'environmental history',

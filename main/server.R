@@ -390,7 +390,7 @@ server <- function(input, output, session) {
       .[, N := length(unique(ee.ID)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
     
     tmp[, Evidence := ifelse(N == 1,
-                             stringi::stri_c('<span data-id="', ee.ID[1], '>1 Experiment</span>'),
+                             stringi::stri_c('<span data-id="', ee.ID[1], '">1 Experiment</span>'),
                              {
                                dedup <- !duplicated(ee.ID)
                                stringi::stri_c('<span data-id="', stringi::stri_c(ee.ID[dedup], collapse = ','),

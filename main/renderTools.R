@@ -156,7 +156,6 @@ generateResultsCloud <- function(data, options) {
 #'
 #' @param session The Shiny session storing our data
 generateResults <- function(data) {
-  print('Sending')
   outputColumns <- c('Condition Comparison', 'Evidence', 'Ontology Steps', 'Effect Size', 'Test Statistic')
   
   mTable <- datatable(data[, outputColumns, with = F] %>% as.data.frame,
