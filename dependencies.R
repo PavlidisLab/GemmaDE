@@ -84,26 +84,58 @@ addConfig(dist = 1, description = 'Maximum term distance', tooltip = 'The maximu
 addConfig(mfx = T, description = 'Score multifunctionality', tooltip = 'Whether or not to weight each gene\'s contribution by its multifunctionality rank', category = 'Scoring')
 addConfig(geeq = F, description = 'Score experiment quality (GEEQ)', tooltip = 'Whether or not to weight each experiment\'s contribution by its GEEQ score', category = 'Scoring')
 addConfig(method = 'diff', description = 'Scoring function', tooltip = 'Which scoring algorithm to use. You should use the default unless you want to search for conditions that resemble a specific DE signature', category = 'Scoring', extras = list(choices = list(`M-VSM` = 'mvsm', `Default` = 'diff', `Correlation` = 'cor')))
-addConfig(categories = c('age', 'behavior', 'biological process', 'biological sex',
-                         'cell type', 'clinical history', 'diet', 'disease', 'environmental history',
-                         'environmental stress', 'genotype', 'medical procedure', 'molecular entity',
-                         'organism part', 'phenotype', 'temperature', 'treatment'),
+
+if(!exists('DATA.HOLDER')) {
+  categories <- list(`age` = 'age', `behavior` = 'behavior',
+                     `biological process` = 'biological process', `biological sex` = 'biological sex',
+                     `block` = 'block', `cell line` = 'cell line', `cell type` = 'cell type',
+                     `clinical history` = 'clinical history',
+                     `collection of material` = 'collection of material',
+                     `developmental stage` = 'developmental stage', `diet` = 'diet', `disease` = 'disease',
+                     `disease staging` = 'disease staging', `dose` = 'dose',
+                     `environmental history` = 'environmental history',
+                     `environmental stress` = 'environmental stress', `generation` = 'generation',
+                     `genotype` = 'genotype', `growth condition` = 'growth condition',
+                     `individual` = 'individual', `medical procedure` = 'medical procedure',
+                     `molecular entity` = 'molecular entity', `organism part` = 'organism part',
+                     `phenotype` = 'phenotype', `population` = 'population', `strain` = 'strain',
+                     `temperature` = 'temperature', `timepoint` = 'timepoint', `treatment` = 'treatment')
+  
+  # TODO
+  subsets <- list(`age` = 'age', `behavior` = 'behavior',
+                  `biological process` = 'biological process', `biological sex` = 'biological sex',
+                  `block` = 'block', `cell line` = 'cell line', `cell type` = 'cell type',
+                  `clinical history` = 'clinical history',
+                  `collection of material` = 'collection of material',
+                  `developmental stage` = 'developmental stage', `diet` = 'diet', `disease` = 'disease',
+                  `disease staging` = 'disease staging', `dose` = 'dose',
+                  `environmental history` = 'environmental history',
+                  `environmental stress` = 'environmental stress', `generation` = 'generation',
+                  `genotype` = 'genotype', `growth condition` = 'growth condition',
+                  `individual` = 'individual', `medical procedure` = 'medical procedure',
+                  `molecular entity` = 'molecular entity', `organism part` = 'organism part',
+                  `phenotype` = 'phenotype', `population` = 'population', `strain` = 'strain',
+                  `temperature` = 'temperature', `timepoint` = 'timepoint', `treatment` = 'treatment')
+} else {
+  categories <- sapply(DATA.HOLDER, function(x) x@experiment.meta[, unique(cf.Cat)]) %>% unique %>% {
+    setNames(as.list(.), .)
+  }
+  
+  subsets <- sapply(DATA.HOLDER, function(x) x@experiment.meta[, unique(sf.Val)]) %>% unique %>% {
+    setNames(as.list(.), .)
+  }
+}
+
+addConfig(categories = Filter(function(x) !(x %in% c('block', 'cell line', 'collection of material',
+                                                     'developmental stage', 'disease staging', 'dose',
+                                                     'generation', 'growth condition', 'individual',
+                                                     'population', 'strain', 'timepoint')), names(categories)),
           description = 'Categories to display', tooltip = 'Which topics to include. Limiting these will speed up the computation at the cost of potentially missing significant results', category = 'Filtering',
-          extras = list(choices = list(`age` = 'age', `behavior` = 'behavior',
-                                       `biological process` = 'biological process', `biological sex` = 'biological sex',
-                                       `block` = 'block', `cell line` = 'cell line', `cell type` = 'cell type',
-                                       `clinical history` = 'clinical history',
-                                       `collection of material` = 'collection of material',
-                                       `developmental stage` = 'developmental stage', `diet` = 'diet', `disease` = 'disease',
-                                       `disease staging` = 'disease staging', `dose` = 'dose',
-                                       `environmental history` = 'environmental history',
-                                       `environmental stress` = 'environmental stress', `generation` = 'generation',
-                                       `genotype` = 'genotype', `growth condition` = 'growth condition',
-                                       `individual` = 'individual', `medical procedure` = 'medical procedure',
-                                       `molecular entity` = 'molecular entity', `organism part` = 'organism part',
-                                       `phenotype` = 'phenotype', `population` = 'population', `strain` = 'strain',
-                                       `temperature` = 'temperature', `timepoint` = 'timepoint', `treatment` = 'treatment'),
-                        multiple = T))
+          extras = list(choices = categories, multiple = T))
+
+addConfig(subset = names(subsets),
+          description = 'Subsets to include', tooltip = 'Limit which biomaterial subsets to include', category = 'Filtering',
+          extras = list(choices = subsets, multiple = T))
 
 mChoices <- list(`H. sapiens` = 'human',
                  `M. musculus` = 'mouse',
@@ -117,7 +149,7 @@ addConfig(taxa = 'human', description = NA, category = NA,
                         core = c('human', 'mouse', 'rat'),
                         multiple = T,
                         mapping = c(human = 9606, mouse = 10090, rat = 10116)))
-rm(mChoices)
+rm(mChoices, categories, subsets)
 addConfig(sig = '', description = NA, category = NA)
 
 source('/home/jsicherman/Thesis Work/main/process.R')

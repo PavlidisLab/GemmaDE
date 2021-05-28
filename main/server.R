@@ -379,7 +379,7 @@ server <- function(input, output, session) {
     
     advanceProgress('Cross-linking')
     
-    tmp <- rbindlist(lapply(options$taxa$value, function(i) DATA.HOLDER[[i]]@experiment.meta[, .(rsc.ID, ee.ID, ee.Name)]))
+    tmp <- rbindlist(lapply(options$taxa$value, function(i) DATA.HOLDER[[i]]@experiment.meta[, .(rsc.ID, ee.ID, ee.Name, ef.IsBatchConfounded)]))
     
     # Associating experiments with tags
     tmp <- getTags(options$taxa$value) %>%
@@ -398,7 +398,9 @@ server <- function(input, output, session) {
                              }),
         .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
     
-    tmp[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, N, Evidence)] %>%
+    tmp[, Confounded := any(ef.IsBatchConfounded), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
+    
+    tmp[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, N, Evidence, Confounded)] %>%
       unique %>%
       merge(conditions, by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), sort = F) %>%
       setnames(c('stat', 'score', 'distance'), c('Effect Size', 'Test Statistic', 'Ontology Steps'))

@@ -84,42 +84,60 @@ if(!exists('ONTOLOGIES') || !exists('ONTOLOGIES.DEFS')) {
   ONTOLOGIES <- fread('/space/grp/nlim/CronGemmaDump/Ontology/Ontology_Dump_MERGED.TSV')
   ONTOLOGIES.DEFS <- fread('/space/grp/nlim/CronGemmaDump/Ontology/Ontology_Dump_MERGED_DEF.TSV')
   
-  ONTOLOGIES$ChildNode <- NULL
-  ONTOLOGIES$ParentNode <- NULL
+  ONTOLOGIES[, c('ChildNode', 'ParentNode')] <- NULL
+  ONTOLOGIES.DEFS$Node <- NULL
+  
   ONTOLOGIES$ChildNode_Long <- ONTOLOGIES$ChildNode_Long %>% as.factor
   ONTOLOGIES$ParentNode_Long <- ONTOLOGIES$ParentNode_Long %>% as.factor
   ONTOLOGIES$RelationType <- ONTOLOGIES$RelationType %>% as.factor
   ONTOLOGIES$OntologyScope <- ONTOLOGIES$OntologyScope %>% as.factor
   
-  ONTOLOGIES.DEFS$Node <- NULL
   ONTOLOGIES.DEFS$Node_Long <- ONTOLOGIES.DEFS$Node_Long %>% as.factor
   ONTOLOGIES.DEFS$OntologyScope <- ONTOLOGIES.DEFS$OntologyScope %>% as.factor
 }
 
 # Load the lite versions if they're already created.
 if(!exists('DATA.HOLDER')) {
-  if(file.exists('/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER.rds'))
-    DATA.HOLDER <- readRDS('/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER.rds')
+  if(file.exists('/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER2.rds'))
+    DATA.HOLDER <- readRDS('/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER2.rds')
   else {
     DATA.HOLDER <- lapply(getConfig(key = 'taxa')$core, function(taxon) {
-      load(paste0('/home/nlim/MDE/RScripts/DataFreeze/Packaged/Current/', taxon, '.RDAT.XZ'))
+      message(paste('Loading', taxon, 'metadata'))
       
-      dataHolder$ts <- NULL
-      dataHolder$meanrank <- NULL
-      dataHolder$baserank <- NULL
-      dataHolder$meanval <- NULL
-      dataHolder$baseval <- NULL
+      load(paste0('/space/grp/nlim/MDE/RDataRepo/Packaged/Current/', taxon, '/metadata.RDAT'))
       
-      metaData <- metaData %>% as.data.table %>% .[, .(rsc.ID, ee.Troubled, ee.Public, ee.ID, ee.Name, ee.Source, ee.Scale,
-                                                       ee.NumSamples, ee.TagLongUri, ad.Name, ad.Company,
-                                                       ad.Sequencing, sf.Subset, sf.Cat, sf.CatLongUri, sf.Val, sf.ValLongUri,
-                                                       cf.Cat, cf.CatLongUri, cf.Val, cf.ValLongUri, cf.Baseline, cf.BaseLongUri)]
+      meta.platformCoverage <- melt(meta.platformCoverage, id.vars = 'gene.ID') %>%
+        .[, variable := gsub('AD_(.*)', '\\1', variable)]
       
-      # Clean up the data.
+      # TODO Yes I know this is no longer optimal. In the old data dump, values were semicolon delimited...
+      # It's too deeply integrated for me to change everything else at this point
+      metaData <- meta.fvAnnot %>%
+        merge(meta.full, by = c('rsc.ID', 'ee.ID'), sort = F) %>%
+        merge(meta.platformCoverage[, .(n.detect = sum(value)), variable],
+              by.x = 'ad.ID', by.y = 'variable', sort = F) %>%
+        .[, .(ee.ID, rsc.ID, ee.Name, ee.Source, ee.Scale = ee.DataScale, ee.Reprocessed = ee.IsReprocessed,
+              ef.IsBatchConfounded, ad.ID, ad.Type, ad.NumGenes = n.detect, ee.NumSample, sf.NumSample,
+              ef.Cat, ef.CatLongUri = ef.CatUri, at.Cat, at.CatLongUri,
+              at.Val, at.ValLongUri, at.Type = at.Type_1, at.Subtype = at.Type_2)] %>%
+        .[, .(ee.ID, ee.Name, ee.Source, ee.Scale, ee.Reprocessed, ef.IsBatchConfounded,
+              ad.ID, ad.Type, ad.NumGenes, ee.NumSample, sf.NumSample, cf.Cat = ef.Cat, cf.CatLongUri = ef.CatLongUri,
+              cf.Baseline = paste0(.SD[at.Subtype == 'Baseline', at.Val], collapse = '; '),
+              cf.BaseLongUri = paste0(.SD[at.Subtype == 'Baseline', at.ValLongUri], collapse = '; '),
+              cf.Val = paste0(.SD[at.Subtype == 'Contrast', at.Val], collapse = '; '),
+              cf.ValLongUri = paste0(.SD[at.Subtype == 'Contrast', at.ValLongUri], collapse = '; '),
+              sf.Val = paste0(.SD[at.Type == 'SubsetFactor', at.Val], collapse = '; '),
+              sf.ValLongUri = paste0(.SD[at.Type == 'SubsetFactor', at.ValLongUri], collapse = '; '),
+              ee.Tag = paste0(.SD[at.Type %in% c('ExperimentTag', 'BioMaterial'), at.Val], collapse = '; '),
+              ee.TagLongUri = paste0(.SD[at.Type %in% c('ExperimentTag', 'BioMaterial'), at.ValLongUri], collapse = '; ')), rsc.ID] %>%
+        unique
+        #dcast(... ~ at.Type + at.Subtype, list, value.var = c('at.Cat', 'at.CatLongUri', 'at.Val', 'at.ValLongUri')) %>%
+        #setnames(gsub('at\\.(Cat|CatLongUri|Val|ValLongUri)_(BioMaterial|ExperimentTag|Factor|SubsetFactor)_(Baseline|Contrast)',
+        #              'at.\\3.\\1', names(.))) %>%
+        #setnames(gsub('at\\.(Cat|CatLongUri|Val|ValLongUri)_(BioMaterial|ExperimentTag|Factor|SubsetFactor)_Common',
+        #              'at.\\2.\\1', names(.)))
       
-      # Add structured text entries that will be dealt with specially
-      metaData[is.na(cf.BaseLongUri), cf.BaseLongUri := cf.Baseline]
-      metaData[is.na(cf.ValLongUri), cf.ValLongUri := cf.Val]
+      metaData[is.na(cf.BaseLongUri) | cf.BaseLongUri == 'NA', cf.BaseLongUri := cf.Baseline]
+      metaData[is.na(cf.ValLongUri) | cf.ValLongUri == 'NA', cf.ValLongUri := cf.Val]
       
       clean <- function(baselines, baseUris) {
         unlist(lapply(1:length(baselines), function(i) {
@@ -132,54 +150,58 @@ if(!exists('DATA.HOLDER')) {
       metaData[grepl('NA', cf.BaseLongUri, fixed = T), cf.BaseLongUri := clean(cf.Baseline, cf.BaseLongUri)]
       metaData[grepl('NA', cf.ValLongUri, fixed = T), cf.ValLongUri := clean(cf.Val, cf.ValLongUri)]
       
+      # If it was a free-text entry, it becomes NA here.
+      metaData[grepl('NA', cf.BaseLongUri, fixed = T), cf.BaseLongUri := gsub('; $', '', gsub('NA(; )?', '', cf.BaseLongUri))]
+      metaData[grepl('NA', cf.ValLongUri, fixed = T), cf.ValLongUri := gsub('; $', '', gsub('NA(; )?', '', cf.ValLongUri))]
+      
       # After filtering NAs, we should make them real NAs
-      metaData[cf.BaseLongUri == '', cf.BaseLongUri := NA]
-      metaData[cf.ValLongUri == '', cf.ValLongUri := NA]
+      metaData[cf.BaseLongUri == '' | cf.BaseLongUri == 'NA', cf.BaseLongUri := NA]
+      metaData[cf.ValLongUri == '' | cf.BaseLongUri == 'NA', cf.ValLongUri := NA]
       
-      # Experiments who have any rsc that are DE_Exclude or Include should be ignored
-      #bad.ees <- metaData[sf.ValLongUri == 'http://purl.obolibrary.org/obo/TGEMO_00014' |
-      #                      sf.Val == 'DE_Exclude' |
-      #                      sf.ValLongUri == 'http://purl.obolibrary.org/obo/TGEMO_00013' |
-      #                      sf.Val == 'DE_Include', ee.ID]
-      #bad.rscs <- metaData[ee.ID %in% bad.ees, rsc.ID]
+      message('Loading data')
       
-      # We don't want:
-      # Troubled or private experiments
-      # Experiments where one/both contrasts is/are unknown
-      # Experiments when the contrasts are identical (seemingly dose-dependent?)
-      bad.rscs <- metaData[ee.Troubled | !ee.Public |
-                             is.na(cf.BaseLongUri) |
-                             is.na(cf.ValLongUri) |
-                             cf.BaseLongUri == cf.ValLongUri, rsc.ID] %>% unique
+      dataHolder <- list(
+        pv = readRDS(paste0('/space/grp/nlim/MDE/RDataRepo/Packaged/Current/', taxon, '/pv.RDS')) %>%
+          `rownames<-`(gsub('GENE_(.*)', '\\1', rownames(.))),
+        fc = readRDS(paste0('/space/grp/nlim/MDE/RDataRepo/Packaged/Current/', taxon, '/fc.RDS')) %>%
+          `rownames<-`(gsub('GENE_(.*)', '\\1', rownames(.)))
+      )
       
-      # Drop experiment samples that don't meet our needs
-      dataHolder$fc <- dataHolder$fc[, !(colnames(dataHolder$fc) %in% bad.rscs)]
-      dataHolder$pv <- dataHolder$pv[, !(colnames(dataHolder$pv) %in% bad.rscs)]
-      metaData <- metaData[!(rsc.ID %in% bad.rscs)]
+      message('Preprocessing')
+      
+      metaData <- metaData[order(match(rsc.ID, colnames(dataHolder$pv)))]
       
       dataHolder$fc[is.nan(dataHolder$fc)] <- NA
       dataHolder$pv[is.nan(dataHolder$pv)] <- NA
       
-      dataHolder$adj.pv <- apply(dataHolder$pv, 2, function(pv)
-        p.adjust(pv, method = 'BH', n = length(pv))) # TODO assuming NaN p-values should be 1, they may also be missing genes.
+      # TODO validity of FDR correction based on number of genes each platform is capable of detecting?
+      dataHolder$adj.pv <- sapply(1:ncol(dataHolder$pv), function(col)
+        p.adjust(dataHolder$pv[, col], method = 'BH', n = metaData[col, ad.NumGenes])
+      ) %>% `colnames<-`(colnames(dataHolder$pv))
+      
       dataHolder$pv <- NULL
       
       metaData[, n.DE := colSums2(dataHolder$adj.pv <= 0.05, na.rm = T)]
-      metaData[, mean.fc := colMeans2(dataHolder$fc, na.rm = T)]
-      metaData[, n.detect := nrow(dataHolder$fc) - colSums2(dataHolder$fc %>% is.na)]
+      metaData[, mean.fc := colMeans2(abs(dataHolder$fc), na.rm = T)]
+      metaData[, mean.up := colMeans2(dataHolder$fc * ifelse(dataHolder$fc > 0, 1, NA), na.rm = T)]
+      metaData[, mean.down := colMeans2(dataHolder$fc * ifelse(dataHolder$fc < 0, 1, NA), na.rm = T)]
       
       metaData$ee.ID <- metaData$ee.ID %>% as.integer
       
-      metaGene <- metaGene %>% as.data.table %>% .[, .(entrez.ID, gene.ID, ensembl.ID, gene.Name,
-                                                       alias.Name, gene.Desc, mfx.Rank)]
+      metaGene <- meta.gene[, .(entrez.ID, gene.ID = gemmaGene.ID,
+                                ensembl.ID, gene.Name, alias.Name,
+                                gene.Desc, gene.Type, gene.Chromosome,
+                                mfx.Rank = ((mfx.Score - min(mfx.Score)) / (max(mfx.Score) - min(mfx.Score))) * (1 - 0) + 0)] # Rescale between 0 and 1
       
       metaGene[, n.DE := rowSums2(dataHolder$adj.pv <= 0.05, na.rm = T)]
-      metaGene[, dist.Mean := rowMeans2(dataHolder$fc, na.rm = T)]
-      metaGene[, dist.SD := Rfast::rowVars(dataHolder$fc, na.rm = T, std = T)]
+      metaGene[, dist.Mean := rowMeans(dataHolder$fc[, metaData$ee.Reprocessed], na.rm = T)]
+      metaGene[, dist.SD := Rfast::rowVars(dataHolder$fc[, metaData$ee.Reprocessed], na.rm = T, std = T)]
       
-      # Precompute z-scores. Need to maintain adj.pv for user-selected filtering
+      # Precompute z-scores
       dataHolder$zscore <- (dataHolder$fc - metaGene$dist.Mean) / metaGene$dist.SD
       dataHolder$fc <- NULL
+      
+      message('Adding Gemma info')
       
       # Split into 500 ee.ID chunks (so the URI doesn't get too long) and fetch quality scores 
       # from Gemma for all experiments.
@@ -188,22 +210,7 @@ if(!exists('DATA.HOLDER')) {
                                             data.table(ee.ID = ee.ID$id,
                                                        ee.qScore = ee.ID$geeq$publicQualityScore,
                                                        ee.sScore = ee.ID$geeq$publicSuitabilityScore)
-                                          })) %>% merge(metaData, by = 'ee.ID', all.y = T)
-      
-      metaData$ee.Name <- metaData$ee.Name %>% as.factor
-      metaData$ee.Source <- metaData$ee.Source %>% as.factor
-      metaData$ee.TagLongUri <- metaData$ee.TagLongUri %>% as.factor
-      metaData$ad.Name <- metaData$ad.Name %>% as.factor
-      metaData$ad.Company <- metaData$ad.Company %>% as.factor
-      metaData$ad.Sequencing <- metaData$ad.Sequencing %>% as.factor
-      metaData$sf.Cat <- metaData$sf.Cat %>% as.factor
-      metaData$sf.CatLongUri <- metaData$sf.CatLongUri %>% as.factor
-      metaData$sf.Val <- metaData$sf.Val %>% as.factor
-      metaData$sf.ValLongUri <- metaData$sf.ValLongUri %>% as.factor
-      metaData$cf.Cat <- metaData$cf.Cat %>% as.factor
-      metaData$cf.CatLongUri <- metaData$cf.CatLongUri %>% as.factor
-      metaData$cf.ValLongUri <- metaData$cf.ValLongUri %>% as.factor
-      metaData$cf.BaseLongUri <- metaData$cf.BaseLongUri %>% as.factor
+                                          }), fill = T) %>% merge(metaData, by = 'ee.ID', all.y = T)
       
       goTerms <- queryMany(metaGene$entrez.ID, scopes = 'entrezgene', fields = 'go', species = taxon)
       
@@ -213,15 +220,31 @@ if(!exists('DATA.HOLDER')) {
           row <- goTerms@listData[[gocat]][[indx]]
           if(!is.null(row))
             data.frame(entrez.ID = goTerms@listData$query[indx], category = cat, id = row$id, term = row$term)
-        }))
-      }))
+        }), fill = T)
+      }), fill = T)
+      
+      metaData$ee.Name <- metaData$ee.Name %>% as.factor
+      metaData$ee.Source <- metaData$ee.Source %>% as.factor
+      metaData$ee.Scale <- metaData$ee.Scale %>% as.factor
+      metaData$ee.Tag <- metaData$ee.Tag %>% as.factor
+      metaData$ee.TagLongUri <- metaData$ee.TagLongUri %>% as.factor
+      metaData$ad.Type <- metaData$ad.Type %>% as.factor
+      metaData$ad.ID <- metaData$ad.ID %>% as.factor
+      metaData$sf.Val <- metaData$sf.Val %>% as.factor
+      metaData$sf.ValLongUri <- metaData$sf.ValLongUri %>% as.factor
+      metaData$cf.Cat <- metaData$cf.Cat %>% as.factor
+      metaData$cf.CatLongUri <- metaData$cf.CatLongUri %>% as.factor
+      metaData$cf.Baseline <- metaData$cf.Baseline %>% as.factor
+      metaData$cf.Val <- metaData$cf.Val %>% as.factor
+      metaData$cf.BaseLongUri <- metaData$cf.BaseLongUri %>% as.factor
+      metaData$cf.ValLongUri <- metaData$cf.ValLongUri %>% as.factor
       
       new('EData', taxon = taxon, data = dataHolder,
           experiment.meta = metaData, gene.meta = metaGene, go = unique(goTerms))
     }) %>%
       setNames(getConfig(key = 'taxa')$core)
     
-    saveRDS(DATA.HOLDER, '/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER.rds')
+    saveRDS(DATA.HOLDER, '/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER2.rds')
   }
   
   ONTOLOGIES.DEFS <- fixOntoGenes()
@@ -229,19 +252,19 @@ if(!exists('DATA.HOLDER')) {
 
 if(!exists('CACHE.BACKGROUND')) {
   # Pre-load all ontology expansions
-  if(file.exists('/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND.rds'))
-    CACHE.BACKGROUND <- readRDS('/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND.rds')
+  if(file.exists('/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND2.rds'))
+    CACHE.BACKGROUND <- readRDS('/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND2.rds')
   else {
     CACHE.BACKGROUND <- lapply(names(DATA.HOLDER), precomputeTags) %>%
       setNames(names(DATA.HOLDER))
     
-    saveRDS(CACHE.BACKGROUND, '/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND.rds')
+    saveRDS(CACHE.BACKGROUND, '/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND2.rds')
   }
 }
 
 if(!exists('NULLS')) {
   NULLS <- lapply(names(DATA.HOLDER), function(taxa) {
-    readRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/updated_nulls/', taxa, '.rds')) %>%
+    readRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/updated_nulls2/', taxa, '.rds')) %>%
       .[, .(rn, score.mean, score.sd)]
   }) %>% `names<-`(names(DATA.HOLDER))
 }

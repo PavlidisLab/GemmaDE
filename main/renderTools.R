@@ -154,9 +154,9 @@ generateResultsCloud <- function(data, options) {
 #' 
 #' Make a pretty results table and render it
 #'
-#' @param session The Shiny session storing our data
+#' @param data Our data
 generateResults <- function(data) {
-  outputColumns <- c('Condition Comparison', 'Evidence', 'Ontology Steps', 'Effect Size', 'Test Statistic')
+  outputColumns <- c('Condition Comparison', 'Confounded', 'Evidence', 'Ontology Steps', 'Effect Size', 'Test Statistic')
   
   mTable <- datatable(data[, outputColumns, with = F] %>% as.data.frame,
                       extensions = 'Buttons',
@@ -193,20 +193,24 @@ generateResults <- function(data) {
                                             width = '10%',
                                             className = 'cf-cat'),
                                        list(targets = which(outputColumns == 'Condition Comparison'),
-                                            width = '46%',
+                                            width = '44%',
+                                            searchable = T, orderable = F),
+                                       list(targets = which(outputColumns == 'Confounded'),
+                                            width = '6%',
+                                            className = 'dt-right',
                                             searchable = T, orderable = F),
                                        list(targets = which(outputColumns == 'Evidence'),
-                                            width = '10%',
+                                            width = '9%',
                                             className = 'dt-right',
                                             searchable = F, orderable = F),
                                        list(targets = which(outputColumns == 'Test Statistic'),
                                             render = JS('asPval'),
-                                            width = '12%'),
+                                            width = '11%'),
                                        list(targets = which(outputColumns == 'Effect Size'),
                                             render = JS('asPval'),
-                                            width = '12%'),
+                                            width = '11%'),
                                        list(targets = which(outputColumns == 'Ontology Steps'),
-                                            width = '10%')
+                                            width = '9%')
                                      ),
                                      search = list(
                                        list(regex = T)

@@ -6,18 +6,18 @@ options(mc.cores = 14)
 ITERS <- 1000
 BLOCK <- 500
 
-OPTIONS <- c('human', 'artificial', 'mouse', 'rat')
+OPTIONS <- c('human', 'mouse', 'rat')
 
 for(x in OPTIONS) {
   if(!exists('DATA.HOLDER') || names(DATA.HOLDER) != x) {
     rm(DATA.HOLDER)
     source('/home/jsicherman/Thesis Work/dependencies.R')
-    rm(NULLS.EXP)
+    rm(NULLS)
     DATA.HOLDER[OPTIONS[-which(OPTIONS == x)]] <- NULL
   }
   
   message(paste0(Sys.time(), ' ... Starting ', x))
-  if(file.exists(paste0('/space/scratch/jsicherman/Thesis Work/data/updated_nulls/', x, '.rds'))) {
+  if(file.exists(paste0('/space/scratch/jsicherman/Thesis Work/data/updated_nulls2/', x, '.rds'))) {
     message(paste0('File for ', x, ' already exists... Skipping.'))
   } else {
     mclapply(1:ITERS, function(j) {
@@ -36,7 +36,7 @@ for(x in OPTIONS) {
       
       .[, .(score.mean = sum(score.sum) / (BLOCK * ITERS),
             score.sd = sqrt(sum(score.sqsum) / (BLOCK * ITERS) - (sum(score.sum) / (BLOCK * ITERS))^2)), rn] %>%
-        saveRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/updated_nulls/', x, '.rds'))
+        saveRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/updated_nulls2/', x, '.rds'))
       
       gc()
       NULL

@@ -71,7 +71,7 @@ search <- function(genes, options = getConfig(), DATA = NULL) {
   pv <- as.data.table(pv)
   
   # Number of DEGs for experiments that pass thresholds
-  experimentMeta <- mData@experiment.meta[, .(rsc.ID, ee.qScore, n.DE, n.detect)] %>%
+  experimentMeta <- mData@experiment.meta[, .(rsc.ID, ee.qScore, n.DE, ad.NumGenes)] %>%
     as.data.frame %>% `rownames<-`(.[, 'rsc.ID'])
   
   experimentMeta$n.DE[is.na(experimentMeta$n.DE)] <- 0
@@ -83,13 +83,11 @@ search <- function(genes, options = getConfig(), DATA = NULL) {
   experimentMeta$ee.qScore <- sqrt(experimentMeta$ee.qScore / 2)
   
   if(options$mfx$value)
-    MFX_WEIGHT <- 1 - mData@gene.meta$mfx.Rank[geneMask]
+    MFX_WEIGHT <- 1.5 - mData@gene.meta$mfx.Rank[geneMask]
   else
     MFX_WEIGHT <- rep(1, n.genes)
   
   zScore <- zScore * -log10(Rfast::Pmax(matrix(1e-10, ncol = ncol(pv), nrow = nrow(pv)), as.matrix(pv)))
-  
-  mNames <- c(mData@gene.meta$gene.Name[geneMask], 'score')
   
   if(options$method$value == 'diff') {
     ret <- zScore %>% abs %>% `*`(MFX_WEIGHT) %>% t %>% as.data.table %>%
@@ -99,7 +97,7 @@ search <- function(genes, options = getConfig(), DATA = NULL) {
       .[, score := abs(cor.wt(zScore %>% as.matrix, query, MFX_WEIGHT))] %>% # TODO abs?
       .[is.nan(score), score := 0]
   } else if(options$method$value == 'mvsm') {
-    idf <- Rfast::Log(1 / MFX_WEIGHT) + 1
+    idf <- Rfast::Log(1 / MFX_WEIGHT) + 1 # TODO check that this is the right way around since 1 - 
     zScore[, query := query]
     zScore <- zScore * idf
     
@@ -124,9 +122,9 @@ search <- function(genes, options = getConfig(), DATA = NULL) {
   
   experimentN <- Rfast::colsums(significanceMask)
   
-  ret %>% setnames(mNames) %>%
+  ret %>% setnames(c(mData@gene.meta$gene.Name[geneMask], 'score')) %>%
     .[, f.IN := experimentN / n.genes] %>%
-    .[, f.OUT := pmax(0, experimentMeta$n.DE - experimentN) / experimentMeta$n.detect] %>%
+    .[, f.OUT := pmax(0, experimentMeta$n.DE - experimentN) / experimentMeta$ad.NumGenes] %>%
     .[, ee.q := experimentMeta$ee.qScore] %>%
     .[, rn := colnames(zScore)] %>%
     setorder(-score)
@@ -221,16 +219,15 @@ precomputeTags <- function(taxa = getConfig(key = 'taxa')$value, mGraph = NULL, 
     data.table(startTag = uri, tag = names(tag), distance = c(distance))
   }))
   
-  if(nrow(mSimpleTags) > 0 && nrow(mComputedTags) > 0)
+  if(nrow(mSimpleTags) > 0 && nrow(mComputedTags) > 0) {
     # Simple (ontology) tags get associated with their parents from mComputedTags
-    mTags <- mSimpleTags %>% merge(mComputedTags[startTag %in% mSimpleTags[, unique(tag)]],
-                                   by.x = 'tag', by.y = 'startTag', sort = F, allow.cartesian = T) %>%
-    .[, c('tag', 'tag.y') := list(tag.y, NULL)] %>% .[, ID := NA]
-  else
+    mTags <- mSimpleTags %>% merge(mComputedTags, by.x = 'tag', by.y = 'startTag', sort = F, allow.cartesian = T) %>%
+      .[, c('tag', 'tag.y') := list(tag.y, NULL)] %>% .[, ID := NA]
+  } else
     mTags <- data.table()
   
   # Structured tags just get inserted
-  mTags <- mTags %>% rbind(mStructuredTags[, ID := NA] %>% .[, .(tag, rsc.ID, ee.ID, type, distance, ID)])
+  mTags <- mTags %>% rbind(mStructuredTags[, .(tag, rsc.ID, ee.ID, type, distance, ID = NA)])
   
   if(nrow(mBagOfWords) > 0 && nrow(mComputedTags) > 0)
     # Ontology-expanded bag of word tags get associated with their parents from mComputedTags
@@ -295,13 +292,15 @@ precomputeTags <- function(taxa = getConfig(key = 'taxa')$value, mGraph = NULL, 
           
           # And use some heuristics to make our corpus a little more lean
           .[, N := length(unique(ee.ID)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
-          .[distance == 0 | (N > 1 & N < 200 & distance < 3)] %>%
+          .[, ees := paste0(unique(ee.ID), collapse = ''), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
           
-          # This is annoying but the filter should be applied twice
-          .[, N := length(unique(ee.ID)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
-          .[distance == 0 | (N > 1 & N < 200 & distance < 3)] %>%
+          # For every chain (beginning with each rsc.ID, distance == 0), only keep the minimum distance version
+          # per unique ees
+          .[, .SD[1], .(rsc.ID, ees)] %>%
           
-          .[, !'N']
+          #.[distance == 0 | (N > 1 & N < 200 & distance < 3)] %>%
+          
+          .[, .(rsc.ID, ee.ID, cf.Cat, cf.BaseLongUri, cf.ValLongUri, reverse, distance)]
       }
     }
 }
@@ -388,8 +387,7 @@ reorderTags3 <- function(data) {
 normalize <- function(scores, taxa = getConfig(key = 'taxa')$value) {
   scores %>%
     merge(NULLS[[taxa]], by = 'rn', sort = F) %>%
-    .[, lapply(.SD,
-               function(x) (x - score.mean) / score.sd),
+    .[, lapply(.SD, function(x) (x - score.mean) / score.sd),
       .SDcols = !c('score.mean', 'score.sd', 'rn', 'score', 'f.IN', 'f.OUT' ,'ee.q')] %>% {
         data.table(rn = scores$rn, ., scores[, .(score, f.IN, f.OUT, ee.q)])
       } %>%
@@ -411,15 +409,17 @@ enrich <- function(rankings, options = getConfig(), CACHE = NULL) {
   # Stat of 0 means it's as expected (0 SD from mean)
   terms <- rankings %>% normalize(options$taxa$value) %>%
     merge(terms, by.x = 'rn', by.y = 'rsc.ID', sort = F) %>%
+    .[score > 0] %>%
     .[cf.Cat %in% options$categories$value]# %>% # TODO distance <= options$dist$value
-    #.[, N := .N, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
+    #.[, N := length(unique(ee.ID)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
     #.[N > 1, !'N']
+  
   # TODO Excluding singles because their p-value will always be 0.5
   # and so score highly driven by fIN/fOUT... This is maybe okay
   
   terms[, .(distance = round(mean(distance, na.rm = T), 2),
             stat = mean(score),
-            normalization = mean(normalization)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
+            normalization = median(normalization)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
     setorder(-stat, distance) %>%
     .[, .SD[1], stat] %>%
     merge(
