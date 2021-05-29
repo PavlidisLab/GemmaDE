@@ -147,12 +147,12 @@ if(!exists('DATA.HOLDER')) {
         }))
       }
       
-      metaData[grepl('NA', cf.BaseLongUri, fixed = T), cf.BaseLongUri := clean(cf.Baseline, cf.BaseLongUri)]
-      metaData[grepl('NA', cf.ValLongUri, fixed = T), cf.ValLongUri := clean(cf.Val, cf.ValLongUri)]
+      metaData[grepl('(^|; )(NA($|; ))+', cf.BaseLongUri), cf.BaseLongUri := clean(cf.Baseline, cf.BaseLongUri)]
+      metaData[grepl('(^|; )(NA($|; ))+', cf.ValLongUri), cf.ValLongUri := clean(cf.Val, cf.ValLongUri)]
       
       # If it was a free-text entry, it becomes NA here.
-      metaData[grepl('NA', cf.BaseLongUri, fixed = T), cf.BaseLongUri := gsub('; $', '', gsub('NA(; )?', '', cf.BaseLongUri))]
-      metaData[grepl('NA', cf.ValLongUri, fixed = T), cf.ValLongUri := gsub('; $', '', gsub('NA(; )?', '', cf.ValLongUri))]
+      metaData[grepl('(^|; )(NA($|; ))+', cf.BaseLongUri), cf.BaseLongUri := gsub('; $', '', gsub('(^|; )(NA($|; ))+', '', cf.BaseLongUri))]
+      metaData[grepl('(^|; )(NA($|; ))+', cf.ValLongUri), cf.ValLongUri := gsub('; $', '', gsub('(^|; )(NA($|; ))+', '', cf.ValLongUri))]
       
       # After filtering NAs, we should make them real NAs
       metaData[cf.BaseLongUri == '' | cf.BaseLongUri == 'NA', cf.BaseLongUri := NA]

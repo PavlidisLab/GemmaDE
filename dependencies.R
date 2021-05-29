@@ -58,7 +58,10 @@ as.input <- function(entry) {
         sliderInput(entry$name, entry$description, value = entry$value,
                     min = entry$min, max = entry$max, step = entry$step, ticks = entry$ticks)
     } else if(is.character(entry$value)) {
-      pickerInput(entry$name, entry$description, entry$choices, entry$value, switch(is.null(entry$multiple) + 1, entry$multiple, F))
+      if(isTRUE(entry$selectize))
+        selectizeInput(entry$name, entry$description, entry$choices, entry$value, switch(is.null(entry$multiple) + 1, entry$multiple, F))
+      else
+        pickerInput(entry$name, entry$description, entry$choices, entry$value, switch(is.null(entry$multiple) + 1, entry$multiple, F))
     } else if(is.logical(entry$value))
       materialSwitch(entry$name, entry$description, entry$value, right = T)
   }
@@ -85,77 +88,47 @@ addConfig(mfx = T, description = 'Score multifunctionality', tooltip = 'Whether 
 addConfig(geeq = F, description = 'Score experiment quality (GEEQ)', tooltip = 'Whether or not to weight each experiment\'s contribution by its GEEQ score', category = 'Scoring')
 addConfig(method = 'diff', description = 'Scoring function', tooltip = 'Which scoring algorithm to use. You should use the default unless you want to search for conditions that resemble a specific DE signature', category = 'Scoring', extras = list(choices = list(`M-VSM` = 'mvsm', `Default` = 'diff', `Correlation` = 'cor')))
 
-if(!exists('DATA.HOLDER')) {
-  categories <- list(`age` = 'age', `behavior` = 'behavior',
-                     `biological process` = 'biological process', `biological sex` = 'biological sex',
-                     `block` = 'block', `cell line` = 'cell line', `cell type` = 'cell type',
-                     `clinical history` = 'clinical history',
-                     `collection of material` = 'collection of material',
-                     `developmental stage` = 'developmental stage', `diet` = 'diet', `disease` = 'disease',
-                     `disease staging` = 'disease staging', `dose` = 'dose',
-                     `environmental history` = 'environmental history',
-                     `environmental stress` = 'environmental stress', `generation` = 'generation',
-                     `genotype` = 'genotype', `growth condition` = 'growth condition',
-                     `individual` = 'individual', `medical procedure` = 'medical procedure',
-                     `molecular entity` = 'molecular entity', `organism part` = 'organism part',
-                     `phenotype` = 'phenotype', `population` = 'population', `strain` = 'strain',
-                     `temperature` = 'temperature', `timepoint` = 'timepoint', `treatment` = 'treatment')
-  
-  # TODO
-  subsets <- list(`age` = 'age', `behavior` = 'behavior',
-                  `biological process` = 'biological process', `biological sex` = 'biological sex',
-                  `block` = 'block', `cell line` = 'cell line', `cell type` = 'cell type',
-                  `clinical history` = 'clinical history',
-                  `collection of material` = 'collection of material',
-                  `developmental stage` = 'developmental stage', `diet` = 'diet', `disease` = 'disease',
-                  `disease staging` = 'disease staging', `dose` = 'dose',
-                  `environmental history` = 'environmental history',
-                  `environmental stress` = 'environmental stress', `generation` = 'generation',
-                  `genotype` = 'genotype', `growth condition` = 'growth condition',
-                  `individual` = 'individual', `medical procedure` = 'medical procedure',
-                  `molecular entity` = 'molecular entity', `organism part` = 'organism part',
-                  `phenotype` = 'phenotype', `population` = 'population', `strain` = 'strain',
-                  `temperature` = 'temperature', `timepoint` = 'timepoint', `treatment` = 'treatment')
-} else {
-  categories <- sapply(DATA.HOLDER, function(x) x@experiment.meta[, unique(cf.Cat)]) %>% unique %>% {
-    setNames(as.list(.), .)
-  }
-  
-  subsets <- sapply(DATA.HOLDER, function(x) x@experiment.meta[, unique(sf.Val)]) %>% unique %>% {
-    setNames(as.list(.), .)
-  }
-}
-
-addConfig(categories = Filter(function(x) !(x %in% c('block', 'cell line', 'collection of material',
-                                                     'developmental stage', 'disease staging', 'dose',
-                                                     'generation', 'growth condition', 'individual',
-                                                     'population', 'strain', 'timepoint')), names(categories)),
-          description = 'Categories to display', tooltip = 'Which topics to include. Limiting these will speed up the computation at the cost of potentially missing significant results', category = 'Filtering',
-          extras = list(choices = categories, multiple = T))
-
-addConfig(subset = names(subsets),
-          description = 'Subsets to include', tooltip = 'Limit which biomaterial subsets to include', category = 'Filtering',
-          extras = list(choices = subsets, multiple = T))
-
-mChoices <- list(`H. sapiens` = 'human',
-                 `M. musculus` = 'mouse',
-                 `R. norvegicus` = 'rat',
-                 `artificial` = 'artificial')
-if(exists('DATA.HOLDER'))
-  mChoices <- Filter(function(x) x %in% names(DATA.HOLDER), mChoices)
-
-addConfig(taxa = 'human', description = NA, category = NA,
-          extras = list(choices = mChoices,
-                        core = c('human', 'mouse', 'rat'),
-                        multiple = T,
-                        mapping = c(human = 9606, mouse = 10090, rat = 10116)))
-rm(mChoices, categories, subsets)
 addConfig(sig = '', description = NA, category = NA)
 
 source('/home/jsicherman/Thesis Work/main/process.R')
 source('/home/jsicherman/Thesis Work/main/renderTools.R')
 source('/home/jsicherman/Thesis Work/main/gemmaAPI.R')
 source('/home/jsicherman/Thesis Work/main/load.R')
+
+mChoices <- list(`H. sapiens` = 'human',
+                 `M. musculus` = 'mouse',
+                 `R. norvegicus` = 'rat',
+                 `artificial` = 'artificial')
+mChoices <- Filter(function(x) x %in% names(DATA.HOLDER), mChoices)
+
+categories <- lapply(DATA.HOLDER, function(x) x@experiment.meta[, unique(cf.Cat)]) %>% unlist %>%
+  unique %>% as.character %>% sort %>% {
+    setNames(as.list(.), .)
+  }
+
+subsets <- lapply(DATA.HOLDER, function(x) x@experiment.meta[, unique(sf.Val)]) %>% unlist %>%
+  unique %>% as.character %>% sort %>% {
+    setNames(as.list(.), .)
+  }
+
+rm(mChoices, categories, subsets)
+
+addConfig(categories = Filter(function(x) !(x %in% c('block', 'cell line', 'collection of material',
+                                                     'developmental stage', 'disease staging', 'dose',
+                                                     'generation', 'growth condition', 'individual',
+                                                     'population', 'protocol', 'strain', 'study design', 'timepoint')), names(categories)),
+          description = 'Categories to display', tooltip = 'Which topics to include. Limiting these will speed up the computation at the cost of potentially missing significant results', category = 'Filtering',
+          extras = list(choices = categories, multiple = T))
+
+addConfig(subset = Filter(function(x) !(x %in% c('DE_Include')), names(subsets)),
+          description = 'Subsets to include', tooltip = 'Limit which biomaterial subsets to include', category = 'Filtering',
+          extras = list(choices = subsets, multiple = T, selectize = T))
+
+addConfig(taxa = 'human', description = NA, category = NA,
+          extras = list(choices = mChoices,
+                        core = c('human', 'mouse', 'rat'),
+                        multiple = T,
+                        mapping = c(human = 9606, mouse = 10090, rat = 10116)))
 
 letterWrap <- function(n, depth = 1) {
   x <- do.call(paste0,
