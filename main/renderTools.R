@@ -1,3 +1,15 @@
+generatePlotContainer <- function() {
+  fluidRow(style = 'height: 85vh;',
+           column(10, plotlyOutput('plot') %>% withSpinner(custom.class = 'DNA_cont', custom.html = div(lapply(1:10, function(x) div(class = 'nucleobase'))))),
+           column(2, style = 'padding-top: 15px; padding-right: 30px;',
+                  selectInput('plot_type', 'Type', list('Boxplot', 'Violin plot', 'Heatmap', 'Scatterplot', 'Jitterplot')),
+                  selectInput('plot_data', 'Data', list('Gene Expression')),
+                  pickerInput('plot_genes', 'Genes', list('Loading...'), multiple = T),
+                  pickerInput('plot_conditions', 'Contrasts', list('Loading...'), multiple = T),
+                  pickerInput('plot_taxa', 'Taxa', list('Loading...'), multiple = T))
+  )
+}
+
 #' Generate Results Header
 #'
 #' @param title The text or HTML to render
@@ -156,7 +168,7 @@ generateResultsCloud <- function(data, options) {
 #'
 #' @param data Our data
 generateResults <- function(data) {
-  outputColumns <- c('Condition Comparison', 'Confounded', 'Evidence', 'Ontology Steps', 'Effect Size', 'Test Statistic')
+  outputColumns <- c('Condition Comparison', 'Evidence', 'Ontology Steps', 'Effect Size', 'Test Statistic')
   
   mTable <- datatable(data[, outputColumns, with = F] %>% as.data.frame,
                       extensions = 'Buttons',
@@ -193,24 +205,20 @@ generateResults <- function(data) {
                                             width = '10%',
                                             className = 'cf-cat'),
                                        list(targets = which(outputColumns == 'Condition Comparison'),
-                                            width = '44%',
-                                            searchable = T, orderable = F),
-                                       list(targets = which(outputColumns == 'Confounded'),
-                                            width = '6%',
-                                            className = 'dt-right',
+                                            width = '46%',
                                             searchable = T, orderable = F),
                                        list(targets = which(outputColumns == 'Evidence'),
-                                            width = '9%',
+                                            width = '10%',
                                             className = 'dt-right',
                                             searchable = F, orderable = F),
                                        list(targets = which(outputColumns == 'Test Statistic'),
                                             render = JS('asPval'),
-                                            width = '11%'),
+                                            width = '12%'),
                                        list(targets = which(outputColumns == 'Effect Size'),
                                             render = JS('asPval'),
-                                            width = '11%'),
+                                            width = '12%'),
                                        list(targets = which(outputColumns == 'Ontology Steps'),
-                                            width = '9%')
+                                            width = '10%')
                                      ),
                                      search = list(
                                        list(regex = T)

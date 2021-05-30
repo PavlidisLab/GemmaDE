@@ -23,17 +23,17 @@ cor.wt <- function(x, y, w = rep(1, length(y))) {
 #' Uses the M-VSM to sort experiments that show at least one of the genes as DE.
 #'
 #' @param genes A list of Entrez Gene IDs (ie. 1, 22, 480) as characters
-#' @param options Optional extra parameters to pass, such as:
-#' * pv: An FDR cutoff (default: 0.05)
-#' * fc.lower / fc.upper: Upper and lower logFC thresholds (default: 0 / 10)
-#' * mfx: Whether or not to scale by gene multifunctionality
-#' * geeq: Whether or not to scale by GEEQ score
-#' @param inprod Whether to use the generated null distribution or not
+#' @param options Optional extra parameters to pass from @seealso(getConfig)
 search <- function(genes, options = getConfig(), DATA = NULL) {
   if(is.null(DATA))
     DATA <- DATA.HOLDER
   
   mData <- DATA[[options$taxa$value]]
+  
+  if(!options$confounds$value)
+    experimentMask <- !mData@experiment.meta$ef.IsBatchConfounded
+  else
+    experimentMask <- rep(T, nrow(mData@experiment.meta))
   
   # Only retain GOI
   geneMask <- which(mData@gene.meta$entrez.ID %in% genes)
@@ -51,27 +51,21 @@ search <- function(genes, options = getConfig(), DATA = NULL) {
     return(NULL)
   
   # P-values for only the GOI
-  pv <- mData@data$adj.pv[geneMask, ]
+  pv <- mData@data$adj.pv[geneMask, experimentMask, drop = F]
   
   pv[is.na(pv)] <- 1
   
-  if(n.genes == 1)
-    pv <- t(pv)
-  
   # Only retain experiments that have at least one of the GOI as DE (pv < threshold)
   significanceMask <- pv <= options$pv$value
-  zScore <- mData@data$zscore[geneMask, ]
+  zScore <- mData@data$zscore[geneMask, experimentMask, drop = F]
   
   zScore[is.na(zScore)] <- 0
-  
-  if(n.genes == 1)
-    zScore <- t(zScore)
   
   zScore <- as.data.table(zScore)
   pv <- as.data.table(pv)
   
   # Number of DEGs for experiments that pass thresholds
-  experimentMeta <- mData@experiment.meta[, .(rsc.ID, ee.qScore, n.DE, ad.NumGenes)] %>%
+  experimentMeta <- mData@experiment.meta[experimentMask, .(rsc.ID, ee.qScore, n.DE, ad.NumGenes)] %>%
     as.data.frame %>% `rownames<-`(.[, 'rsc.ID'])
   
   experimentMeta$n.DE[is.na(experimentMeta$n.DE)] <- 0
@@ -404,13 +398,13 @@ normalize <- function(scores, taxa = getConfig(key = 'taxa')$value) {
 #' @param options The options
 #' @param CACHE A cache to use. If null, uses the global CACHE.BACKGROUND
 enrich <- function(rankings, options = getConfig(), CACHE = NULL) {
-  terms <- getTags(options$taxa$value, rankings$rn, CACHE = CACHE)
+  terms <- getTags(options$taxa$value, rankings$rn, options$dist$value, CACHE = CACHE)
   
-  # Stat of 0 means it's as expected (0 SD from mean)
+  print('test1')
   terms <- rankings %>% normalize(options$taxa$value) %>%
     merge(terms, by.x = 'rn', by.y = 'rsc.ID', sort = F) %>%
     .[score > 0] %>%
-    .[cf.Cat %in% options$categories$value]# %>% # TODO distance <= options$dist$value
+    .[cf.Cat %in% options$categories$value]# %>%
     #.[, N := length(unique(ee.ID)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
     #.[N > 1, !'N']
   

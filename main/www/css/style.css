@@ -6,10 +6,6 @@ html, body {
   height: 100%;
 }
 
-.tooltip {
-  font-size: unset !important;
-}
-
 .tooltip-inner {
   max-width: 300px !important;
 }
@@ -102,6 +98,13 @@ html, body {
 
 #header {
   min-height: 100px;
+  max-height: 100px;
+}
+
+#header svg {
+  height: 80px;
+  margin-left: 10px;
+  margin-top: 10px;
 }
 
 a:hover {
@@ -218,6 +221,10 @@ input.form-control[disabled] {
 input[type="search"] {
   font-weight: normal;
   line-height: 1.6em;
+}
+
+.load-container {
+  overflow: visible !important;
 }
 
 .loader {

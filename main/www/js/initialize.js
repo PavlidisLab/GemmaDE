@@ -1,6 +1,14 @@
 var fileValidated = false;
 
 $(document).one('shiny:connected', function() {
+  new TomSelect('#genes', { persist: false, create: true, createOnBlur: true, hidePlaceholder: true, selectOnTab: true });
+  new TomSelect('#sig', { persist: false, create: function(input) {
+    if(input.match(/^-?\d+\.\d+$/))
+      return { value: input, text: input };
+    else
+      return false;
+  }, createOnBlur: true, duplicates: true, hideSelected: false, hidePlaceholder: true, selectOnTab: true });
+  
   Shiny.addCustomMessageHandler('querySet', querySet);
   Shiny.addCustomMessageHandler('queryReset', queryReset);
   Shiny.addCustomMessageHandler('fileUpload', message => {
@@ -33,7 +41,7 @@ $(document).on('shiny:inputchanged', function(event) {
 // Make the examples clickable
 function loadExamples() {
   $('a[genes]').click(function() {
-    var sz = $('#genes').selectize()[0].selectize;
+    var sz = $('#genes')[0].tomselect;
     
     sz.clear(true);
     
@@ -64,7 +72,7 @@ function querySet(genes, clear = false) { // TODO This is hacky. Might not work
 
 // Add genes to the genes bar
 function addGenes(genes, clear = false) {
-  var sz = $('#genes').selectize()[0].selectize;
+  var sz = $('#genes')[0].tomselect;
   
   if(clear)
     sz.clear(true);
@@ -79,7 +87,7 @@ function addGenes(genes, clear = false) {
 
 // Disable the search button if the gene query is empty and no file is uploaded
 function validate() {
-  var Ng = $('#genes').selectize()[0].selectize.getValue().length;
+  var Ng = $('#genes')[0].tomselect.getValue().length;
   var accept = Ng !== 0 || fileValidated;
   
   $('#search').prop('disabled', !accept);
@@ -103,12 +111,16 @@ function addMathJax() {
 function onTableDraw() {
   $('span[data-id]').each(function(i) {
     if(!$(this)[0].hasAttribute('data-ee')) {
-      $(this).replaceWith('<a target=_blank href=https://gemma.msl.ubc.ca/expressionExperiment/showExpressionExperiment.html?id=' + $(this).attr('data-id') + '>1 Experiment</a>');
+      $(this).replaceWith('<a target=_blank href=https://gemma.msl.ubc.ca/expressionExperiment/showExpressionExperiment.html?id=' + $(this).attr('data-id') + '>1 Experiment' + ($(this)[0].hasAttribute('data-conf') ? ' (!)' : '') + '</a>');
     } else {
       var names = $(this).attr('data-ee').split(',');
+      var conf = Array(names.length).fill(0);
+      if($(this)[0].hasAttribute('data-conf'))
+        $(this).attr('data-conf').split(',').forEach(i => conf[i] = 1);
       
       $(this).replaceWith('<span class="pseudo-a" data-toggle="popover" title="Experiments" data-html="true" data-content="' + $(this).attr('data-id').split(',').map(function(el, index) {
-        return '<a target=_blank href=https://gemma.msl.ubc.ca/expressionExperiment/showExpressionExperiment.html?id=' + el + '>' + names[index] + '</a>';
+        return '<a target=_blank href=https://gemma.msl.ubc.ca/expressionExperiment/showExpressionExperiment.html?id=' + el + '>' + names[index] +
+        (conf[index] ? ' (!)' : '') + '</a>';
       }).join(', ') + '">' + names.length + ' Experiments</span>');
     }
   });

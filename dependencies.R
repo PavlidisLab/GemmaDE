@@ -3,9 +3,31 @@ options(app.description = 'TODO')
 options(app.tags = 'genomics,bioinformatics,genetics,transcriptomes,rnaseq,microarrays,biotechnology,medicine,biomedical,meta-analysis,statistics,search,open source,database,software')
 options(app.author = 'Jordan Sicherman (jordan.sicherman@msl.ubc.ca)')
 
-options(max.progress.steps = 3)
-options(max.gemma = 1000)
-options(chunk.size = 200)
+options(max.progress.steps = 3) # How many different calls will be made to advanceProgress
+options(max.gemma = 1000) # The maximum number of samples to pull from Gemma for expression visualization
+options(chunk.size = 200) # For artificial data generation; not used in live app
+
+plan(multicore, workers = 5) # Maximum clients that Gemma DE can serve
+
+# The signature field can potentially have duplicate entries, which Shiny's underlying
+# library (selectize.js) doesn't support. Kinda hacky way to replace the selectize dependency
+# with tom select. Didn't bother perfecting this, seems to work well enough
+customSelectizeIt <- function (inputId, select, options, nonempty = FALSE) {
+  res <- checkAsIs(options)
+  selectizeDep <- htmlDependency("tomselect", "1.7.3", c(href = "libs/tomselect"), 
+                                 stylesheet = "css/tom-select.bootstrap3.min.css", head = format(tagList(tags$script(src = "libs/tomselect/js/tom-select.complete.min.js"))))
+  
+  select$children[[2]] <- tagAppendChild(select$children[[2]], 
+                                         tags$script(type = "application/json", `data-for` = inputId, 
+                                                     `data-nonempty` = if (nonempty) 
+                                                       "", `data-eval` = if (length(res$eval)) 
+                                                         HTML(toJSON(res$eval)), if (length(res$options)) 
+                                                           HTML(toJSON(res$options))
+                                                     else "{}"))
+  attachDependencies(select, selectizeDep)
+}
+environment(customSelectizeIt) <- asNamespace('shiny')
+assignInNamespace('selectizeIt', customSelectizeIt, ns = "shiny")
 
 addConfig <- function(description, tooltip = '', category, extras = NULL, ...) {
   mList <- getOption('app.registered')
@@ -59,7 +81,8 @@ as.input <- function(entry) {
                     min = entry$min, max = entry$max, step = entry$step, ticks = entry$ticks)
     } else if(is.character(entry$value)) {
       if(isTRUE(entry$selectize))
-        selectizeInput(entry$name, entry$description, entry$choices, entry$value, switch(is.null(entry$multiple) + 1, entry$multiple, F))
+        selectizeInput(entry$name, entry$description, entry$choices, entry$value, switch(is.null(entry$multiple) + 1, entry$multiple, F),
+                       options = switch(isTRUE(entry$allowDuplicates) + 1, NULL, list(allowDuplicates = T)))
       else
         pickerInput(entry$name, entry$description, entry$choices, entry$value, switch(is.null(entry$multiple) + 1, entry$multiple, F))
     } else if(is.logical(entry$value))
@@ -83,7 +106,8 @@ do.update <- function(sess, entry, val) {
 
 options(app.registered = NULL)
 addConfig(pv = 0.05, description = 'Significance threshold', tooltip = 'The maximum FDR-corrected p-value to consider a gene differentially expressed', category = 'Scoring', extras = list(min = 0, max = 1, step = 0.01))
-addConfig(dist = 1, description = 'Maximum term distance', tooltip = 'The maximum distance each condition comparison can be from the annotated one. Larger values will take longer to search, but will allow for greater grouping', category = 'Filtering', extras = list(min = 0, max = 1.5, step = 0.25))
+addConfig(dist = 10, description = 'Maximum term distance', tooltip = 'The maximum distance each condition comparison can be from the annotated one. Larger values will take longer to search, but will allow for greater grouping', category = 'Filtering', extras = list(min = 0, max = 10, step = 0.25))
+addConfig(confounds = F, description = 'Include possibly confounded', tooltip = 'Whether or not to include factors that exhibit a possible batch confound', category = 'Scoring')
 addConfig(mfx = T, description = 'Score multifunctionality', tooltip = 'Whether or not to weight each gene\'s contribution by its multifunctionality rank', category = 'Scoring')
 addConfig(geeq = F, description = 'Score experiment quality (GEEQ)', tooltip = 'Whether or not to weight each experiment\'s contribution by its GEEQ score', category = 'Scoring')
 addConfig(method = 'diff', description = 'Scoring function', tooltip = 'Which scoring algorithm to use. You should use the default unless you want to search for conditions that resemble a specific DE signature', category = 'Scoring', extras = list(choices = list(`M-VSM` = 'mvsm', `Default` = 'diff', `Correlation` = 'cor')))
@@ -94,6 +118,9 @@ source('/home/jsicherman/Thesis Work/main/process.R')
 source('/home/jsicherman/Thesis Work/main/renderTools.R')
 source('/home/jsicherman/Thesis Work/main/gemmaAPI.R')
 source('/home/jsicherman/Thesis Work/main/load.R')
+
+# Make sure we can serve clients asynchronously
+options(future.globals.maxSize = (object.size(DATA.HOLDER) + object.size(CACHE.BACKGROUND) * 1.5) %>% as.double)
 
 mChoices <- list(`H. sapiens` = 'human',
                  `M. musculus` = 'mouse',
@@ -111,8 +138,6 @@ subsets <- lapply(DATA.HOLDER, function(x) x@experiment.meta[, unique(sf.Val)]) 
     setNames(as.list(.), .)
   }
 
-rm(mChoices, categories, subsets)
-
 addConfig(categories = Filter(function(x) !(x %in% c('block', 'cell line', 'collection of material',
                                                      'developmental stage', 'disease staging', 'dose',
                                                      'generation', 'growth condition', 'individual',
@@ -129,6 +154,8 @@ addConfig(taxa = 'human', description = NA, category = NA,
                         core = c('human', 'mouse', 'rat'),
                         multiple = T,
                         mapping = c(human = 9606, mouse = 10090, rat = 10116)))
+
+rm(mChoices, categories, subsets)
 
 letterWrap <- function(n, depth = 1) {
   x <- do.call(paste0,

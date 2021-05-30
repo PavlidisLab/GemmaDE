@@ -40,5 +40,3 @@ library(stringdist)
 # Concurrent users
 library(promises)
 library(future)
-plan(multicore, workers = 5)
-options(future.globals.maxSize = 12 * 1000 * 1024^2)
