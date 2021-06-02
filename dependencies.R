@@ -81,8 +81,7 @@ as.input <- function(entry) {
                     min = entry$min, max = entry$max, step = entry$step, ticks = entry$ticks)
     } else if(is.character(entry$value)) {
       if(isTRUE(entry$selectize))
-        selectizeInput(entry$name, entry$description, entry$choices, entry$value, switch(is.null(entry$multiple) + 1, entry$multiple, F),
-                       options = switch(isTRUE(entry$allowDuplicates) + 1, NULL, list(allowDuplicates = T)))
+        selectInput(entry$name, entry$description, entry$choices, entry$value, switch(is.null(entry$multiple) + 1, entry$multiple, F))
       else
         pickerInput(entry$name, entry$description, entry$choices, entry$value, switch(is.null(entry$multiple) + 1, entry$multiple, F))
     } else if(is.logical(entry$value))
@@ -134,7 +133,7 @@ categories <- lapply(DATA.HOLDER, function(x) x@experiment.meta[, unique(cf.Cat)
   }
 
 subsets <- lapply(DATA.HOLDER, function(x) x@experiment.meta[, unique(sf.Val)]) %>% unlist %>%
-  unique %>% as.character %>% sort %>% {
+  unique %>% as.character %>% { Filter(function(x) !(x %in% c('DE_Include')), .) } %>% sort %>% {
     setNames(as.list(.), .)
   }
 
@@ -145,7 +144,7 @@ addConfig(categories = Filter(function(x) !(x %in% c('block', 'cell line', 'coll
           description = 'Categories to display', tooltip = 'Which topics to include. Limiting these will speed up the computation at the cost of potentially missing significant results', category = 'Filtering',
           extras = list(choices = categories, multiple = T))
 
-addConfig(subset = Filter(function(x) !(x %in% c('DE_Include')), names(subsets)),
+addConfig(subset = NA_character_,
           description = 'Subsets to include', tooltip = 'Limit which biomaterial subsets to include', category = 'Filtering',
           extras = list(choices = subsets, multiple = T, selectize = T))
 

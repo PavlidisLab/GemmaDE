@@ -54,7 +54,7 @@ server <- function(input, output, session) {
     genes <- query$genes %>% jsonify
     taxa <- query$taxa %>% jsonify
     
-    sig <- switch(is.null(query$sig) + 1, jsonify(query$sig), options$sig$value)
+    sig <- switch(is.null(query$sig) + 1, jsonify(query$sig) %>% as.numeric, options$sig$value)
     fc <- switch(is.null(query$fc) + 1, jsonify(query$fc) %>% as.numeric, options$fc$value)
     categories <- switch(is.null(query$categories) + 1, jsonify(query$categories), options$categories$value)
     
@@ -213,7 +213,7 @@ server <- function(input, output, session) {
         shinyjs::delay(1, { 
           synchronise({
             mExpData <- rbindlist(lapply(session$userData$plotData$options$taxa$value,
-                                         function(i) DATA.HOLDER[[i]]@experiment.meta[, .(rsc.ID, ee.ID, ee.NumSamples)]))
+                                         function(i) DATA.HOLDER[[i]]@experiment.meta[, .(rsc.ID, ee.ID, ee.NumSample)]))
             
             # Choose experiments to display in the plot
             getTags(session$userData$plotData$options$taxa$value) %>% # TODO Selection strategy
@@ -225,10 +225,10 @@ server <- function(input, output, session) {
                 if(nrow(.) == 0) return(NULL)
                 
                 # Select some samples to queue for gene expression visualization
-                while((tmp <- .[sample(1:nrow(.))])[1, ee.NumSamples] > getOption('max.gemma')) {
+                while((tmp <- .[sample(1:nrow(.))])[1, ee.NumSample] > getOption('max.gemma')) {
                 }
                 
-                tmp[cumsum(ee.NumSamples) <= getOption('max.gemma')]
+                tmp[cumsum(ee.NumSample) <= getOption('max.gemma')]
               } %>% {
                 geneExpression(.[, unique(ee.ID)],
                                .[, unique(rsc.ID)],
@@ -350,7 +350,13 @@ server <- function(input, output, session) {
   endSuccess <- function(genes, experiments, conditions, options) {
     # Generate the results header
     if(exists('output')) {
-      n_exp <- lapply(options$taxa$value, function(i) nrow(DATA.HOLDER[[i]]@experiment.meta)) %>% unlist %>% sum
+      
+      if(is.data.table(experiments))
+        exps <- experiments$rn
+      else
+        exps <- lapply(experiments, '[[', 'rn') %>% unlist
+      
+      n_exp <- length(exps)
       
       output$results_header <- renderUI({
         generateResultsHeader(HTML(paste0('<div style="margin-bottom: 10px"><h2 style="display: inline">Enriched ',
@@ -374,14 +380,11 @@ server <- function(input, output, session) {
     advanceProgress('Cross-linking')
     
     tmp <- rbindlist(lapply(options$taxa$value, function(i)
-      DATA.HOLDER[[i]]@experiment.meta[rsc.ID %in% experiments$rn, .(rsc.ID, ee.ID, ee.Name, ef.IsBatchConfounded)]))
+      DATA.HOLDER[[i]]@experiment.meta[rsc.ID %in% exps, .(rsc.ID, ee.ID, ee.Name, ef.IsBatchConfounded)]))
     
-    # TODO somewhere getting some row number mismatches?
-    
-    print('test')
     # Associating experiments with tags
     tmp <- tmp %>%
-      merge(getTags(options$taxa$value, experiments$rn), sort = F) %>%
+      merge(getTags(options$taxa$value, exps), sort = F) %>%
       .[, N := length(unique(ee.ID)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
       .[N < 0.03 * nrow(tmp)] # Get rid of contrasts that overlap in more than 3% experiments
     
@@ -427,8 +430,7 @@ server <- function(input, output, session) {
         })
       } else if(length(options$taxa$value) == 1)
         search(genes$genes, options)
-    }, globals = 'DATA.HOLDER') %...>%(function(experiments) {
-      print('test3')
+    }, globals = 'DATA.HOLDER', seed = T) %...>%(function(experiments) {
       if(!is.null(genes) && !('data.table' %in% class(genes)))
         makeSuggestions(rawGenes, options$taxa$value, genes$suggestions)
       
@@ -439,7 +441,6 @@ server <- function(input, output, session) {
         endFailure()
       else {
         advanceProgress('Enriching')
-        print('test4')
         
         future({
           # Do enrichments asynchronously too.
@@ -447,7 +448,7 @@ server <- function(input, output, session) {
             copy(enrich(experiments, options))
           else {
             # TODO it's maybe reasonable to mclapply this as long as the
-            # multicore workers (@see dependencies.R) is sufficiently low
+            # multicore workers (@seealso dependencies.R) is sufficiently low
             lapply(1:length(options$taxa$value), function(t) {
               mOp <- options
               mOp$taxa$value <- options$taxa$value[t]
@@ -460,7 +461,7 @@ server <- function(input, output, session) {
               reorderTags3 %>%
               .[, lapply(.SD, mean, na.rm = T), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
           }
-        }, globals = c('CACHE.BACKGROUND', 'NULLS')) %...>%(function(conditions) {
+        }, globals = c('CACHE.BACKGROUND', 'NULLS'), seed = T) %...>%(function(conditions) {
           if(!is.null(session$userData$INTERRUPT))
             return(NULL)
           
@@ -469,7 +470,6 @@ server <- function(input, output, session) {
           if(is.null(conditions))
             endEmpty()
           else {
-            print('test2')
             if(length(options$taxa$value) > 1) {
               geneInfo <- genes %>% copy %>% setnames('identifier', 'gene.Name')
               mGenes <- genes %>% copy
@@ -522,7 +522,7 @@ server <- function(input, output, session) {
         data.table(entrez.ID = tidyGenes(genes, x)$genes, taxon = x) %>% {
           if(is.null(.) || ncol(.) == 1) NULL
           else
-            merge(., DATA.HOLDER[[x]]@gene.meta[, .(.I, entrez.ID, gene.Name)], by = 'entrez.ID')
+            merge(., DATA.HOLDER[[x]]@gene.meta[, .(.I, entrez.ID = as.character(entrez.ID), gene.Name)], by = 'entrez.ID')
         }
       }) %>% rbindlist
       
@@ -647,10 +647,6 @@ server <- function(input, output, session) {
     
     session$userData$startTime <- as.POSIXct(Sys.time())
     setProgress(0, 'Validating input', n.steps = getOption('max.progress.steps'))
-    
-    # TODO it would be nice to change this to a selectize input so it displays nicely
-    # but I'll have to override something so it allows non-unique entries
-    signature <- unlist(strsplit(gsub(' ', ',', gsub('(;|,( ?))', ',', signature)), ','))
     
     # Populate options
     options <- lapply(names(getConfig()), function(x) {

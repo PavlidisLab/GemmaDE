@@ -17,7 +17,7 @@ for(x in OPTIONS) {
   }
   
   message(paste0(Sys.time(), ' ... Starting ', x))
-  if(file.exists(paste0('/space/scratch/jsicherman/Thesis Work/data/updated_nulls2/', x, '.rds'))) {
+  if(F && file.exists(paste0('/space/scratch/jsicherman/Thesis Work/data/updated_nulls2/', x, '.rds'))) {
     message(paste0('File for ', x, ' already exists... Skipping.'))
   } else {
     mclapply(1:ITERS, function(j) {

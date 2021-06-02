@@ -1,14 +1,17 @@
 var fileValidated = false;
 
-$(document).one('shiny:connected', function() {
-  new TomSelect('#genes', { persist: false, create: true, createOnBlur: true, hidePlaceholder: true, selectOnTab: true });
+$(function() {
+  new TomSelect('#genes', { plugins: ['remove_button'], persist: false, create: true, createOnBlur: true, hidePlaceholder: true, selectOnTab: true });
   new TomSelect('#sig', { persist: false, create: function(input) {
-    if(input.match(/^-?\d+\.\d+$/))
+    if(/^[+-]?\d+(\.\d+)?$/.test(input))
       return { value: input, text: input };
     else
       return false;
-  }, createOnBlur: true, duplicates: true, hideSelected: false, hidePlaceholder: true, selectOnTab: true });
-  
+  }, createOnBlur: true, duplicates: true, hidePlaceholder: true, selectOnTab: true });
+  new TomSelect('#subset', { plugins: ['remove_button'], maxOptions: 200 });
+});
+
+$(document).one('shiny:connected', function() {
   Shiny.addCustomMessageHandler('querySet', querySet);
   Shiny.addCustomMessageHandler('queryReset', queryReset);
   Shiny.addCustomMessageHandler('fileUpload', message => {
@@ -27,7 +30,7 @@ $(document).on('shiny:value', function(event) {
   if(event.name === 'results_genes') {
     setTimeout(function() {
       updatePanels();
-    }, 100);
+    }, 100); // TODO check this out again
   } else if(event.name == 'dataDownload') {
     Shiny.setInputValue('UPDATED', Math.random());
   }

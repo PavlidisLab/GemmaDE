@@ -52,17 +52,12 @@ search <- function(genes, options = getConfig(), DATA = NULL) {
   
   # P-values for only the GOI
   pv <- mData@data$adj.pv[geneMask, experimentMask, drop = F]
-  
-  pv[is.na(pv)] <- 1
-  
-  # Only retain experiments that have at least one of the GOI as DE (pv < threshold)
-  significanceMask <- pv <= options$pv$value
   zScore <- mData@data$zscore[geneMask, experimentMask, drop = F]
   
+  pv[is.na(pv)] <- 1
   zScore[is.na(zScore)] <- 0
   
   zScore <- as.data.table(zScore)
-  pv <- as.data.table(pv)
   
   # Number of DEGs for experiments that pass thresholds
   experimentMeta <- mData@experiment.meta[experimentMask, .(rsc.ID, ee.qScore, n.DE, ad.NumGenes)] %>%
@@ -81,7 +76,8 @@ search <- function(genes, options = getConfig(), DATA = NULL) {
   else
     MFX_WEIGHT <- rep(1, n.genes)
   
-  zScore <- zScore * -log10(Rfast::Pmax(matrix(1e-10, ncol = ncol(pv), nrow = nrow(pv)), as.matrix(pv)))
+  # Adding 1 to not exclude CCs where p.adj is 1
+  zScore <- zScore * (1 - log10(Rfast::Pmax(matrix(1e-10, ncol = ncol(pv), nrow = nrow(pv)), pv)))
   
   if(options$method$value == 'diff') {
     ret <- zScore %>% abs %>% `*`(MFX_WEIGHT) %>% t %>% as.data.table %>%
@@ -114,7 +110,7 @@ search <- function(genes, options = getConfig(), DATA = NULL) {
       .[is.nan(score), score := 0]
   }
   
-  experimentN <- Rfast::colsums(significanceMask)
+  experimentN <- Rfast::colsums(pv <= options$pv$value)
   
   ret %>% setnames(c(mData@gene.meta$gene.Name[geneMask], 'score')) %>%
     .[, f.IN := experimentN / n.genes] %>%
@@ -138,7 +134,7 @@ getTags <- function(taxa = getConfig(key = 'taxa')$value,
   if(length(taxa) > 1)
     return(rbindlist(lapply(taxa, getTags, rsc.IDs, max.distance, inv, CACHE)))
   
-  if(is.null(CACHE)) # TODO Remove after doing scores as this might trigger a full copy
+  if(is.null(CACHE))
     CACHE <- CACHE.BACKGROUND
   
   if(is.null(rsc.IDs))
@@ -246,11 +242,11 @@ precomputeTags <- function(taxa = getConfig(key = 'taxa')$value, mGraph = NULL, 
     mTagsExpanded <- mTags %>% rbind(
       .[!is.na(ID) & distance < 1, expand.grid(aggregate(tag, by = list(ID), FUN = list)[[-1]]) %>% apply(1, paste0, collapse = '; '),
         .(rsc.ID, ee.ID, type)] %>%
-      cbind(distance = 
-        mTags %>%
-          .[!is.na(ID) & distance < 1, expand.grid(aggregate(distance, by = list(ID), FUN = list)[[-1]]) %>% apply(1, sum),
-            .(rsc.ID, ee.ID, type)] %>% .[, V1]
-      ) %>% setnames('V1', 'tag') %>%
+        cbind(distance = 
+                mTags %>%
+                .[!is.na(ID) & distance < 1, expand.grid(aggregate(distance, by = list(ID), FUN = list)[[-1]]) %>% apply(1, sum),
+                  .(rsc.ID, ee.ID, type)] %>% .[, V1]
+        ) %>% setnames('V1', 'tag') %>%
         .[, .(tag, rsc.ID, ee.ID, type, distance, ID = NA)]
     )
   else
@@ -400,13 +396,12 @@ normalize <- function(scores, taxa = getConfig(key = 'taxa')$value) {
 enrich <- function(rankings, options = getConfig(), CACHE = NULL) {
   terms <- getTags(options$taxa$value, rankings$rn, options$dist$value, CACHE = CACHE)
   
-  print('test1')
   terms <- rankings %>% normalize(options$taxa$value) %>%
     merge(terms, by.x = 'rn', by.y = 'rsc.ID', sort = F) %>%
     .[score > 0] %>%
-    .[cf.Cat %in% options$categories$value]# %>%
-    #.[, N := length(unique(ee.ID)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
-    #.[N > 1, !'N']
+    .[cf.Cat %in% options$categories$value]
+  #.[, N := length(unique(ee.ID)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
+  #.[N > 1, !'N']
   
   # TODO Excluding singles because their p-value will always be 0.5
   # and so score highly driven by fIN/fOUT... This is maybe okay
@@ -414,16 +409,15 @@ enrich <- function(rankings, options = getConfig(), CACHE = NULL) {
   terms[, .(distance = round(mean(distance, na.rm = T), 2),
             stat = mean(score),
             normalization = median(normalization)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
-    setorder(-stat, distance) %>%
-    .[, .SD[1], stat] %>%
     merge(
-      terms[cf.Cat %in% .$cf.Cat & cf.BaseLongUri %in% .$cf.BaseLongUri & cf.ValLongUri %in% .$cf.ValLongUri,
-            suppressWarnings(col_wilcoxon_onesample(as.matrix(.SD), alternative = 'greater', exact = F) %>% {
-              setNames(as.list(1 - .[, 3]), rownames(.)) # Small p-value if real effect (= score closer to 1)
-            }),
-            .(cf.Cat, cf.BaseLongUri, cf.ValLongUri),
-            .SDcols = !c('reverse', 'distance', 'ee.ID', 'rn', 'score', 'f.IN', 'f.OUT', 'ee.q', 'normalization')],
+      terms[, col_wilcoxon_onesample(as.matrix(.SD), alternative = 'greater', exact = F) %>% {
+        list(pv = 1 - .[, 'pvalue'], gene = rownames(.)) # Small p-value if real effect (= score closer to 1)
+      }, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri),
+      .SDcols = !c('reverse', 'distance', 'ee.ID', 'rn', 'score', 'f.IN', 'f.OUT', 'ee.q', 'normalization')] %>%
+        dcast(... ~ gene, value.var = 'pv', fill = 0),
       by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), sort = F) %>%
     .[, score := Rfast::rowsums(as.matrix(.SD) * normalization), .SDcols = !c('stat', 'cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri', 'distance', 'normalization')] %>%
-    .[, !'normalization']
+    .[, !'normalization'] %>%
+    setorder(-stat, distance) %>%
+    .[, .SD[1], stat]
 }
