@@ -35,6 +35,9 @@ search <- function(genes, options = getConfig(), DATA = NULL) {
   else
     experimentMask <- rep(T, nrow(mData@experiment.meta))
   
+  if(!is.null(options$filter$value))
+    experimentMask <- experimentMask & options$filter$value
+  
   # Only retain GOI
   geneMask <- which(mData@gene.meta$entrez.ID %in% genes)
   

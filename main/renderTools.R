@@ -63,12 +63,11 @@ generateResultsPlot <- function(genes, conditions, expr, options = getConfig(),
   if(is.null(expr) || is.null(plot_conditions))
     return(NULL)
   
+  # I hate this a lot. It turns plot_conditions from something like "A vs. B" to the names of the samples with
+  # annotations either or B
   plot_conditions <- expr$metadata[grepl(paste0(gsub('([.|()\\^{}+$*?]|\\[|\\])', '\\\\\\1', unlist(strsplit(plot_conditions, ' vs. ', T))), collapse = '|'), baseline), name]
   
-  expr$expr <- expr$expr[plot_genes, plot_conditions]
-  
-  if(length(plot_genes) == 1)
-    expr$expr <- t(expr$expr)
+  expr$expr <- expr$expr[plot_genes, plot_conditions, drop = F]
   
   if(plot_type != 'Boxplot') {
     thresh <- 1.5 * apply(expr$expr, 1, iqr, na.rm = T)
@@ -81,25 +80,37 @@ generateResultsPlot <- function(genes, conditions, expr, options = getConfig(),
                                   }
     
     expr$metadata <- expr$metadata[name %in% inliers] %>% setorder(baseline)
-    expr$expr <- expr$expr[, expr$metadata$name]
-    
-    if(length(plot_genes) == 1)
-      expr$expr <- t(expr$expr)
+    expr$expr <- expr$expr[, expr$metadata$name, drop = F]
   }
   
   if(any(dim(expr$expr) == 0))
     return(NULL)
   
   if(plot_type == 'Heatmap') {
-    if(plot_data == 'Gene Expression')
-      ret <- heatmaply(expr$expr, labRow = NULL, showticklabels = c(F, T), scale = 'row',
-                       Rowv = NULL, dendrogram = 'none', colors = cool_warm,
-                       col_side_colors = expr$metadata[, .(`Condition Comparison` = baseline)])
+    if(plot_data == 'Gene Expression') {
+      if(length(unique(expr$metadata$ee.Name)) > 1) {
+        for(i in unique(expr$metadata$ee.Name)) {
+          expr$expr[, expr$metadata[ee.Name == i, name]] <- t(scale(t(expr$expr[, expr$metadata[ee.Name == i, name]])))
+        }
+        
+        ret <- heatmaply(expr$expr, labRow = NULL, showticklabels = c(F, T), scale = 'none',
+                         colors = PuOr,
+                         Rowv = NULL, dendrogram = 'none',
+                         col_side_colors = expr$metadata[, .(`Condition Comparison` = baseline,
+                                                             Experiment = ee.Name)])
+      } else {
+        ret <- heatmaply(expr$expr, labRow = NULL, showticklabels = c(F, T), scale = 'row',
+                         colors = PuOr,
+                         Rowv = NULL, dendrogram = 'none',
+                         col_side_colors = expr$metadata[, .(`Condition Comparison` = baseline)])
+      }
+    }
   } else {
     if(plot_data == 'Gene Expression') {
       data <- expr$expr %>% reshape2::melt(value.name = 'Expression', varnames = c('Gene', 'Sample')) %>%
         merge(expr$metadata, by.x = 'Sample', by.y = 'name') %>%
-        mutate(Gene = as.factor(Gene), `Condition Comparison` = baseline)
+        mutate(Gene = as.factor(Gene)) %>%
+        dplyr::rename(`Condition Comparison` = baseline)
     }
     
     if(plot_type == 'Scatterplot') {
@@ -118,6 +129,7 @@ generateResultsPlot <- function(genes, conditions, expr, options = getConfig(),
                                                   theme_classic()) %>%
                                                  ggplotly(dynamicTicks = T) %>%
                                                  layout(boxmode = 'group',
+                                                        xaxis = list(title = 'Gene', tickmode = 'array', autotick = F, tickangle = -45, tickvals = 1:(length(unique(data$Gene))), ticktext = unique(data$GeneID)),
                                                         yaxis = list(title = 'Expression (log<sub>2</sub> CPM)'))))
     } else if(plot_type == 'Jitterplot') {
       data <- data %>% mutate(GeneID = Gene, Gene = as.numeric(Gene))
@@ -130,7 +142,7 @@ generateResultsPlot <- function(genes, conditions, expr, options = getConfig(),
                                                   theme_classic()) %>%
                                                  ggplotly(dynamicTicks = T, tooltip = c('text', 'fill', 'y')) %>%
                                                  layout(boxmode = 'group',
-                                                        xaxis = list(title = 'Gene', tickmode = 'array', autotick = F, tickvals = 1:(length(unique(data$Gene))), ticktext = unique(data$GeneID)),
+                                                        xaxis = list(title = 'Gene', tickmode = 'array', autotick = F, tickangle = -45, tickvals = 1:(length(unique(data$Gene))), ticktext = unique(data$GeneID)),
                                                         yaxis = list(title = 'Expression (log<sub>2</sub> CPM)'))))
     } else if(plot_type == 'Violin plot') {
       ret <- suppressWarnings(suppressMessages((data %>% ggplot(aes(fill = `Condition Comparison`,
@@ -139,7 +151,8 @@ generateResultsPlot <- function(genes, conditions, expr, options = getConfig(),
                                                   scale_fill_brewer(palette = 'Dark2') +
                                                   theme_classic()) %>%
                                                  ggplotly %>%
-                                                 layout(yaxis = list(title = 'Expression (log<sub>2</sub> CPM)'))))
+                                                 layout(xaxis = list(title = 'Gene', tickmode = 'array', autotick = F, tickangle = -45, tickvals = 1:(length(unique(data$Gene))), ticktext = unique(data$GeneID)),
+                                                        yaxis = list(title = 'Expression (log<sub>2</sub> CPM)'))))
     }
   }
   

@@ -1,0 +1,713 @@
+
+
+    NCBINCBI Logo
+    Skip to main content
+    Skip to navigation
+    Resources
+    How To
+    About NCBI Accesskeys
+
+GEO DataSets
+Search database
+Search term
+Clear input
+
+    Create alertAdvanced
+    Help
+
+COVID-19 Information
+
+Public health information (CDC)
+
+Research information (NIH)
+
+SARS-CoV-2 data (NCBI)
+
+Prevention and treatment information (HHS)
+
+Español
+Result Filters
+
+    Entry type
+    Clear
+        DataSets(0)
+        Series(49,868)
+        Samples(0)
+        Platforms(0)
+
+    Organism
+        Homo sapiens(18,816)
+        Rattus norvegicus(832)
+        Mus musculus(18,982)
+        Danio rerio(763)
+        Caenorhabditis elegans(569)
+        Drosophila melanogaster(1,198)
+        Saccharomyces cerevisiae(718)
+        Escherichia coli(376)
+        Arabidopsis thaliana(1,409)
+        Customize ...
+
+    Study type
+    Clear
+        Expression profiling by array
+        Expression profiling by high throughput sequencing
+        Customize ...
+
+    Author
+        Customize ...
+
+    Attribute name
+        tissue(20,520)
+        strain(15,420)
+        Customize ...
+
+    Publication dates
+        30 days
+        1 year
+        Custom range...
+
+    Clear all
+
+    Show additional filters
+
+    Summary20 per pageSort by Default order
+
+Send to:
+Search results
+Items: 1 to 20 of 49868
+<< First< PrevPage of 2494Next >Last >>
+
+    Filters activated: Series, Expression profiling by high throughput sequencing. Clear all to show 4650266 items.
+
+Select item 200176617
+1.
+
+Transcriptomic analysis of biofilm formation in persistent and transient Listeria monocytogenes from the retail deli environment
+(Submitter supplied) Persistence of Listeria monocytogenes in retail deli environments is a serious food safety issue, potentially leading to cross-contamination of ready-to-eat foods such as deli meats, salads, and cheeses. We previously discovered strong evidence of L. monocytogenes persistence in delis across multiple states. We hypothesized that this was correlated with isolates’ innate characteristics, such as biofilm-forming capacity or gene differences.We further chose four isolates for RNA-sequencing analysis and compared their global biofilm transcriptome to their global planktonic transcriptome. more...
+
+Organism:
+    Listeria monocytogenes; Listeria innocua
+
+Type:
+    Expression profiling by high throughput sequencing
+
+Platforms:
+    GPL21330 GPL30260 
+30 Samples
+
+Download data: TXT
+Series
+
+Accession:
+    GSE176617
+
+ID:
+    200176617
+
+SRA Run Selector
+Select item 200176582
+2.
+
+Mice deficient in Zfp871 are prone to early death and steatohepatitis in part through the p53-Mdm2 axis
+(Submitter supplied) p53 transcription factor is activated upon exposure to various cellular stresses, leading to growth suppression. However, aberrant activation of p53 can lead to defects in embryonic development and other abnormalities. Here, we identified zinc finger protein Zfp871 as a p53 target gene. We showed that as an RNA-binding protein, Zfp871 binds to Mdm2 3’UTR and stabilizes Mdm2 mRNA, which in turn suppresses p53 expression through increased expression of Mdm2 E3 ubiquitin ligase. more...
+
+Organism:
+    Mus musculus
+
+Type:
+    Expression profiling by high throughput sequencing
+
+Platform:
+    GPL21103 
+4 Samples
+
+Download data: TXT
+Series
+
+Accession:
+    GSE176582
+
+ID:
+    200176582
+
+SRA Run Selector
+Select item 200176577
+3.
+
+A prion accelerates proliferation at the expense of lifespan [samples with spike-in controls]
+(Submitter supplied) Manuscript abstract: In fluctuating environments, the ability to switch between different growth strategies, such as those affecting cell size and proliferation, can be advantageous to an organism. Tradeoffs arise, however. Mechanisms that aberrantly increase cell size or proliferation— such as mutations, or chemicals that interfere with growth regulatory pathways—can also shorten lifespan. Here we report a natural example of how the interplay between growth and lifespan can be epigenetically controlled. more...
+
+Organism:
+    Saccharomyces cerevisiae
+
+Type:
+    Expression profiling by high throughput sequencing
+
+Platform:
+    GPL25927 
+8 Samples
+
+Download data: CSV
+Series
+
+Accession:
+    GSE176577
+
+ID:
+    200176577
+
+SRA Run Selector
+Select item 200176571
+4.
+
+Next Generation Sequencing Facilitates Quantitative Analysis of pancreatic tissue transcriptomes from KrasG12D;Pdx1-Cre and miR-301a-/-;KrasG12D;Pdx1-Cre mice treated with caerulein
+(Submitter supplied) Purpose: we used next generation sequencing to analyze gene expression profiles of pancreatic tissues from KrasG12D;Pdx1-Cre and miR-301a-/-;KrasG12D;Pdx1-Cre mice treated with caerulein. The goals of this study are to compare the different gene expression profiles of pancreatic tissue between KrasG12D;Pdx1-Cre and miR-301a-/-;KrasG12D;Pdx1-Cre mice treated with caerulein.
+
+Organism:
+    Mus musculus
+
+Type:
+    Expression profiling by high throughput sequencing
+
+Platform:
+    GPL24247 
+6 Samples
+
+Download data: XLSX
+Series
+
+Accession:
+    GSE176571
+
+ID:
+    200176571
+
+SRA Run Selector
+Select item 200176561
+5.
+
+Inhibition of the IL-17A axis Protects against Immune-related Adverse Events while Supporting Checkpoint Inhibitor Anti-tumor Efficacy
+(Submitter supplied) Checkpoint inhibitor (ICI) immunotherapy leverages the body’s own immune system to attack cancer cells but leads to unwanted autoimmune side effects in up to 60% of patients. Such immune related adverse events (IrAE) lead to treatment interruption, permanent organ dysfunction, hospitalization and premature death. Thyroiditis is one of the most common IrAE, but the cause of thyroid IrAE remains unknown. more...
+
+Organism:
+    Mus musculus
+
+Type:
+    Expression profiling by high throughput sequencing
+
+Platform:
+    GPL24247 
+3 Samples
+
+Download data: CSV
+Series
+
+Accession:
+    GSE176561
+
+ID:
+    200176561
+
+SRA Run Selector
+Select item 200176558
+6.
+
+Histone H3K27me3 demethylase act as a regulator of stemness in hypoxic cancer cells that are detached from extracellular matrix
+(Submitter supplied) Metastasis of cancer cells requires detachment from Extra Cellular Matrix (ECM) to seed cancer cells in a distant organ. Hypoxia is prevalent in this matrix detached cancer cells. Studies have established hypoxia as a chromatin modifier, as it transcriptionally controls expression of various histone demethylases (KDMs); therefore, we hypothesized that the presence of hypoxia could modulate the expression of KDMs in matrix detached cancer cells. more...
+
+Organism:
+    Homo sapiens
+
+Type:
+    Expression profiling by high throughput sequencing
+
+Platform:
+    GPL24676 
+4 Samples
+
+Download data: CSV
+Series
+
+Accession:
+    GSE176558
+
+ID:
+    200176558
+
+SRA Run Selector
+Select item 200176553
+7.
+
+A mitochondrial long-chain fatty acid oxidation defect leads to uncharged tRNA accumulation and activation of the integrated stress response in the mouse heart
+(Submitter supplied) The heart relies mainly on mitochondrial fatty acid beta-oxidation (FAO) for its high energy requirements. Cardiomyopathy and arrhythmias can be severe complications in patients with inherited defects in mitochondrial long-chain FAO, reinforcing the importance of FAO for cardiac health. However, the pathophysiological mechanisms that underlie the cardiac abnormalities in long-chain FAO disorders remain largely unknown. more...
+
+Organism:
+    Mus musculus
+
+Type:
+    Expression profiling by high throughput sequencing
+
+Platform:
+    GPL17021 
+24 Samples
+
+Download data: TXT
+Series
+
+Accession:
+    GSE176553
+
+ID:
+    200176553
+
+SRA Run Selector
+Select item 200176547
+8.
+
+Deacetylation of HP1g enhances multiple myeloma drug resistance through DNA damage repair and liquid-liquid phase separation
+(Submitter supplied) This SuperSeries is composed of the SubSeries listed below.
+
+Organism:
+    Homo sapiens
+
+Type:
+    Expression profiling by high throughput sequencing; Genome binding/occupancy profiling by high throughput sequencing
+
+Platforms:
+    GPL20795 GPL11154 
+12 Samples
+
+Download data
+Series
+
+Accession:
+    GSE176547
+
+ID:
+    200176547
+
+Select item 200176546
+9.
+
+Deacetylation of HP1g enhances multiple myeloma drug resistance through DNA damage repair and liquid-liquid phase separation (RNA-Seq)
+(Submitter supplied) Functional crosstalk between histone modifications and chromatin remodeling has emerged as a key regulatory mode of transcriptional control during drug resistance, but the underlying mechanisms are not fully understood. Here we demonstrate that HP1g regulates chromatin dynamic and gene transcription during drug resistance in multiple myeloma. To study the cellular and molecular function of HP1g during bortezomib resistance, we used RNA sequencing (RNA-seq) to generate gene expression profiling under HP1g steady overexpression in LP-1. more...
+
+Organism:
+    Homo sapiens
+
+Type:
+    Expression profiling by high throughput sequencing
+
+Platform:
+    GPL11154 
+4 Samples
+
+Download data: TXT
+Series
+
+Accession:
+    GSE176546
+
+ID:
+    200176546
+
+SRA Run Selector
+Select item 200176538
+10.
+
+SNP rs4971059 Predisposes to Breast Carcinogenesis and Chemoresistance by Powering DNA Replication.
+(Submitter supplied) This SuperSeries is composed of the SubSeries listed below.
+
+Organism:
+    Homo sapiens
+
+Type:
+    Genome binding/occupancy profiling by high throughput sequencing; Expression profiling by high throughput sequencing
+
+Platforms:
+    GPL11154 GPL16791 
+8 Samples
+
+Download data: BW, TXT
+Series
+
+Accession:
+    GSE176538
+
+ID:
+    200176538
+
+Select item 200176537
+11.
+
+SNP rs4971059 Predisposes to Breast Carcinogenesis and Chemoresistance by Powering DNA Replication [RNA-seq]
+(Submitter supplied) Identification of the driving force behind malignant transformation holds the promise to combat the relapse and therapeutic resistance of cancer. We report here that the single-nucleotide polymorphism (SNP) rs4971059, one of the 65 new breast cancer risk loci identified in a recent genome-wide association analysis, locates at the 6th intron of TRIM46 that functions as an active enhancer. We find that G to A polymorphic switch of the rs4971059 allele augments its chromosomal interaction with the promoter and boosts its enhancer activity. more...
+
+Organism:
+    Homo sapiens
+
+Type:
+    Expression profiling by high throughput sequencing
+
+Platform:
+    GPL11154 
+4 Samples
+
+Download data: TXT
+Series
+
+Accession:
+    GSE176537
+
+ID:
+    200176537
+
+SRA Run Selector
+Select item 200176525
+12.
+
+TGF-b-dependent Lymphoid Tissue Residency of Stem-like T cells Limits the Response to Tumor Vaccine
+(Submitter supplied) We report the transcriptional profiles of tumor-specific CD8+ T cells isolated from tumor draining lymph nodes (TDLN) and tumor following tumor vaccination in C57BL/6 mice. In addition, we included wild type (WT) and TGF-b receptor conditional knockout (Tgfbr2-/-) CD8+ T cells.
+
+Organism:
+    Mus musculus
+
+Type:
+    Expression profiling by high throughput sequencing
+
+Platform:
+    GPL24247 
+8 Samples
+
+Download data: TXT
+Series
+
+Accession:
+    GSE176525
+
+ID:
+    200176525
+
+SRA Run Selector
+Select item 200176520
+13.
+
+mRNA-seq of PTC-028 treated fusion-positive rhabdomyosarcoma cells
+(Submitter supplied) Purpose: This study aims to identify novel targets in the rare pediatric cancer, fusion-positive rhabdomyosarcoma (FP-RMS), and examine differences/similarities in FP-RMS tumor responses to BMI1 (B lymphoma Mo-MLV insert region 1 homolog) inhibition. Methods: FP-RMS cell lines Rh28 and Rh30 were treated with DMSO (vehicle) or PTC-028, a BMI1 inhibitor, and RNA was collected after 24 or 48 hr in triplicate. more...
+
+Organism:
+    Homo sapiens
+
+Type:
+    Expression profiling by high throughput sequencing
+
+Platform:
+    GPL24676 
+18 Samples
+
+Download data: TXT
+Series
+
+Accession:
+    GSE176520
+
+ID:
+    200176520
+
+SRA Run Selector
+Select item 200176442
+14.
+
+Impaired antigen-specific memory B cell and plasma cell responses including lack of specific IgG upon SARS-CoV-2 BNT162b2 vaccination among Kidney Transplant and Dialysis patients
+(Submitter supplied) Single cell transcriptome, cell-surface proterin, TCR and BCR sequencing of FACS-sorted activated T and B cells of the peripheral blood of patients vaccinated against COVID19 after kidney transplant transplantation
+
+Organism:
+    Homo sapiens
+
+Type:
+    Expression profiling by high throughput sequencing; Other
+
+Platform:
+    GPL30173 
+4 Samples
+
+Download data: H5, TXT
+Series
+
+Accession:
+    GSE176442
+
+ID:
+    200176442
+
+SRA Run Selector
+Select item 200176210
+15.
+
+scRNAseq and TCRseq of hepatic and splenic CD8T cells from normal diet fed (ND), HFHC diet fed (HFHC), and resolution induced (RES) mice.
+(Submitter supplied) To explore key features associated with the resolution process in liver fibrosis, we here applied a unique murine model, in which mice were fed HFHC diet for 24 weeks, and then continued with the HFHC diet (HFHC) or switched to a normal diet (RES) for 5 weeks. We noted that both the frequency and number of intrahepatic CD8+ T cells remained significantly high in RES mice compared to normal diet-fed mice (ND). more...
+
+Organism:
+    Mus musculus
+
+Type:
+    Expression profiling by high throughput sequencing; Other
+
+Platforms:
+    GPL28457 GPL21273 
+11 Samples
+
+Download data: CSV, MTX, TSV
+Series
+
+Accession:
+    GSE176210
+
+ID:
+    200176210
+
+SRA Run Selector
+Select item 200165577
+16.
+
+Identification of neural oscillations and epileptiform changes in human brain organoids
+(Submitter supplied) In our study, we define neural network activities in human cortex+ganglionic eminence (GE) fusion orgaonids using a combination of calcium incator imaging and electrophysiology. We futher define abnormal network activities using fusion organoids generated from isogenic induced pluripotent stem cells containing or lacking MECP2 function derived from Rett syndrome patients. Single cell sequencing (10X genomics) was used to characterize the compositon of the fusion organoids used in our studies, and to define differentially expressed genes associated with MECP2 mutation.
+
+Organism:
+    Homo sapiens
+
+Type:
+    Expression profiling by high throughput sequencing
+
+Platform:
+    GPL11154 
+6 Samples
+
+Download data: CSV
+Series
+
+Accession:
+    GSE165577
+
+ID:
+    200165577
+
+SRA Run Selector
+Select item 200162934
+17.
+
+Derepression of inflammation-related genes link to microglia activation and neural maturation defect in a mouse model of Kleefstra Syndrome
+(Submitter supplied) Kleefstra syndrome (KS, also known as 9q.34.3 deletion syndrome) is a rare genetic disorder characterized by a developmental delay, abnormal behaviors and autism-like features. This syndrome is caused by haplo-insufficiency of the euchromatin histone methyltransferase 1 gene (EHMT1/GLP/KDM1D). This gene product, GLP is a methyltransferase responsible for mono- and di-methylation of lysine 9 on histone H3 N-terminal tail, which modulates epigenetic information. more...
+
+Organism:
+    Mus musculus
+
+Type:
+    Expression profiling by high throughput sequencing
+
+Platform:
+    GPL19057 
+2207 Samples
+
+Download data
+Series
+
+Accession:
+    GSE162934
+
+ID:
+    200162934
+
+SRA Run Selector
+Select item 200162694
+18.
+
+Molecular Characterization and Cell Type Composition Deconvolution of Fibrosis in NAFLD
+(Submitter supplied) Using RNA-sequencing, we conducted a cross-sectional study of 143 NASH patients to identify differentially expressed genes, significantly enriched pathways, cell composition changes, and predictive gene signatures related to fibrosis severity.
+
+Organism:
+    Homo sapiens
+
+Type:
+    Expression profiling by high throughput sequencing
+
+Platform:
+    GPL21290 
+143 Samples
+
+Download data: CSV
+Series
+
+Accession:
+    GSE162694
+
+ID:
+    200162694
+
+SRA Run Selector
+Select item 200161946
+19.
+
+Skeletal Stem Cell Aging
+(Submitter supplied) We have used SmartSeq2 to sequence single phenotypic mouse skeletal stem cell (SSCs) purified via FACS from neonatal, young adult, and aged mouse long bones.
+
+Organism:
+    Mus musculus
+
+Type:
+    Expression profiling by high throughput sequencing
+
+Platform:
+    GPL24247 
+670 Samples
+
+Download data: CSV
+Series
+
+Accession:
+    GSE161946
+
+ID:
+    200161946
+
+SRA Run Selector
+Select item 200161477
+20.
+
+Skeletal Stem Cell Diversity in Mouse Long Bones
+(Submitter supplied) We have used SmartSeq2 to sequence single phenotypic skeletal stem cell (SSCs) populations purified via FACS from adult mouse long bones. Two putative SSC populations were isolated based on their previously reported surface marker profiles. An osteochondrogenic SSC (ocSSC, CD45-CD31-Tie2-Ter119-CD51+6C3-Thy1-CD105-) and a perivascular SSC (pvSSC, CD45-CD31-Pdgfra+Sca1+CD24+) were investigated.
+
+Organism:
+    Mus musculus
+
+Type:
+    Expression profiling by high throughput sequencing
+
+Platform:
+    GPL24247 
+383 Samples
+
+Download data: CSV
+Series
+
+Accession:
+    GSE161477
+
+ID:
+    200161477
+
+SRA Run Selector
+<< First< PrevPage of 2494Next >Last >>
+
+    Summary20 per pageSort by Default order
+
+Send to:
+Supplemental Content
+
+Filter your results:
+
+    All (49868) 
+
+    Manage Filters
+
+    Top Organisms  [Tree]
+    More...
+
+Find related data
+
+    Database: 
+
+Search details
+("2000/01/01"[PDAT] : "2021/12/31"[PDAT]) AND ("gse"[Filter] AND "Expression profiling by high throughput sequencing"[Filter])
+See more...
+Important Links
+
+    GEO Home
+    GEO Documentation
+    About GEO DataSets
+    Construct a Query
+    Download Options
+
+Recent activity
+Clear
+Turn Off
+
+    ("2000/01/01"[Publication Date] : "2021/12/31"[Publication Date])... (49868)
+    GEO DataSets
+    ("2000/01/01"[Publication Date] : "2021/12/31"[Publication Date])... (112483)
+    GEO DataSets
+    ("2000/01/01"[Publication Date] : "2021/12/31"[Publication Date])... (63254)
+    GEO DataSets
+    ("2000/01/01"[Publication Date] : "2020/12/31"[Publication Date])... (62146)
+    GEO DataSets
+    ("2000/01/01"[Publication Date] : "2020/12/31"[Publication Date])... (105142)
+    GEO DataSets
+
+See more...
+You are here: NCBI > Genes & Expression > Gene Expression Omnibus (GEO) Datasets
+Support Center
+Simple NCBI Directory
+
+    Getting Started
+    NCBI Education
+    NCBI Help Manual
+    NCBI Handbook
+    Training & Tutorials
+    Submit Data
+
+    Resources
+    Chemicals & Bioassays
+    Data & Software
+    DNA & RNA
+    Domains & Structures
+    Genes & Expression
+    Genetics & Medicine
+    Genomes & Maps
+    Homology
+    Literature
+    Proteins
+    Sequence Analysis
+    Taxonomy
+    Variation
+
+    Popular
+    PubMed
+    Bookshelf
+    PubMed Central
+    BLAST
+    Nucleotide
+    Genome
+    SNP
+    Gene
+    Protein
+    PubChem
+
+    Featured
+    Genetic Testing Registry
+    GenBank
+    Reference Sequences
+    Gene Expression Omnibus
+    Genome Data Viewer
+    Human Genome
+    Mouse Genome
+    Influenza Virus
+    Primer-BLAST
+    Sequence Read Archive
+
+    NCBI Information
+    About NCBI
+    Research at NCBI
+    NCBI News & Blog
+    NCBI FTP Site
+    NCBI on Facebook
+    NCBI on Twitter
+    NCBI on YouTube
+    Privacy Policy
+
+NLM
+NIH
+DHHS
+USA.gov
+
+National Center for Biotechnology Information, U.S. National Library of Medicine 8600 Rockville Pike, Bethesda MD, 20894 USA
+Policies and Guidelines | Contact

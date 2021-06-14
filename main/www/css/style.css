@@ -6,6 +6,15 @@
   display: none !important;
 }
 
+.ts-input.has-items > input::placeholder {
+   display: none;
+}
+
+.ts-input {
+  overflow-y: scroll;
+  max-height: 115px;
+}
+
 html, body {
   height: 100%;
 }

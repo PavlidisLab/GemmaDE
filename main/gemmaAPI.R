@@ -19,7 +19,6 @@ geneEvidence <- async(function(genes, taxa = getConfig('taxa')$value) {
   }
   
   parse <- function(json) {
-    print(json)
     if(length(json$data) == 0) return(NULL)
     lapply(json$data[[1]]$evidence, prettyPrint)
   }
@@ -50,66 +49,6 @@ geneEvidence <- async(function(genes, taxa = getConfig('taxa')$value) {
 #' @param genes Genes to search for
 #' @param keepNonSpecific, consolidate Options passed on to Gemma
 geneExpression <- async(function(ee.IDs, rsc.IDs, taxa = getConfig('taxa')$value, genes, keepNonSpecific = T, consolidate = 'average') {
-  parse <- function(content, json, meta) {
-    mJson <- parse_json(rawToChar(content))
-    
-    # Tidy gene expression output
-    prettyPrint <- function(gene) {
-      if(length(gene$vectors) == 0) mData <- NULL
-      else mData <- unlist(gene$vectors[[1]]$bioAssayExpressionLevels)
-      
-      extractSampleInfo <- function(sample) {
-        # Factor value objects seems to be sufficient, should we merge with characteristic values?
-        vals <- sapply(sample$sample$factorValueObjects, '[[', 'fvSummary') %>%
-          `c`(sample$sample$characteristicValues %>% unname) %>% unique
-        
-        if((baseline <- any(meta[, cf.Baseline] %in% vals)) || any(meta[, cf.Val] %in% vals))
-          list(name = sample$name,
-               accession = ifelse(is.null(sample$accession$accession), 'N/A', sample$accession$accession),
-               baseline = ifelse(baseline, meta[, data.table::first(cf.Baseline)], meta[, data.table::first(cf.Val)]))
-      }
-      
-      if(is.null(mData)) NULL
-      else {
-        mMeta <- lapply(mJson$data, extractSampleInfo) %>% rbindlist %>% setorder(baseline)
-        
-        list(
-          metadata = mMeta,
-          expr = data.table(gene = gene$geneOfficialSymbol, # geneNcbiId
-                            t(mData[mMeta[, name]] %>% `class<-`('numeric')))
-        )
-      }
-    }
-    
-    list(ee.Name = as.character(data.table::first(meta[, ee.Name])),
-         ee.Scale = as.character(data.table::first(meta[, ee.Scale])),
-         geneData = lapply(json$data[[1]]$geneExpressionLevels, prettyPrint) %>% { Filter(Negate(is.null), .) }
-    ) %>% {
-      if(length(.$geneData) == 0) NULL
-      else {
-        # TODO this gross block could be made nicer when I'm less lazy
-        expr <- rbindlist(lapply(.$geneData, '[[', 'expr'))
-        expr.rn <- expr[, gene]
-        expr <- expr[, !'gene']
-        
-        # Try to put everything on a log2 scale. Not sure about this.
-        expr <- switch(.$ee.Scale,
-                       LOG2 = expr,
-                       LOG10 = expr / log10(2),
-                       LN = expr / ln(2),
-                       log2(expr + 1)
-        )
-        expr <- data.table(gene = expr.rn, expr)
-        
-        list(ee.Name = .$ee.Name,
-             geneData = list(
-               metadata = .$geneData[[1]]$metadata,
-               expr = expr
-             ))
-      }
-    }
-  }
-  
   # Get expression information for ee.ID by sending `length(ee.IDs)` async requests
   mLongData <- rbindlist(lapply(taxa, function(i) DATA.HOLDER[[i]]@experiment.meta[, .(ee.ID, rsc.ID, ee.Name = as.character(ee.Name), cf.Baseline, cf.Val, ee.Scale)]))
   
@@ -144,7 +83,62 @@ geneExpression <- async(function(ee.IDs, rsc.IDs, taxa = getConfig('taxa')$value
                       # Get the sample information for every expression set
                       http_get(paste0('https://gemma.msl.ubc.ca/rest/v2/datasets/',
                                       data.table::first(meta[, ee.Name]), '/samples'))$
-                        then(function(response2) parse(response2$content, parse_json(rawToChar(content)), meta))
+                        then(function(response2) {
+                          mJson <- parse_json(rawToChar(response2$content))
+                          
+                          list(ee.Name = as.character(data.table::first(meta[, ee.Name])),
+                               ee.Scale = as.character(data.table::first(meta[, ee.Scale])),
+                               geneData = lapply(parse_json(rawToChar(content))$data[[1]]$geneExpressionLevels, function(gene) {
+                                 if(length(gene$vectors) == 0) mData <- NULL
+                                 else mData <- unlist(gene$vectors[[1]]$bioAssayExpressionLevels)
+                                 
+                                 extractSampleInfo <- function(sample) {
+                                   # Factor value objects seems to be sufficient, should we merge with characteristic values?
+                                   vals <- sapply(sample$sample$factorValueObjects, '[[', 'fvSummary') %>%
+                                     `c`(sample$sample$characteristicValues %>% unname) %>% unique
+                                   
+                                   if((baseline <- any(meta[, cf.Baseline] %in% vals)) || any(meta[, cf.Val] %in% vals))
+                                     list(name = sample$name,
+                                          accession = ifelse(is.null(sample$accession$accession), 'N/A', sample$accession$accession),
+                                          baseline = ifelse(baseline, meta[, data.table::first(cf.Baseline)], meta[, data.table::first(cf.Val)]))
+                                 }
+                                 
+                                 if(is.null(mData)) NULL
+                                 else {
+                                   mMeta <- lapply(mJson$data, extractSampleInfo) %>% rbindlist %>% setorder(baseline)
+                                   
+                                   list(
+                                     metadata = mMeta,
+                                     expr = data.table(gene = gene$geneOfficialSymbol, # geneNcbiId
+                                                       t(mData[mMeta[, name]] %>% `class<-`('numeric')))
+                                   )
+                                 }
+                               }) %>% { Filter(Negate(is.null), .) }
+                          ) %>% {
+                            if(length(.$geneData) == 0) NULL
+                            else {
+                              # TODO this gross block could be made nicer when I'm less lazy
+                              expr <- rbindlist(lapply(.$geneData, '[[', 'expr'))
+                              expr.rn <- expr[, gene]
+                              expr <- expr[, !'gene']
+                              
+                              # Try to put everything on a log2 scale. Not sure about this.
+                              expr <- switch(.$ee.Scale,
+                                             LOG2 = expr,
+                                             LOG10 = expr / log10(2),
+                                             LN = expr / ln(2),
+                                             log2(expr + 1)
+                              )
+                              expr <- data.table(gene = expr.rn, expr)
+                              
+                              list(ee.Name = .$ee.Name,
+                                   geneData = list(
+                                     metadata = data.table(ee.Name = .$ee.Name, .$geneData[[1]]$metadata),
+                                     expr = expr
+                                   ))
+                            }
+                          }
+                        })
                     })
   }) %>% { when_all(.list = .)$then(function(x) {
     # Once everything is done, pretty it up for return

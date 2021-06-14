@@ -1,0 +1,381 @@
+Year,Type,Organism,Count
+2001,Microarray,Homo sapiens,2
+2001,Microarray,Rattus norvegicus,0
+2001,Microarray,Mus musculus,3
+2001,Microarray,Danio rerio,0
+2001,Microarray,Caenorhabditis elegans,1
+2001,Microarray,Drosophila melanogaster,0
+2001,Microarray,Saccharomyces cerevisiae,0
+2001,Microarray,Escherichia coli,2
+2001,Microarray,Arabidopsis thaliana,1
+2001,Microarray,Total,9
+2002,Microarray,Homo sapiens,29
+2002,Microarray,Rattus norvegicus,2
+2002,Microarray,Mus musculus,22
+2002,Microarray,Danio rerio,0
+2002,Microarray,Caenorhabditis elegans,1
+2002,Microarray,Drosophila melanogaster,2
+2002,Microarray,Saccharomyces cerevisiae,25
+2002,Microarray,Escherichia coli,3
+2002,Microarray,Arabidopsis thaliana,1
+2002,Microarray,Total,85
+2003,Microarray,Homo sapiens,207
+2003,Microarray,Rattus norvegicus,52
+2003,Microarray,Mus musculus,181
+2003,Microarray,Danio rerio,0
+2003,Microarray,Caenorhabditis elegans,25
+2003,Microarray,Drosophila melanogaster,34
+2003,Microarray,Saccharomyces cerevisiae,36
+2003,Microarray,Escherichia coli,4
+2003,Microarray,Arabidopsis thaliana,14
+2003,Microarray,Total,569
+2004,Microarray,Homo sapiens,457
+2004,Microarray,Rattus norvegicus,131
+2004,Microarray,Mus musculus,435
+2004,Microarray,Danio rerio,4
+2004,Microarray,Caenorhabditis elegans,28
+2004,Microarray,Drosophila melanogaster,52
+2004,Microarray,Saccharomyces cerevisiae,92
+2004,Microarray,Escherichia coli,11
+2004,Microarray,Arabidopsis thaliana,43
+2004,Microarray,Total,1334
+2005,Microarray,Homo sapiens,856
+2005,Microarray,Rattus norvegicus,231
+2005,Microarray,Mus musculus,753
+2005,Microarray,Danio rerio,6
+2005,Microarray,Caenorhabditis elegans,43
+2005,Microarray,Drosophila melanogaster,79
+2005,Microarray,Saccharomyces cerevisiae,170
+2005,Microarray,Escherichia coli,30
+2005,Microarray,Arabidopsis thaliana,202
+2005,Microarray,Total,2588
+2006,Microarray,Homo sapiens,1379
+2006,Microarray,Rattus norvegicus,337
+2006,Microarray,Mus musculus,1187
+2006,Microarray,Danio rerio,13
+2006,Microarray,Caenorhabditis elegans,62
+2006,Microarray,Drosophila melanogaster,135
+2006,Microarray,Saccharomyces cerevisiae,239
+2006,Microarray,Escherichia coli,81
+2006,Microarray,Arabidopsis thaliana,257
+2006,Microarray,Total,4182
+2006,Sequencing,Homo sapiens,0
+2006,Sequencing,Rattus norvegicus,0
+2006,Sequencing,Mus musculus,0
+2006,Sequencing,Danio rerio,0
+2006,Sequencing,Caenorhabditis elegans,0
+2006,Sequencing,Drosophila melanogaster,0
+2006,Sequencing,Saccharomyces cerevisiae,0
+2006,Sequencing,Escherichia coli,0
+2006,Sequencing,Arabidopsis thaliana,1
+2006,Sequencing,Total,1
+2007,Sequencing,Homo sapiens,0
+2007,Sequencing,Rattus norvegicus,0
+2007,Sequencing,Mus musculus,1
+2007,Sequencing,Danio rerio,0
+2007,Sequencing,Caenorhabditis elegans,0
+2007,Sequencing,Drosophila melanogaster,0
+2007,Sequencing,Saccharomyces cerevisiae,0
+2007,Sequencing,Escherichia coli,0
+2007,Sequencing,Arabidopsis thaliana,1
+2007,Sequencing,Total,2
+2007,Microarray,Homo sapiens,2066
+2007,Microarray,Rattus norvegicus,456
+2007,Microarray,Mus musculus,1755
+2007,Microarray,Danio rerio,28
+2007,Microarray,Caenorhabditis elegans,78
+2007,Microarray,Drosophila melanogaster,205
+2007,Microarray,Saccharomyces cerevisiae,371
+2007,Microarray,Escherichia coli,121
+2007,Microarray,Arabidopsis thaliana,496
+2007,Microarray,Total,6546
+2007,Sequencing,Homo sapiens,0
+2007,Sequencing,Rattus norvegicus,0
+2007,Sequencing,Mus musculus,1
+2007,Sequencing,Danio rerio,0
+2007,Sequencing,Caenorhabditis elegans,0
+2007,Sequencing,Drosophila melanogaster,0
+2007,Sequencing,Saccharomyces cerevisiae,0
+2007,Sequencing,Escherichia coli,0
+2007,Sequencing,Arabidopsis thaliana,1
+2007,Sequencing,Total,2
+2008,Sequencing,Homo sapiens,7
+2008,Sequencing,Rattus norvegicus,0
+2008,Sequencing,Mus musculus,5
+2008,Sequencing,Danio rerio,0
+2008,Sequencing,Caenorhabditis elegans,0
+2008,Sequencing,Drosophila melanogaster,1
+2008,Sequencing,Saccharomyces cerevisiae,3
+2008,Sequencing,Escherichia coli,0
+2008,Sequencing,Arabidopsis thaliana,5
+2008,Sequencing,Total,21
+2008,Microarray,Homo sapiens,3001
+2008,Microarray,Rattus norvegicus,586
+2008,Microarray,Mus musculus,2477
+2008,Microarray,Danio rerio,60
+2008,Microarray,Caenorhabditis elegans,97
+2008,Microarray,Drosophila melanogaster,277
+2008,Microarray,Saccharomyces cerevisiae,479
+2008,Microarray,Escherichia coli,164
+2008,Microarray,Arabidopsis thaliana,641
+2008,Microarray,Total,9341
+2009,Microarray,Homo sapiens,4186
+2009,Microarray,Rattus norvegicus,786
+2009,Microarray,Mus musculus,3371
+2009,Microarray,Danio rerio,93
+2009,Microarray,Caenorhabditis elegans,128
+2009,Microarray,Drosophila melanogaster,355
+2009,Microarray,Saccharomyces cerevisiae,569
+2009,Microarray,Escherichia coli,223
+2009,Microarray,Arabidopsis thaliana,810
+2009,Microarray,Total,12737
+2009,Sequencing,Homo sapiens,14
+2009,Sequencing,Rattus norvegicus,0
+2009,Sequencing,Mus musculus,7
+2009,Sequencing,Danio rerio,1
+2009,Sequencing,Caenorhabditis elegans,2
+2009,Sequencing,Drosophila melanogaster,10
+2009,Sequencing,Saccharomyces cerevisiae,5
+2009,Sequencing,Escherichia coli,0
+2009,Sequencing,Arabidopsis thaliana,5
+2009,Sequencing,Total,56
+2010,Sequencing,Homo sapiens,51
+2010,Sequencing,Rattus norvegicus,2
+2010,Sequencing,Mus musculus,27
+2010,Sequencing,Danio rerio,6
+2010,Sequencing,Caenorhabditis elegans,5
+2010,Sequencing,Drosophila melanogaster,28
+2010,Sequencing,Saccharomyces cerevisiae,10
+2010,Sequencing,Escherichia coli,2
+2010,Sequencing,Arabidopsis thaliana,11
+2010,Sequencing,Total,192
+2010,Microarray,Homo sapiens,5659
+2010,Microarray,Rattus norvegicus,978
+2010,Microarray,Mus musculus,4432
+2010,Microarray,Danio rerio,136
+2010,Microarray,Caenorhabditis elegans,168
+2010,Microarray,Drosophila melanogaster,415
+2010,Microarray,Saccharomyces cerevisiae,680
+2010,Microarray,Escherichia coli,272
+2010,Microarray,Arabidopsis thaliana,982
+2010,Microarray,Total,16778
+2011,Microarray,Homo sapiens,7523
+2011,Microarray,Rattus norvegicus,1132
+2011,Microarray,Mus musculus,5766
+2011,Microarray,Danio rerio,197
+2011,Microarray,Caenorhabditis elegans,204
+2011,Microarray,Drosophila melanogaster,498
+2011,Microarray,Saccharomyces cerevisiae,796
+2011,Microarray,Escherichia coli,319
+2011,Microarray,Arabidopsis thaliana,1158
+2011,Microarray,Total,21548
+2011,Sequencing,Homo sapiens,142
+2011,Sequencing,Rattus norvegicus,4
+2011,Sequencing,Mus musculus,94
+2011,Sequencing,Danio rerio,9
+2011,Sequencing,Caenorhabditis elegans,14
+2011,Sequencing,Drosophila melanogaster,42
+2011,Sequencing,Saccharomyces cerevisiae,22
+2011,Sequencing,Escherichia coli,5
+2011,Sequencing,Arabidopsis thaliana,23
+2011,Sequencing,Total,501
+2012,Sequencing,Homo sapiens,304
+2012,Sequencing,Rattus norvegicus,10
+2012,Sequencing,Mus musculus,251
+2012,Sequencing,Danio rerio,14
+2012,Sequencing,Caenorhabditis elegans,23
+2012,Sequencing,Drosophila melanogaster,99
+2012,Sequencing,Saccharomyces cerevisiae,39
+2012,Sequencing,Escherichia coli,16
+2012,Sequencing,Arabidopsis thaliana,59
+2012,Sequencing,Total,1068
+2012,Microarray,Homo sapiens,9565
+2012,Microarray,Rattus norvegicus,1310
+2012,Microarray,Mus musculus,7318
+2012,Microarray,Danio rerio,239
+2012,Microarray,Caenorhabditis elegans,245
+2012,Microarray,Drosophila melanogaster,570
+2012,Microarray,Saccharomyces cerevisiae,908
+2012,Microarray,Escherichia coli,369
+2012,Microarray,Arabidopsis thaliana,1341
+2012,Microarray,Total,26811
+2013,Microarray,Homo sapiens,11773
+2013,Microarray,Rattus norvegicus,1507
+2013,Microarray,Mus musculus,9085
+2013,Microarray,Danio rerio,307
+2013,Microarray,Caenorhabditis elegans,273
+2013,Microarray,Drosophila melanogaster,637
+2013,Microarray,Saccharomyces cerevisiae,1009
+2013,Microarray,Escherichia coli,412
+2013,Microarray,Arabidopsis thaliana,1526
+2013,Microarray,Total,32362
+2013,Sequencing,Homo sapiens,591
+2013,Sequencing,Rattus norvegicus,21
+2013,Sequencing,Mus musculus,585
+2013,Sequencing,Danio rerio,42
+2013,Sequencing,Caenorhabditis elegans,40
+2013,Sequencing,Drosophila melanogaster,143
+2013,Sequencing,Saccharomyces cerevisiae,65
+2013,Sequencing,Escherichia coli,32
+2013,Sequencing,Arabidopsis thaliana,96
+2013,Sequencing,Total,2108
+2014,Sequencing,Homo sapiens,1155
+2014,Sequencing,Rattus norvegicus,47
+2014,Sequencing,Mus musculus,1130
+2014,Sequencing,Danio rerio,70
+2014,Sequencing,Caenorhabditis elegans,69
+2014,Sequencing,Drosophila melanogaster,203
+2014,Sequencing,Saccharomyces cerevisiae,116
+2014,Sequencing,Escherichia coli,57
+2014,Sequencing,Arabidopsis thaliana,158
+2014,Sequencing,Total,3843
+2014,Microarray,Homo sapiens,14038
+2014,Microarray,Rattus norvegicus,1719
+2014,Microarray,Mus musculus,10875
+2014,Microarray,Danio rerio,360
+2014,Microarray,Caenorhabditis elegans,300
+2014,Microarray,Drosophila melanogaster,693
+2014,Microarray,Saccharomyces cerevisiae,1098
+2014,Microarray,Escherichia coli,454
+2014,Microarray,Arabidopsis thaliana,1697
+2014,Microarray,Total,37862
+2015,Microarray,Homo sapiens,16516
+2015,Microarray,Rattus norvegicus,1909
+2015,Microarray,Mus musculus,12654
+2015,Microarray,Danio rerio,406
+2015,Microarray,Caenorhabditis elegans,320
+2015,Microarray,Drosophila melanogaster,744
+2015,Microarray,Saccharomyces cerevisiae,1166
+2015,Microarray,Escherichia coli,487
+2015,Microarray,Arabidopsis thaliana,1853
+2015,Microarray,Total,43335
+2015,Sequencing,Homo sapiens,1870
+2015,Sequencing,Rattus norvegicus,84
+2015,Sequencing,Mus musculus,2071
+2015,Sequencing,Danio rerio,94
+2015,Sequencing,Caenorhabditis elegans,105
+2015,Sequencing,Drosophila melanogaster,278
+2015,Sequencing,Saccharomyces cerevisiae,165
+2015,Sequencing,Escherichia coli,74
+2015,Sequencing,Arabidopsis thaliana,231
+2015,Sequencing,Total,6248
+2016,Sequencing,Homo sapiens,4133
+2016,Sequencing,Rattus norvegicus,156
+2016,Sequencing,Mus musculus,3655
+2016,Sequencing,Danio rerio,141
+2016,Sequencing,Caenorhabditis elegans,159
+2016,Sequencing,Drosophila melanogaster,387
+2016,Sequencing,Saccharomyces cerevisiae,236
+2016,Sequencing,Escherichia coli,105
+2016,Sequencing,Arabidopsis thaliana,363
+2016,Sequencing,Total,11133
+2016,Microarray,Homo sapiens,18691
+2016,Microarray,Rattus norvegicus,2135
+2016,Microarray,Mus musculus,14258
+2016,Microarray,Danio rerio,458
+2016,Microarray,Caenorhabditis elegans,342
+2016,Microarray,Drosophila melanogaster,776
+2016,Microarray,Saccharomyces cerevisiae,1228
+2016,Microarray,Escherichia coli,517
+2016,Microarray,Arabidopsis thaliana,1986
+2016,Microarray,Total,48260
+2017,Microarray,Homo sapiens,20750
+2017,Microarray,Rattus norvegicus,2274
+2017,Microarray,Mus musculus,15571
+2017,Microarray,Danio rerio,506
+2017,Microarray,Caenorhabditis elegans,374
+2017,Microarray,Drosophila melanogaster,818
+2017,Microarray,Saccharomyces cerevisiae,1265
+2017,Microarray,Escherichia coli,539
+2017,Microarray,Arabidopsis thaliana,2118
+2017,Microarray,Total,52570
+2017,Sequencing,Homo sapiens,5884
+2017,Sequencing,Rattus norvegicus,243
+2017,Sequencing,Mus musculus,5685
+2017,Sequencing,Danio rerio,236
+2017,Sequencing,Caenorhabditis elegans,217
+2017,Sequencing,Drosophila melanogaster,534
+2017,Sequencing,Saccharomyces cerevisiae,326
+2017,Sequencing,Escherichia coli,166
+2017,Sequencing,Arabidopsis thaliana,548
+2017,Sequencing,Total,16419
+2018,Sequencing,Homo sapiens,8268
+2018,Sequencing,Rattus norvegicus,334
+2018,Sequencing,Mus musculus,8385
+2018,Sequencing,Danio rerio,358
+2018,Sequencing,Caenorhabditis elegans,300
+2018,Sequencing,Drosophila melanogaster,692
+2018,Sequencing,Saccharomyces cerevisiae,426
+2018,Sequencing,Escherichia coli,212
+2018,Sequencing,Arabidopsis thaliana,762
+2018,Sequencing,Total,23242
+2018,Microarray,Homo sapiens,22553
+2018,Microarray,Rattus norvegicus,2419
+2018,Microarray,Mus musculus,16798
+2018,Microarray,Danio rerio,534
+2018,Microarray,Caenorhabditis elegans,386
+2018,Microarray,Drosophila melanogaster,861
+2018,Microarray,Saccharomyces cerevisiae,1286
+2018,Microarray,Escherichia coli,555
+2018,Microarray,Arabidopsis thaliana,2208
+2018,Microarray,Total,56314
+2019,Microarray,Homo sapiens,24101
+2019,Microarray,Rattus norvegicus,2502
+2019,Microarray,Mus musculus,17781
+2019,Microarray,Danio rerio,570
+2019,Microarray,Caenorhabditis elegans,402
+2019,Microarray,Drosophila melanogaster,874
+2019,Microarray,Saccharomyces cerevisiae,1309
+2019,Microarray,Escherichia coli,567
+2019,Microarray,Arabidopsis thaliana,2279
+2019,Microarray,Total,59375
+2019,Sequencing,Homo sapiens,11586
+2019,Sequencing,Rattus norvegicus,478
+2019,Sequencing,Mus musculus,11938
+2019,Sequencing,Danio rerio,499
+2019,Sequencing,Caenorhabditis elegans,398
+2019,Sequencing,Drosophila melanogaster,880
+2019,Sequencing,Saccharomyces cerevisiae,528
+2019,Sequencing,Escherichia coli,265
+2019,Sequencing,Arabidopsis thaliana,988
+2019,Sequencing,Total,32007
+2020,Sequencing,Homo sapiens,16144
+2020,Sequencing,Rattus norvegicus,699
+2020,Sequencing,Mus musculus,16580
+2020,Sequencing,Danio rerio,677
+2020,Sequencing,Caenorhabditis elegans,515
+2020,Sequencing,Drosophila melanogaster,1098
+2020,Sequencing,Saccharomyces cerevisiae,669
+2020,Sequencing,Escherichia coli,340
+2020,Sequencing,Arabidopsis thaliana,1255
+2020,Sequencing,Total,43614
+2020,Microarray,Homo sapiens,25511
+2020,Microarray,Rattus norvegicus,2665
+2020,Microarray,Mus musculus,18684
+2020,Microarray,Danio rerio,583
+2020,Microarray,Caenorhabditis elegans,419
+2020,Microarray,Drosophila melanogaster,892
+2020,Microarray,Saccharomyces cerevisiae,1322
+2020,Microarray,Escherichia coli,580
+2020,Microarray,Arabidopsis thaliana,2332
+2020,Microarray,Total,62146
+2021,Microarray,Homo sapiens,26065
+2021,Microarray,Rattus norvegicus,2711
+2021,Microarray,Mus musculus,19062
+2021,Microarray,Danio rerio,587
+2021,Microarray,Caenorhabditis elegans,421
+2021,Microarray,Drosophila melanogaster,894
+2021,Microarray,Saccharomyces cerevisiae,1324
+2021,Microarray,Escherichia coli,581
+2021,Microarray,Arabidopsis thaliana,2360
+2021,Microarray,Total,63254
+2021,Sequencing,Homo sapiens,18816
+2021,Sequencing,Rattus norvegicus,832
+2021,Sequencing,Mus musculus,18982
+2021,Sequencing,Danio rerio,763
+2021,Sequencing,Caenorhabditis elegans,569
+2021,Sequencing,Drosophila melanogaster,1198
+2021,Sequencing,Saccharomyces cerevisiae,718
+2021,Sequencing,Escherichia coli,376
+2021,Sequencing,Arabidopsis thaliana,1409
+2021,Sequencing,Total,49868

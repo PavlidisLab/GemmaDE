@@ -14,7 +14,7 @@ plan(multicore, workers = 5) # Maximum clients that Gemma DE can serve
 # with tom select. Didn't bother perfecting this, seems to work well enough
 customSelectizeIt <- function (inputId, select, options, nonempty = FALSE) {
   res <- checkAsIs(options)
-  selectizeDep <- htmlDependency("tomselect", "1.7.3", c(href = "libs/tomselect"), 
+  selectizeDep <- htmlDependency("tomselect", "1.7.4", c(href = "libs/tomselect"), 
                                  stylesheet = "css/tom-select.bootstrap3.min.css", head = format(tagList(tags$script(src = "libs/tomselect/js/tom-select.complete.min.js"))))
   
   select$children[[2]] <- tagAppendChild(select$children[[2]], 

@@ -199,7 +199,7 @@ if(!exists('DATA.HOLDER')) {
       
       # Precompute z-scores
       dataHolder$zscore <- (dataHolder$fc - metaGene$dist.Mean) / metaGene$dist.SD
-      dataHolder$fc <- NULL
+      # TODO Maintained for GeneChaser # dataHolder$fc <- NULL
       
       message('Adding Gemma info')
       
