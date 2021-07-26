@@ -94,13 +94,13 @@ generateResultsPlot <- function(genes, conditions, expr, options = getConfig(),
         }
         
         ret <- heatmaply(expr$expr, labRow = NULL, showticklabels = c(F, T), scale = 'none',
-                         colors = PuOr,
+                         colors = PuOr, fontsize_row = 15,
                          Rowv = NULL, dendrogram = 'none',
                          col_side_colors = expr$metadata[, .(`Condition Comparison` = baseline,
                                                              Experiment = ee.Name)])
       } else {
         ret <- heatmaply(expr$expr, labRow = NULL, showticklabels = c(F, T), scale = 'row',
-                         colors = PuOr,
+                         colors = PuOr, fontsize_row = 15,
                          Rowv = NULL, dendrogram = 'none',
                          col_side_colors = expr$metadata[, .(`Condition Comparison` = baseline)])
       }
@@ -183,7 +183,7 @@ generateResultsCloud <- function(data, options) {
 generateResults <- function(data) {
   outputColumns <- c('Condition Comparison', 'Evidence', 'Ontology Steps', 'Effect Size', 'Test Statistic')
   
-  mTable <- datatable(data[, outputColumns, with = F] %>% as.data.frame,
+  mTable <- datatable(data[, outputColumns, with = F] %>% .[, c('Effect Size', 'Test Statistic') := list(round(`Effect Size`, 2), round(`Test Statistic`, 2))] %>% as.data.frame,
                       extensions = 'Buttons',
                       selection = 'none',
                       rownames = data[, as.character(cf.Cat)],
@@ -225,10 +225,10 @@ generateResults <- function(data) {
                                             className = 'dt-right',
                                             searchable = F, orderable = F),
                                        list(targets = which(outputColumns == 'Test Statistic'),
-                                            render = JS('asPval'),
+                                            #render = JS('asPval'),
                                             width = '12%'),
                                        list(targets = which(outputColumns == 'Effect Size'),
-                                            render = JS('asPval'),
+                                            #render = JS('asPval'),
                                             width = '12%'),
                                        list(targets = which(outputColumns == 'Ontology Steps'),
                                             width = '10%')

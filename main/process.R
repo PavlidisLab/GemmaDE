@@ -216,11 +216,14 @@ precomputeTags <- function(taxa = getConfig(key = 'taxa')$value, mGraph = NULL, 
     # Simple (ontology) tags get associated with their parents from mComputedTags
     mTags <- mSimpleTags %>% merge(mComputedTags, by.x = 'tag', by.y = 'startTag', sort = F, allow.cartesian = T) %>%
       .[, c('tag', 'tag.y') := list(tag.y, NULL)] %>% .[, ID := NA]
-  } else
+  } else if(nrow(mSimpleTags) > 0)
+    mTags <- mSimpleTags[, .(tag, rsc.ID, ee.ID, type, distance = 0, ID = NA)]
+  else
     mTags <- data.table()
   
   # Structured tags just get inserted
-  mTags <- mTags %>% rbind(mStructuredTags[, .(tag, rsc.ID, ee.ID, type, distance, ID = NA)])
+  if(nrow(mStructuredTags) > 0)
+    mTags <- mTags %>% rbind(mStructuredTags[, .(tag, rsc.ID, ee.ID, type, distance, ID = NA)])
   
   if(nrow(mBagOfWords) > 0 && nrow(mComputedTags) > 0)
     # Ontology-expanded bag of word tags get associated with their parents from mComputedTags
@@ -230,7 +233,7 @@ precomputeTags <- function(taxa = getConfig(key = 'taxa')$value, mGraph = NULL, 
               by.x = 'tag', by.y = 'startTag', all = T, sort = F, allow.cartesian = T) %>%
         .[is.na(tag.y), c('tag.y', 'distance') := list(tag, 0)] %>%
         .[, c('tag', 'tag.y') := list(tag.y, NULL)]
-    )
+      )
   
   mTags <- mTags %>%
     merge(unique(ONTOLOGIES.DEFS[, .(Node_Long = as.character(Node_Long), Definition = as.character(Definition))]),
@@ -385,7 +388,10 @@ normalize <- function(scores, taxa = getConfig(key = 'taxa')$value) {
         data.table(rn = scores$rn, ., scores[, .(score, f.IN, f.OUT, ee.q)])
       } %>%
     .[, score := rowSums2(as.matrix(.SD), na.rm = T), .SDcols = !c('rn', 'score', 'f.IN', 'f.OUT', 'ee.q')] %>%
-    .[, normalization := ee.q * (1 + f.IN) / (1 + 10^f.OUT)]
+    .[, normalization := ee.q * (1 + f.IN) / (1 + 10^f.OUT)] %>%
+    .[, sn := score * normalization] %>%
+    setorder(-sn) %>%
+    .[, !'sn']
 }
 
 #' Enrich
@@ -395,11 +401,12 @@ normalize <- function(scores, taxa = getConfig(key = 'taxa')$value) {
 #'
 #' @param rankings The output of (@seealso search).
 #' @param options The options
+#' @param doNorm Whether or not to normalize scores
 #' @param CACHE A cache to use. If null, uses the global CACHE.BACKGROUND
-enrich <- function(rankings, options = getConfig(), CACHE = NULL) {
+enrich <- function(rankings, options = getConfig(), doNorm = T, CACHE = NULL) {
   terms <- getTags(options$taxa$value, rankings$rn, options$dist$value, CACHE = CACHE)
   
-  terms <- rankings %>% normalize(options$taxa$value) %>%
+  terms <- rankings %>% { if(doNorm) { normalize(., options$taxa$value) } else { . } } %>%
     merge(terms, by.x = 'rn', by.y = 'rsc.ID', sort = F) %>%
     .[score > 0] %>%
     .[cf.Cat %in% options$categories$value]
@@ -420,7 +427,8 @@ enrich <- function(rankings, options = getConfig(), CACHE = NULL) {
         dcast(... ~ gene, value.var = 'pv', fill = 0),
       by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), sort = F) %>%
     .[, score := Rfast::rowsums(as.matrix(.SD) * normalization), .SDcols = !c('stat', 'cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri', 'distance', 'normalization')] %>%
-    .[, !'normalization'] %>%
+    #.[, !'normalization'] %>%
     setorder(-stat, distance) %>%
-    .[, .SD[1], stat]
+    .[, .SD[1], stat] %>%
+    setorder(-score)
 }

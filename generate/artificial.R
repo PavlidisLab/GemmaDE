@@ -320,7 +320,7 @@ mclapply(1:N_EXP, function(experiment) {
   outliers[is.na(outliers)] <- 0.5
   
   tmp <- generateSyntheticData('',
-                               n.vars = N_GENES, samples.per.cond = max(2, floor(eMeta[experiment, ee.NumSamples] / 2)),
+                               n.vars = N_GENES, samples.per.cond = max(2, floor(eMeta[experiment, ee.NumSample] / 2)),
                                effect.size = mDat$effect,
                                single.outlier.high.prob = outliers/2,
                                single.outlier.low.prob = outliers/2)
@@ -332,7 +332,7 @@ mclapply(1:N_EXP, function(experiment) {
     MISSING <- 1:N_GENES
   
   tmp@variable.annotations$truelog2foldchanges[
-    sample(MISSING, N_GENES - eMeta$n.detect[experiment])] <- NA_real_
+    sample(MISSING, N_GENES - eMeta$ad.NumGenes[experiment])] <- NA_real_
   
   if(USE == 'DESeq2') {
     suppressMessages(DESeqDataSetFromMatrix(countData = tmp@count.matrix,

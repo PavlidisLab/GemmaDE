@@ -7,7 +7,7 @@ library(parallel)
 
 DATA.HOLDER[c('human', 'mouse', 'rat')] <- NULL
 CACHE.BACKGROUND[c('human', 'mouse', 'rat')] <- NULL
-NULLS.EXP[c('human', 'mouse', 'rat')] <- NULL
+NULLS[c('human', 'mouse', 'rat')] <- NULL
 
 analyzeArtificial <- function(N_GROUPS, N_GENES, COI = NULL, GOI = NULL, seed = NULL,
                               max.distance = Inf, best.index = 1) {
@@ -47,7 +47,7 @@ analyzeArtificial <- function(N_GROUPS, N_GENES, COI = NULL, GOI = NULL, seed = 
   ) %>% merge(
     mSearchData[, .(experiment_count = .N, probability = unique(probability)), expected],
     by.x = 'cf.ID', by.y = 'expected', sort = F
-  ) %>% .[, .(distance = mean(distance), A = mean(A), B = mean(B), C = mean(C),
+  ) %>% .[, .(distance = mean(distance), score = max(score),
               stat = max(stat), I = mean(I), experiment_count = sum(experiment_count),
               probability = mean(probability)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
   
@@ -58,108 +58,102 @@ analyzeArtificial <- function(N_GROUPS, N_GENES, COI = NULL, GOI = NULL, seed = 
        best.index = best.index)
 }
 
-if(!exists('hypercube')) {
-  print('Making hypercube')
-  hypercube <- improvedLHS(5000, 3)
-  hypercube[, 1] <- 1L + as.integer(hypercube[, 1] * rexp(nrow(hypercube), 0.8)) # Groups
-  hypercube[, 2] <- 1L + as.integer(hypercube[, 2] * 99) # Genes
-  hypercube[, 3] <- 1L + as.integer(hypercube[, 3] * 500) # Best index
-}
-
-contrasts <- readRDS('/space/scratch/jsicherman/Thesis Work/data/artificial/contrast_aff.rds')
-
-options(mc.cores = 3)
-mclapply(1:nrow(hypercube), function(iter) {
-  system(paste0('echo ', iter))
-  analyzeArtificial(hypercube[iter, 1],
-                    hypercube[iter, 2],
-                    best.index = hypercube[iter, 3])
-}) %>% saveRDS('/space/scratch/jsicherman/Thesis Work/data/artificial/bootstrapped_artificial2.rds')
-
-if(F) {
-  art_boot <- readRDS('/space/scratch/jsicherman/Thesis Work/data/artificial/bootstrapped_artificial.rds')
-  tmp2 <- lapply(1:length(tmp), function(i) {
-    data.table(groups = nrow(tmp[[i]]$diagnostic),
-               genes = length(tmp[[i]]$genes),
-               insert_index = tmp[[i]]$mean_index,
-               insert_sd = tmp[[i]]$mean_sd,
-               tmp[[i]]$search %>% merge(
-                 tmp[[i]]$diagnostic,
-                 by.x = 'group', by.y = 'Group'
-               ) %>% .[, .(probability, I, score, N_Genes, N_Exp, Mean_DEGs)])
-  }) %>% rbindlist
-  tmp3 <- lapply(1:length(tmp), function(i) {
-    data.table(groups = nrow(tmp[[i]]$diagnostic),
-               genes = length(tmp[[i]]$genes),
-               insert_index = tmp[[i]]$mean_index,
-               insert_sd = tmp[[i]]$mean_sd,
-               tmp[[i]]$enrich[distance == 0, .(cf.ID, stat, I, f)] %>% merge(
-                 tmp[[i]]$diagnostic,
-                 by.x = 'cf.ID', by.y = 'Group'
-               ),
-               tmp[[i]]$search[, .(probability = mean(probability),
-                                   I = median(I)), group] %>% merge(
-                 tmp[[i]]$diagnostic,
-                 by.x = 'group', by.y = 'Group'
-               ) %>% .[, .(probability, I_search = I)])
-  }) %>% rbindlist
-
-  tmp2 %>%
-    ggplot(aes(factor(insert_index), score)) +
-    geom_boxplot() +
-    #facet_wrap(~N_Exp) +
-    theme_classic(base_size = 20) + theme(legend.position = 'none') +
-    labs(x = 'Mean insertion index', y = 'Search score')
+if(Sys.getenv('RSTUDIO') == '1') {
+  art_boot <- readRDS('/space/scratch/jsicherman/Thesis Work/data/artificial/bootstrapped_artificial2.rds')
   
-  tmp3 %>% na.omit %>%
-    ggplot(aes(insert_index, stat)) +
-    geom_point() +
+  lapply(art_boot, '[[', 'enrich') %>%
+    sapply(function(x) cor(x$probability, -x$I, use = 'complete')) %>%
+      data.frame(mean = mean(.)) %>%
+    ggplot(aes(.)) + geom_histogram(fill = 'white', color = 'black') +
+    geom_vline(aes(xintercept = mean), lwd = 2, color = 'red') +
     theme_classic(base_size = 20) +
-    geom_function(fun = function(x) 38 - 40*(x - 0.05)^(1/17), color = 'red') +
-    theme(legend.position = 'none') +
-    labs(x = 'Mean insertion index', y = 'Test statistic')
+    scale_x_continuous(expand = c(0, 0), name = 'Pearson Correlation') +
+    scale_y_continuous(expand = c(0, 0), name = 'Count')
   
-  tmp3 %>%
-    ggplot(aes(factor(round(insert_index, 1)), stat)) +
-    geom_boxplot() +
-    theme_classic(base_size = 20) +
-    labs(x = 'Mean insertion index', y = 'Test statistic')
+  contrasts <- CACHE.BACKGROUND$artificial %>%
+    merge(DATA.HOLDER$artificial@experiment.meta[, .(rsc.ID, cf.ID)], by = 'rsc.ID')
   
-  plotA <- tmp3 %>% copy %>%
-    .[, x := factor(plyr::round_any(100 * (1-insert_index), 5))] %>%
-    .[, x := paste0(x, '^{"th"}')] %>%
-    .[, x := factor(x, levels = paste0(seq(0, 100, by = 5), '^{"th"}'), ordered = T)] %>%
-    ggplot(aes(x, f)) +
-    geom_boxplot(fill = '#b3bcc7') +
-    theme_bw(base_size = 20) +
-    theme(panel.grid = element_blank()) +
-    scale_x_discrete(breaks = paste0(seq(0, 100, by = 10), '^{"th"}'), labels = rlang::parse_exprs) +
-    scale_y_continuous(breaks = c(0, 0.5, 1), labels = c('First', 'Mid', 'Last')) +
-    labs(x = 'Mean gene percentile',
-         y = 'Rank of contrast', tag = 'A')
+  lapply(art_boot, function(x) {
+    accepting <- contrasts[distance == 0 & cf.ID %in% x$contrasts, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
+      unique %>% .[, paste0(as.character(cf.Cat), as.character(cf.BaseLongUri), as.character(cf.ValLongUri))]
+    list(best.index = x$best.index,
+         enrich = x$enrich[paste0(cf.Cat, cf.BaseLongUri, cf.ValLongUri) %in% accepting],
+         contrasts = x$contrasts)
+  }) -> art_boot2
   
-  plotB <- tmp3 %>% copy %>%
-    .[, ppg := probability / max(probability) / genes] %>%
-    .[, ppg := plyr::round_any((ppg - min(ppg)) / (max(ppg) - min(ppg)), 0.05)] %>%
-    ggplot(aes(factor(ppg), f)) +
-    geom_boxplot(fill = '#b3bcc7') +
-    theme_bw(base_size = 20) +
-    scale_x_discrete(breaks = seq(0, 1, by = 0.1), labels = function(x) {
-      scales::percent(as.numeric(x), accuracy = 1) %>%
-        gsub('^0%', '< 5%', .)
-    }) +
-    scale_y_continuous(breaks = NULL) +
-    theme(panel.grid = element_blank()) +
-    labs(x = 'Average probability of differential expression (per gene)',
-         y = element_blank(), tag = 'B')
+  lapply(art_boot, function(x) {
+    accepting <- contrasts[distance != 0 & cf.ID %in% x$contrasts, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
+      unique %>% .[, paste0(as.character(cf.Cat), as.character(cf.BaseLongUri), as.character(cf.ValLongUri))]
+    list(best.index = x$best.index,
+         enrich = x$enrich[paste0(cf.Cat, cf.BaseLongUri, cf.ValLongUri) %in% accepting],
+         contrasts = x$contrasts)
+  }) -> art_boot3
   
-  gridExtra::grid.arrange(plotA, plotB, ncol = 2)
+  lapply(1:length(art_boot), function(i) {
+    if(nrow(art_boot2[[i]]$enrich) != 0)
+      head(sort(art_boot3[[i]]$enrich[, I]), length(art_boot3[[i]]$contrasts))
+  }) %>% unlist %>% data.table(rep = 1:length(.)) %>% cbind(type = 'Inferred') %>% rbind(
+    lapply(art_boot2, function(x) {
+      if(nrow(x$enrich) != 0)
+        head(sort(x$enrich[, I]), length(x$contrasts))
+    }) %>% unlist %>% data.table(rep = 1:length(.)) %>% cbind(type = 'Exact')
+  ) %>% .[, .N, .(., type)] %>% .[, f := N / sum(N)] %>%
+    .[. %in% 1:10] %>% ggplot(aes(., f, fill = type)) + geom_bar(stat = 'identity', color = 'white') +
+    scale_x_continuous(expand = c(0, 0), name = 'Rank', breaks = 1:20) +
+    scale_fill_brewer(palette = 'Dark2', name = element_blank()) +
+    scale_y_continuous(expand = c(0, 0), name = 'Percent of searches', labels = scales::percent) +
+    theme_classic(base_size = 20) + theme(legend.position = c(1, 1), legend.justification = c(1, 1), legend.key.size = unit(30, 'points'))
+    
   
-  tmp3 %>% na.omit %>%
-    ggplot(aes(insert_index, -log10(f))) +
-    geom_point(alpha = 0.2) +
-    geom_function(fun = function(x) 17 - 17*(x - 0.05)^(1/41), color = 'red', size = 2) +
-    scale_x_continuous(expand = c(0, 0)) + scale_y_continuous(expand = expansion(add = c(0, 0.1))) +
-    theme_classic(base_size = 20) +
-    labs(x = 'Mean insertion index', y = 'Enrichment fraction')
+  plotA <- lapply(art_boot2, function(x) {
+    if(nrow(x$enrich) != 0)
+      data.table(i = x$best.index, j = head(sort(x$enrich[, I]), length(x$contrasts)))
+  }) %>% rbindlist %>% { print(mean(.$i)); .$j } %>% data.table(rep = 1:length(.)) %>% .[, .N, .] %>% setorder(.) %>% {
+    print(head(.$N/sum(.$N), 10) %>% sum)
+    .
+  } %>%
+    ggplot(aes(., N/sum(N))) + geom_line() +
+    scale_x_continuous(expand = c(0, 0), limits = c(1, 10), name = c('Computed Rank'), breaks = 1:10) +
+    scale_y_continuous(expand = c(0, 0), labels = scales::percent, name = 'Percent of searches') +
+    theme_classic(base_size = 20)
+  
+  plotB <- lapply(1:length(art_boot), function(i) {
+    if(nrow(art_boot2[[i]]$enrich) != 0)
+      head(sort(art_boot3[[i]]$enrich[, I]), length(art_boot3[[i]]$contrasts))
+  }) %>% unlist %>% data.table(rep = 1:length(.)) %>% .[, .N, .] %>% setorder(.) %>% {
+    print(head(.$N/sum(.$N), 10) %>% sum)
+    .
+  } %>%
+    ggplot(aes(., N/sum(N))) + geom_line() +
+    scale_x_continuous(expand = c(0, 0), limits = c(1, 10), name = c('Computed Rank'), breaks = 1:10) +
+    scale_y_continuous(expand = c(0, 0), labels = scales::percent, name = 'Percent of searches') +
+    theme_classic(base_size = 20)
+  
+  figure <- ggarrange(plotA + rremove("ylab") + rremove("xlab"),
+                      plotB + rremove("ylab") + rremove("xlab"), # remove axis labels from plots
+                      labels = LETTERS[1:2],
+                      align = "hv", 
+                      font.label = list(size = 20, color = "black", face = "bold", family = NULL, position = "top"))
+  
+  annotate_figure(figure, left = textGrob('Percent of rankings', rot = 90, vjust = 1, gp = gpar(fontsize = 20)),
+                  bottom = textGrob('Computed rank', gp = gpar(fontsize = 20)))
+} else {
+  if(!exists('hypercube')) {
+    print('Making hypercube')
+    hypercube <- improvedLHS(5000, 3)
+    hypercube[, 1] <- 1L + as.integer(hypercube[, 1] * rexp(nrow(hypercube), 0.8)) # Groups
+    hypercube[, 2] <- 1L + as.integer(hypercube[, 2] * 99) # Genes
+    hypercube[, 3] <- 1L + as.integer(hypercube[, 3] * 500) # Best index
+  }
+  
+  if(!exists('contrasts'))
+    contrasts <- readRDS('/space/scratch/jsicherman/Thesis Work/data/artificial/contrast_aff.rds')
+  
+  options(mc.cores = 3)
+  mclapply(1:nrow(hypercube), function(iter) {
+    system(paste0('echo ', iter))
+    analyzeArtificial(hypercube[iter, 1],
+                      hypercube[iter, 2],
+                      best.index = hypercube[iter, 3])
+  }) %>% saveRDS('/space/scratch/jsicherman/Thesis Work/data/artificial/bootstrapped_artificial2.rds')
 }

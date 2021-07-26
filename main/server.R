@@ -359,7 +359,7 @@ server <- function(input, output, session) {
       n_exp <- length(exps)
       
       output$results_header <- renderUI({
-        generateResultsHeader(HTML(paste0('<div style="margin-bottom: 10px"><h2 style="display: inline">Enriched ',
+        generateResultsHeader(HTML(paste0('<div style="margin-bottom: 10px"><h2 style="display: inline">Examined ',
                                           format(n_exp, big.mark = ','), ' condition comparison', ifelse(n_exp > 1, 's', ''), ' for ',
                                           ifelse(nrow(genes) == 1, genes[, gene.Name],
                                                  paste0('<span data-toggle="tooltip" data-placement="top" title="',

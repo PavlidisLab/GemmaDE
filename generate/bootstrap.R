@@ -6,7 +6,7 @@ options(mc.cores = 14)
 ITERS <- 1000
 BLOCK <- 500
 
-OPTIONS <- c('human', 'mouse', 'rat')
+OPTIONS <- c('artificial', 'human', 'mouse', 'rat')
 
 for(x in OPTIONS) {
   if(!exists('DATA.HOLDER') || names(DATA.HOLDER) != x) {
