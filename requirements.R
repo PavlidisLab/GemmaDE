@@ -24,6 +24,7 @@ library(igraph)
 library(dplyr)
 library(data.table)
 library(stringr)
+library(bigstatsr)
 # library(bit)
 library(matrixTests)
 

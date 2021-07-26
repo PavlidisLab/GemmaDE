@@ -98,8 +98,8 @@ if(!exists('ONTOLOGIES') || !exists('ONTOLOGIES.DEFS')) {
 
 # Load the lite versions if they're already created.
 if(!exists('DATA.HOLDER')) {
-  if(file.exists('/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER2.rds'))
-    DATA.HOLDER <- readRDS('/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER2.rds')
+  if(file.exists('/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER.rds'))
+    DATA.HOLDER <- readRDS('/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER.rds')
   else {
     DATA.HOLDER <- lapply(getConfig(key = 'taxa')$core, function(taxon) {
       message(paste('Loading', taxon, 'metadata'))
@@ -244,29 +244,59 @@ if(!exists('DATA.HOLDER')) {
     }) %>%
       setNames(getConfig(key = 'taxa')$core)
     
-    saveRDS(DATA.HOLDER, '/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER2.rds')
+    saveRDS(DATA.HOLDER, '/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER.rds')
   }
   
   ONTOLOGIES.DEFS <- fixOntoGenes()
 }
 
+# File-backed, gene-major matrices area HUGE upgrade compared to in-memory experiment-major matrices because 1) way faster to access gene-slices (which are always longer than experiment slices), and 2) data in memory can be reduced to < 1 GB (!)
+# I don't quite understand why the backing file can't persist across sessions, but it would be great if it could...
+if(class(DATA.HOLDER[[1]]@data$adj.pv) == 'matrix') {
+  for(i in names(DATA.HOLDER)) {
+    message(paste0('Converting in-memory matrices for ', i, ' to file-backed...'))
+    file.remove(list.files(paste0('/space/scratch/jsicherman/Thesis Work/data/fbm/', i), full.names = T))
+    
+    mDimNames <- dimnames(DATA.HOLDER[[i]]@data$zscore) %>% rev
+    DATA.HOLDER[[i]]@data$zscore <- as_FBM(DATA.HOLDER[[i]]@data$zscore %>% t,
+                                           backingfile = tempfile(tmpdir = paste0('/space/scratch/jsicherman/Thesis Work/data/fbm/', i)),
+                                           is_read_only = T)
+    attr(DATA.HOLDER[[i]]@data$zscore, '.dimnames') <- mDimNames
+    
+    mDimNames <- dimnames(DATA.HOLDER[[i]]@data$adj.pv) %>% rev
+    DATA.HOLDER[[i]]@data$adj.pv <- as_FBM(DATA.HOLDER[[i]]@data$adj.pv %>% t,
+                                           backingfile = tempfile(tmpdir = paste0('/space/scratch/jsicherman/Thesis Work/data/fbm/', i)),
+                                           is_read_only = T)
+    attr(DATA.HOLDER[[i]]@data$adj.pv, '.dimnames') <- mDimNames
+  }
+  rm(i, mDimNames)
+}
+
+gc()
+
+dimnames.FBM <- function(object, ...) {
+  attr(object, '.dimnames')
+}
+
 if(!exists('CACHE.BACKGROUND')) {
   # Pre-load all ontology expansions
-  if(file.exists('/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND2.rds'))
-    CACHE.BACKGROUND <- readRDS('/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND2.rds')
+  if(file.exists('/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND.rds'))
+    CACHE.BACKGROUND <- readRDS('/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND.rds')
   else {
     CACHE.BACKGROUND <- lapply(names(DATA.HOLDER), precomputeTags) %>%
       setNames(names(DATA.HOLDER))
     
-    saveRDS(CACHE.BACKGROUND, '/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND2.rds')
+    saveRDS(CACHE.BACKGROUND, '/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND.rds')
   }
 }
 
 if(!exists('NULLS')) {
   NULLS <- lapply(names(DATA.HOLDER), function(taxa) {
-    readRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/updated_nulls2/', taxa, '.rds')) %>%
-      .[, .(rn, score.mean, score.sd)]
-  }) %>% `names<-`(names(DATA.HOLDER))
+    tryCatch(readRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/updated_nulls2/', taxa, '.rds')) %>%
+      .[, .(rn, score.mean, score.sd)], error = function(e) NULL)
+  }) %>% `names<-`(names(DATA.HOLDER)) %>% {
+    Filter(Negate(is.null), .)
+  }
 }
 
 if(!exists('DRUGBANK') && Sys.getenv('RSTUDIO') == '1') {

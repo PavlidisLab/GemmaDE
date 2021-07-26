@@ -7,7 +7,7 @@ options(max.progress.steps = 3) # How many different calls will be made to advan
 options(max.gemma = 1000) # The maximum number of samples to pull from Gemma for expression visualization
 options(chunk.size = 200) # For artificial data generation; not used in live app
 
-plan(multicore, workers = 5) # Maximum clients that Gemma DE can serve
+plan(multicore, workers = 32) # Maximum clients that Gemma DE can serve
 
 # The signature field can potentially have duplicate entries, which Shiny's underlying
 # library (selectize.js) doesn't support. Kinda hacky way to replace the selectize dependency
@@ -105,7 +105,7 @@ do.update <- function(sess, entry, val) {
 
 options(app.registered = NULL)
 addConfig(pv = 0.05, description = 'Significance threshold', tooltip = 'The maximum FDR-corrected p-value to consider a gene differentially expressed', category = 'Scoring', extras = list(min = 0, max = 1, step = 0.01))
-addConfig(dist = 10, description = 'Maximum term distance', tooltip = 'The maximum distance each condition comparison can be from the annotated one. Larger values will take longer to search, but will allow for greater grouping', category = 'Filtering', extras = list(min = 0, max = 10, step = 0.25))
+addConfig(dist = 1.5, description = 'Maximum term distance', tooltip = 'The maximum distance each condition comparison can be from the annotated one. Larger values will take longer to search, but will allow for greater grouping', category = 'Filtering', extras = list(min = 0, max = 10, step = 0.25))
 addConfig(confounds = F, description = 'Include possibly confounded', tooltip = 'Whether or not to include factors that exhibit a possible batch confound', category = 'Scoring')
 addConfig(mfx = T, description = 'Score multifunctionality', tooltip = 'Whether or not to weight each gene\'s contribution by its multifunctionality rank', category = 'Scoring')
 addConfig(geeq = F, description = 'Score experiment quality (GEEQ)', tooltip = 'Whether or not to weight each experiment\'s contribution by its GEEQ score', category = 'Scoring')
@@ -133,7 +133,7 @@ categories <- lapply(DATA.HOLDER, function(x) x@experiment.meta[, unique(cf.Cat)
   }
 
 subsets <- lapply(DATA.HOLDER, function(x) x@experiment.meta[, unique(sf.Val)]) %>% unlist %>%
-  unique %>% as.character %>% { Filter(function(x) !(x %in% c('DE_Include')), .) } %>% sort %>% {
+  unique %>% as.character %>% { Filter(function(x) !(x %in% c('DE_Include', 'DE_Exclude')), .) } %>% sort %>% {
     setNames(as.list(.), .)
   }
 

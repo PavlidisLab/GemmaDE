@@ -54,8 +54,9 @@ search <- function(genes, options = getConfig(), DATA = NULL) {
     return(NULL)
   
   # P-values for only the GOI
-  pv <- mData@data$adj.pv[geneMask, experimentMask, drop = F]
-  zScore <- mData@data$zscore[geneMask, experimentMask, drop = F]
+  mDimNames <- dimnames(mData@data$adj.pv)
+  pv <- mData@data$adj.pv[, geneMask, drop = F] %>% `dimnames<-`(list(mDimNames[[1]], mDimNames[[2]][geneMask])) %>% .[experimentMask, , drop = F] %>% t
+  zScore <- mData@data$zscore[, geneMask, drop = F] %>% `dimnames<-`(list(mDimNames[[1]], mDimNames[[2]][geneMask])) %>% .[experimentMask, , drop = F] %>% t
   
   pv[is.na(pv)] <- 1
   zScore[is.na(zScore)] <- 0
@@ -427,7 +428,7 @@ enrich <- function(rankings, options = getConfig(), doNorm = T, CACHE = NULL) {
         dcast(... ~ gene, value.var = 'pv', fill = 0),
       by = c('cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri'), sort = F) %>%
     .[, score := Rfast::rowsums(as.matrix(.SD) * normalization), .SDcols = !c('stat', 'cf.Cat', 'cf.BaseLongUri', 'cf.ValLongUri', 'distance', 'normalization')] %>%
-    #.[, !'normalization'] %>%
+    .[, !'normalization'] %>%
     setorder(-stat, distance) %>%
     .[, .SD[1], stat] %>%
     setorder(-score)
