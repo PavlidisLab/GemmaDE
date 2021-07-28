@@ -118,6 +118,14 @@ source('/home/jsicherman/Thesis Work/main/renderTools.R')
 source('/home/jsicherman/Thesis Work/main/gemmaAPI.R')
 source('/home/jsicherman/Thesis Work/main/load.R')
 
+CORPUS_STATS <- lapply(DATA.HOLDER, function(x) x@experiment.meta) %>% rbindlist %>% {
+  mComparisons <- nrow(.)
+  .[!duplicated(ee.ID), .(assays = sum(ee.NumSample),
+                          studies = max(.N),
+                          comparisons = mComparisons)] %>%
+    .[, lapply(.SD, format, big.mark = ',')]
+}
+
 # Make sure we can serve clients asynchronously
 options(future.globals.maxSize = (object.size(DATA.HOLDER) + object.size(CACHE.BACKGROUND) * 1.5) %>% as.double)
 
@@ -145,8 +153,10 @@ addConfig(categories = Filter(function(x) !(x %in% c('block', 'cell line', 'coll
           extras = list(choices = categories, multiple = T))
 
 addConfig(subset = NA_character_,
-          description = 'Subsets to include', tooltip = 'Limit which biomaterial subsets to include', category = 'Filtering',
+          description = 'Subsets to include/exclude', tooltip = 'Limit which biomaterial subsets to include or exclude', category = 'Filtering',
           extras = list(choices = subsets, multiple = T, selectize = T))
+addConfig(subsetExcludes = T,
+          description = 'Blacklist', 'Toggle whether the selected subsets act as a whitelist or blacklist', category = 'Filtering')
 
 addConfig(taxa = 'human', description = NA, category = NA,
           extras = list(choices = mChoices,

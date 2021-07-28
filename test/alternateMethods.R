@@ -88,23 +88,3 @@ enrich.genechaser <- function(rankings, options = getConfig(), CACHE = NULL) {
 }
 
 mFilter <- DATA.HOLDER$human@experiment.meta$ad.Type != 'GENELIST'
-
-search.genechaser(DATA.HOLDER$human@gene.meta[gene.Name %in% c('NANOG', 'POU5F1', 'SOX2', 'LIN28A', 'LIN28B'), entrez.ID], getConfig(filter = mFilter)) %>%
-  enrich.genechaser %>%
-  .[score.up > 0 | score.down > 0]
-
-search.genechaser(DATA.HOLDER$mouse@gene.meta[gene.Name %in% c('Nanog', 'Pou5f1', 'Sox2', 'Lin28a', 'Lin28b'), entrez.ID],
-                  getConfig(filter = DATA.HOLDER$mouse@experiment.meta$ad.Type != 'GENELIST', taxa = 'mouse')) %>%
-  enrich.genechaser(getConfig(taxa = 'mouse')) %>%
-  .[score.up > 0 | score.down > 0]
-
-DATA.HOLDER$human@gene.meta[gene.Name %in% strsplit('KLF9, PER1, TSC22D3, ZBTB16', ', ')[[1]], entrez.ID] %>%
-  search.genechaser() %>% enrich.genechaser() %>% .[score.up > 0] %>% setorder(-score.up) %>% print
-
-res <- c()
-mGenes <- DATA.HOLDER$human@gene.meta[gene.Name %in% (strsplit('ALDOA, ARL3, ATP2A2, CA8, CACNA1C, CACNB2, CHRNA3, CHRNA5, CHRNB4, CKB, CLCN3, CYP17A1, DPP4, DPYD, DRD2, FES, GRIA1, GRIN2A, GRM3, IREB2, KLC1, LRP1, MAN2A2, MEF2C, MMP16, MYO1A, NAB2, NEK1, FURIN, PSMA4, PTPRF, RRAS, SHMT2, STAT6, TAC3, TAF5, TCF4, TLE3, VRK2, XRCC3, CDK2AP1, MAD1L1, CUL3, INA, BAG5, PLCH2, KDM4A, TRANK1, MPHOSPH9, FUT9, NXPH4, R3HDM2, CNKSR2, NT5C2, PDCD11, RIMS1, ABCB9, NGEF, GIGYF2, EPC2, REEP2, ARL6IP4, CNNM2, WBP1L, FANCL, SBNO1, AS3MT, PITPNM2, ZSWIM6, SCAF1, SLC39A8, PJA1, BCL11B, ZFYVE21, GDPD3, OGFOD2, ACTR5, TRIM8, IMMP2L, PCGF6, APOPT1, ESAM, C12orf65, TRMT61A, SFXN2, TYW5, SLC32A1, CNTN4, RILPL2, TSNARE1, STAC3, ASPHD1, SNX19, MIR137', ', ')[[1]]), entrez.ID]
-for (i in 1:1000) {
-  print(i)
-  res <- unique(c(res, sample(mGenes, 10) %>% search.genechaser() %>% enrich.genechaser() %>%
-                    .[score.up > 0 | score.down > 0, paste0(c(as.character(cf.Cat), as.character(cf.Baseline), as.character(cf.Val)), collapse = '')]))
-}

@@ -45,8 +45,14 @@ server <- function(input, output, session) {
   
   # On connect, observe the query string. Search if any genes are specified
   observeEvent(input$LOAD, {
-    output$results_header <- renderUI(generateResultsHeader(
-      HTML('<div style="margin-bottom: 10px"><h2 style="display: inline">No enrichments yet</h2></div>')))
+    output$results_header <- renderUI(generateResultsHeader({
+      HTML(paste0('<div style="margin-bottom: 10px"><h2 style="display: inline">',
+                  paste0('Search across <span>', length(DATA.HOLDER), ' species</span>, <span>',
+                         CORPUS_STATS$studies, ' studies</span>, <span>',
+                         CORPUS_STATS$comparisons, ' condition comparisons</span>, <span>',
+                         CORPUS_STATS$assays, ' assays</span>'),
+                  '</h2></div>'))
+    }))
     
     query <- getQueryString(session)
     options <- getConfig()
@@ -351,16 +357,22 @@ server <- function(input, output, session) {
     # Generate the results header
     if(exists('output')) {
       
-      if(is.data.table(experiments))
+      if(is.data.table(experiments)) {
         exps <- experiments$rn
-      else
+        studies <- length(unique(experiments$ee.ID))
+        assays <- experiments[, sum(ee.NumSample)]
+      } else {
         exps <- lapply(experiments, '[[', 'rn') %>% unlist
+        studies <- lapply(experiments, '[[', 'ee.ID') %>% unlist %>% unique %>% length
+        assays <- lapply(experiments, function(x) x[!duplicated(ee.ID), sum(ee.NumSample)]) %>% unlist %>% sum
+      }
       
       n_exp <- length(exps)
       
       output$results_header <- renderUI({
         generateResultsHeader(HTML(paste0('<div style="margin-bottom: 10px"><h2 style="display: inline">Examined ',
-                                          format(n_exp, big.mark = ','), ' condition comparison', ifelse(n_exp > 1, 's', ''), ' for ',
+                                          format(n_exp, big.mark = ','), ' condition comparison', ifelse(n_exp > 1, 's', ''),
+                                          ' (', studies, ' studies and ', assays, ' assays) for ',
                                           ifelse(nrow(genes) == 1, genes[, gene.Name],
                                                  paste0('<span data-toggle="tooltip" data-placement="top" title="',
                                                         paste0(unique(genes[, gene.Name]), collapse = ', '), '">',

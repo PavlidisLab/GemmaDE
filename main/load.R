@@ -247,6 +247,9 @@ if(!exists('DATA.HOLDER')) {
     saveRDS(DATA.HOLDER, '/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER.rds')
   }
   
+  if(Sys.getenv('RSTUDIO') != '1')
+    DATA.HOLDER$artificial <- NULL
+  
   ONTOLOGIES.DEFS <- fixOntoGenes()
 }
 

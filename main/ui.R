@@ -39,7 +39,7 @@ ui <- fluidPage(style = 'height: 100%;',
                         
                         # Taxa entry
                         column(2,
-                               span(pickerInput('taxa', 'Taxon', getConfig('taxa')$choices, getConfig('taxa')$value, multiple = T), `data-toggle` = 'tooltip', title = 'Taxa to include. Orthologs are automatically detected'),
+                               span(pickerInput('taxa', 'Taxon', getConfig('taxa')$choices, getConfig('taxa')$value, multiple = T), `data-toggle` = 'tooltip', title = 'Taxa to include. Homologs are automatically detected'),
                                helpText(style = 'float: right;', HTML('<a data-toggle="collapse" data-target="#options">More options...</a>')))
                       ),
                       
@@ -74,7 +74,7 @@ ui <- fluidPage(style = 'height: 100%;',
                         tabsetPanel(id = 'tabs',
                                     tabPanel('Conditions',
                                              column(12, style = 'margin-top: 16px', dataTableOutput('results') %>% withSpinner(custom.class = 'DNA_cont', custom.html = div(lapply(1:10, function(x) div(class = 'nucleobase')))))),
-                                    tabPanel('Gene Contributions', column(12, style = 'margin-top: 16px', plotlyOutput('results_contribs', height = '50vw'))),
+                                    tabPanel('Gene Contributions', column(12, style = 'margin-top: 16px', plotlyOutput('results_contribs', height = '50vw') %>% withSpinner(custom.class = 'DNA_cont', custom.html = div(lapply(1:10, function(x) div(class = 'nucleobase')))))),
                                     tabPanel('Word Cloud', column(12, style = 'margin-top: 16px', d3wordcloudOutput('results_cloud', height = '90vh') %>% withSpinner(custom.class = 'DNA_cont', custom.html = div(lapply(1:10, function(x) div(class = 'nucleobase')))))),
                                     tabPanel('Gene Info', column(12, style = 'margin-top: 16px', htmlOutput('results_genes') %>% withSpinner(custom.class = 'DNA_cont', custom.html = div(lapply(1:10, function(x) div(class = 'nucleobase')))))),
                                     tabPanel('GO Enrichment', column(12, style = 'margin-top: 16px', dataTableOutput('results_go') %>% withSpinner(custom.class = 'DNA_cont', custom.html = div(lapply(1:10, function(x) div(class = 'nucleobase'))))))
