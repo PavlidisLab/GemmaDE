@@ -62,7 +62,7 @@ search.gxa <- function(genes, options = getConfig(), DATA = NULL) {
   n.DE <- mData@experiment.meta[experimentMask == T] %>% .[, n.DE]
   n.numgenes <- mData@experiment.meta[experimentMask == T] %>% .[, ad.NumGenes]
   n.other <- n.DE - n.overlap
-  n.nooverlap <- n.numgenes - n.overlap
+  n.nooverlap <- n.genes - n.overlap
   n.other2 <- n.numgenes - n.DE - n.genes + n.overlap
   
   mNames <- colnames(pv)

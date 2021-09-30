@@ -81,13 +81,13 @@ search <- function(genes, options = getConfig(), DATA = NULL) {
     MFX_WEIGHT <- rep(1, n.genes)
   
   # Adding 1 to not exclude CCs where p.adj is 1
-  zScore <- zScore * (1 - log10(Rfast::Pmax(matrix(1e-10, ncol = ncol(pv), nrow = nrow(pv)), pv)))
+  zScore <- getOption('app.algorithm.gene.pre') %>% eval
   
   if(options$method$value == 'diff') {
-    ret <- zScore %>% abs %>% `*`(MFX_WEIGHT) %>% t %>% as.data.table %>%
+    ret <- getOption('app.algorithm.gene.post') %>% eval %>%
       .[, score := Rfast::rowsums(as.matrix(.))]
   } else if(options$method$value == 'cor') {
-    ret <- zScore %>% `*`(MFX_WEIGHT) %>% t %>% as.data.table %>%
+    ret <- getOption('app.algorithm.gene.post') %>% eval %>%
       .[, score := abs(cor.wt(zScore %>% as.matrix, query, MFX_WEIGHT))] %>% # TODO abs?
       .[is.nan(score), score := 0]
   } else if(options$method$value == 'mvsm') {
@@ -389,7 +389,7 @@ normalize <- function(scores, taxa = getConfig(key = 'taxa')$value) {
         data.table(rn = scores$rn, ., scores[, .(score, f.IN, f.OUT, ee.q)])
       } %>%
     .[, score := rowSums2(as.matrix(.SD), na.rm = T), .SDcols = !c('rn', 'score', 'f.IN', 'f.OUT', 'ee.q')] %>%
-    .[, normalization := ee.q * (1 + f.IN) / (1 + 10^f.OUT)] %>%
+    .[, normalization := eval(getOption('app.algorithm.experiment'))] %>%
     .[, sn := score * normalization] %>%
     setorder(-sn) %>%
     .[, !'sn']

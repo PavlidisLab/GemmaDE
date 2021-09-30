@@ -278,3 +278,25 @@ search_grid2 %>% ggplot(aes(cor.score, fill = factor(genes))) +
     theme_classic(20)) %>% cowplot::get_legend() -> mLegend
 
 cowplot::ggdraw(cowplot::plot_grid(mPlot, mLegend, rel_widths = c(1, 0.2)))
+
+# Saturation ----
+mConstrasts <- DATA.HOLDER$human@experiment.meta[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
+  unique %>% .[, paste0(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
+mViewed <- list(0, 0, 0, 0, 0)
+
+for(j in 1:5) {
+  mSeen <- c()
+  mNonVisited <- 1:nrow(DATA.HOLDER$human@experiment.meta) %>% sample
+  
+  for(mWhich in mNonVisited) {
+    mViewing <- DATA.HOLDER$human@experiment.meta %>% .[mWhich, paste0(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
+    mViewed[[j]] <- c(mViewed[[j]], mViewing %in% mSeen)
+    mSeen <- unique(c(mSeen, mViewing))
+  }
+}
+
+data.table(A = mViewed[[1]], B = mViewed[[2]], C = mViewed[[3]], D = mViewed[[4]], E = mViewed[[5]]) %>%
+  .[, lapply(.SD, function(x) cumsum(!x))] %>% .[, x := .I] %>% melt(measure.vars = 1:j) %>%
+  ggplot(aes(x, value, color = variable)) + geom_line(lwd = 1.5, alpha = 0.7) + theme_bw(20) + theme(legend.position = 'none') +
+  geom_abline(slope = 1, intercept = 0) +
+  labs(x = 'Index', y = '# Unique Condition Comparisons')

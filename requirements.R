@@ -2,17 +2,18 @@
 library(shiny)
 library(shinyjs)
 library(shinyWidgets)
-library(shinycssloaders) # From jsicherman/shinycssloaders, NOT daattali
+library(shinycssloaders) # From jsicherman/shinycssloaders, NOT daattali devtools::install_github('jsicherman/shinycssloaders')
 library(htmlwidgets)
 library(DT)
 library(heatmaply)
 library(shinyHeatmaply)
-library(shinypanels) # From jsicherman/shinypanels, NOT datasketch
+library(shinypanels) # From jsicherman/shinypanels, NOT datasketch devtools::install_github('jsicherman/shinypanels')
 library(circlepackeR)
 library(d3wordcloud)
 library(data.tree)
 library(RColorBrewer)
 library(sass)
+library(shinydisconnect)
 
 library(async)
 library(memoise)

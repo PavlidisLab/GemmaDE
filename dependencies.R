@@ -7,6 +7,10 @@ options(max.progress.steps = 3) # How many different calls will be made to advan
 options(max.gemma = 1000) # The maximum number of samples to pull from Gemma for expression visualization
 options(chunk.size = 200) # For artificial data generation; not used in live app
 
+options(app.algorithm.gene.pre = quote(zScore * (1 - log10(Rfast::Pmax(matrix(1e-10, ncol = ncol(pv), nrow = nrow(pv)), pv)))))
+options(app.algorithm.gene.post = quote(zScore %>% abs %>% `*`(MFX_WEIGHT) %>% t %>% as.data.table))
+options(app.algorithm.experiment = quote(ee.q * (1 + f.IN) / (1 + 10^f.OUT)))
+
 plan(multicore, workers = 32) # Maximum clients that Gemma DE can serve
 
 # The signature field can potentially have duplicate entries, which Shiny's underlying
@@ -113,10 +117,10 @@ addConfig(method = 'diff', description = 'Scoring function', tooltip = 'Which sc
 
 addConfig(sig = '', description = NA, category = NA)
 
-source('/home/jsicherman/Thesis Work/main/process.R')
-source('/home/jsicherman/Thesis Work/main/renderTools.R')
-source('/home/jsicherman/Thesis Work/main/gemmaAPI.R')
-source('/home/jsicherman/Thesis Work/main/load.R')
+source('process.R')
+source('renderTools.R')
+source('gemmaAPI.R')
+source('load.R')
 
 CORPUS_STATS <- lapply(DATA.HOLDER, function(x) x@experiment.meta) %>% rbindlist %>% {
   mComparisons <- nrow(.)

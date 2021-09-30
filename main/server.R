@@ -354,25 +354,25 @@ server <- function(input, output, session) {
   #' @param conditions The condition rankings that were obtained
   #' @param options Any additional options that were passed
   endSuccess <- function(genes, experiments, conditions, options) {
+    if(is.data.table(experiments))
+      exps <- experiments$rn
+    else
+      exps <- lapply(experiments, '[[', 'rn') %>% unlist
+    
+    tmp <- rbindlist(lapply(options$taxa$value, function(i)
+      DATA.HOLDER[[i]]@experiment.meta[rsc.ID %in% exps, .(rsc.ID, ee.ID, ee.Name, ee.NumSample, ef.IsBatchConfounded)]))
+    
     # Generate the results header
     if(exists('output')) {
-      
-      if(is.data.table(experiments)) {
-        exps <- experiments$rn
-        studies <- length(unique(experiments$ee.ID))
-        assays <- experiments[, sum(ee.NumSample)]
-      } else {
-        exps <- lapply(experiments, '[[', 'rn') %>% unlist
-        studies <- lapply(experiments, '[[', 'ee.ID') %>% unlist %>% unique %>% length
-        assays <- lapply(experiments, function(x) x[!duplicated(ee.ID), sum(ee.NumSample)]) %>% unlist %>% sum
-      }
+      studies <- length(unique(tmp$ee.ID))
+      assays <- tmp[!duplicated(ee.ID), sum(ee.NumSample)]
       
       n_exp <- length(exps)
       
       output$results_header <- renderUI({
         generateResultsHeader(HTML(paste0('<div style="margin-bottom: 10px"><h2 style="display: inline">Examined ',
                                           format(n_exp, big.mark = ','), ' condition comparison', ifelse(n_exp > 1, 's', ''),
-                                          ' (', studies, ' studies and ', assays, ' assays) for ',
+                                          ' (', format(studies, big.mark = ','), ' studies, ', format(assays, big.mark = ','), ' assays) for ',
                                           ifelse(nrow(genes) == 1, genes[, gene.Name],
                                                  paste0('<span data-toggle="tooltip" data-placement="top" title="',
                                                         paste0(unique(genes[, gene.Name]), collapse = ', '), '">',
@@ -390,9 +390,6 @@ server <- function(input, output, session) {
     conditions[, distance := round(distance, 3)]
     
     advanceProgress('Cross-linking')
-    
-    tmp <- rbindlist(lapply(options$taxa$value, function(i)
-      DATA.HOLDER[[i]]@experiment.meta[rsc.ID %in% exps, .(rsc.ID, ee.ID, ee.Name, ef.IsBatchConfounded)]))
     
     # Associating experiments with tags
     tmp <- tmp %>%

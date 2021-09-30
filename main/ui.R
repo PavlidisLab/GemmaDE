@@ -1,5 +1,15 @@
 ui <- fluidPage(style = 'height: 100%;',
                 useShinyjs(),
+                disconnectMessage(text = 'Your session has been disconnected.',
+                                  refresh = '',
+                                  background = '#FA1919E6',
+                                  colour = '#FFFFFF',
+                                  overlayColour = '#999999',
+                                  overlayOpacity = 0.7,
+                                  width = 'full',
+                                  top = 'center',
+                                  size = 60,
+                                  css = 'padding: 15px !important; box-shadow: none !important'),
                 
                 # Add to the HTML head
                 withTags(head(
