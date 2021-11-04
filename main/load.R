@@ -1,3 +1,4 @@
+
 #' JSONify
 #' 
 #' Assuming the input string is entirely unquoted, make it suitable for JSON.
@@ -48,10 +49,10 @@ fixOntoGenes <- function() {
 }
 
 loadDrugbank <- function() {
-  if(file.exists('/space/scratch/jsicherman/Thesis Work/data/drugbank/drugbank.rds'))
-    return(readRDS('/space/scratch/jsicherman/Thesis Work/data/drugbank/drugbank.rds'))
+  if(file.exists('/space/scratch/jcastillo/Thesis Work/data/drugbank/drugbank.rds'))
+    return(readRDS('/space/scratch/jcastillo/Thesis Work/data/drugbank/drugbank.rds'))
   
-  dbank <- xmlParse('/space/scratch/jsicherman/Thesis Work/data/drugbank/full database.xml')
+  dbank <- xmlParse('/space/scratch/jcastillo/Thesis Work/data/drugbank/full database.xml')
   droot <- xmlRoot(dbank)
   dsize <- xmlSize(droot)
   
@@ -70,7 +71,7 @@ loadDrugbank <- function() {
                  target = unlist(targets, F) %>% sapply('[[', 'name') %>% unname %>% list), I] %>%
     .[, !'I']
   
-  saveRDS(tmp, '/space/scratch/jsicherman/Thesis Work/data/drugbank/drugbank.rds')
+  saveRDS(tmp, '/space/scratch/jcastillo/Thesis Work/data/drugbank/drugbank.rds')
   
   tmp
 }
@@ -96,10 +97,12 @@ if(!exists('ONTOLOGIES') || !exists('ONTOLOGIES.DEFS')) {
   ONTOLOGIES.DEFS$OntologyScope <- ONTOLOGIES.DEFS$OntologyScope %>% as.factor
 }
 
+.DATA_PATH <- '/space/scratch/jcastillo/Thesis Work/data/DATA.HOLDER.rds'
+
 # Load the lite versions if they're already created.
 if(!exists('DATA.HOLDER')) {
-  if(file.exists('/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER.rds'))
-    DATA.HOLDER <- readRDS('/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER.rds')
+  if(file.exists(.DATA_PATH))
+    DATA.HOLDER <- readRDS(.DATA_PATH)
   else {
     DATA.HOLDER <- lapply(getConfig(key = 'taxa')$core, function(taxon) {
       message(paste('Loading', taxon, 'metadata'))
@@ -244,7 +247,7 @@ if(!exists('DATA.HOLDER')) {
     }) %>%
       setNames(getConfig(key = 'taxa')$core)
     
-    saveRDS(DATA.HOLDER, '/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER.rds')
+    saveRDS(DATA.HOLDER, '/space/scratch/jcastillo/Thesis Work/data/DATA.HOLDER.rds')
   }
   
   #if(Sys.getenv('RSTUDIO') != '1')
@@ -257,19 +260,14 @@ if(!exists('DATA.HOLDER')) {
 # I don't quite understand why the backing file can't persist across sessions, but it would be great if it could...
 if(class(DATA.HOLDER[[1]]@data$adj.pv) == 'matrix') {
   for(i in names(DATA.HOLDER)) {
-    message(paste0('Converting in-memory matrices for ', i, ' to file-backed...'))
-    file.remove(list.files(paste0('/space/scratch/jsicherman/Thesis Work/data/fbm/', i), full.names = T))
-    
     mDimNames <- dimnames(DATA.HOLDER[[i]]@data$zscore) %>% rev
-    DATA.HOLDER[[i]]@data$zscore <- as_FBM(DATA.HOLDER[[i]]@data$zscore %>% t,
-                                           backingfile = tempfile(tmpdir = paste0('/space/scratch/jsicherman/Thesis Work/data/fbm/', i)),
-                                           is_read_only = T)
+    DATA.HOLDER[[i]]@data$zscore <- big_attach(paste0('/space/scratch/jcastillo/Thesis Work/data/fbm/', i, '/zscores.rds'))
+
     attr(DATA.HOLDER[[i]]@data$zscore, '.dimnames') <- mDimNames
     
     mDimNames <- dimnames(DATA.HOLDER[[i]]@data$adj.pv) %>% rev
-    DATA.HOLDER[[i]]@data$adj.pv <- as_FBM(DATA.HOLDER[[i]]@data$adj.pv %>% t,
-                                           backingfile = tempfile(tmpdir = paste0('/space/scratch/jsicherman/Thesis Work/data/fbm/', i)),
-                                           is_read_only = T)
+    DATA.HOLDER[[i]]@data$adj.pv <- big_attach(paste0('/space/scratch/jcastillo/Thesis Work/data/fbm/', i, '/adjpvs.rds'))
+
     attr(DATA.HOLDER[[i]]@data$adj.pv, '.dimnames') <- mDimNames
   }
   rm(i, mDimNames)
@@ -283,19 +281,19 @@ dimnames.FBM <- function(object, ...) {
 
 if(!exists('CACHE.BACKGROUND')) {
   # Pre-load all ontology expansions
-  if(file.exists('/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND.rds'))
-    CACHE.BACKGROUND <- readRDS('/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND.rds')
+  if(file.exists('/space/scratch/jcastillo/Thesis Work/data/CACHE.BACKGROUND.rds'))
+    CACHE.BACKGROUND <- readRDS('/space/scratch/jcastillo/Thesis Work/data/CACHE.BACKGROUND.rds')
   else {
     CACHE.BACKGROUND <- lapply(names(DATA.HOLDER), precomputeTags) %>%
       setNames(names(DATA.HOLDER))
     
-    saveRDS(CACHE.BACKGROUND, '/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND.rds')
+    saveRDS(CACHE.BACKGROUND, '/space/scratch/jcastillo/Thesis Work/data/CACHE.BACKGROUND.rds')
   }
 }
 
 if(!exists('NULLS')) {
   NULLS <- lapply(names(DATA.HOLDER), function(taxa) {
-    tryCatch(readRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/updated_nulls2/', taxa, '.rds')) %>%
+    tryCatch(readRDS(paste0('/space/scratch/jcastillo/Thesis Work/data/updated_nulls2/', taxa, '.rds')) %>%
       .[, .(rn, score.mean, score.sd)], error = function(e) NULL)
   }) %>% `names<-`(names(DATA.HOLDER)) %>% {
     Filter(Negate(is.null), .)
