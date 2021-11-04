@@ -8,14 +8,14 @@ library(DT)
 library(heatmaply)
 library(shinyHeatmaply)
 library(shinypanels) # From jsicherman/shinypanels, NOT datasketch devtools::install_github('jsicherman/shinypanels')
-library(circlepackeR)
-library(d3wordcloud)
+library(circlepackeR) # devtools::install_github('jeromefroe/circlepackeR')
+library(d3wordcloud) # devtools::install_github('jbkunst/d3wordcloud')
 library(data.tree)
 library(RColorBrewer)
 library(sass)
 library(shinydisconnect)
 
-library(async)
+library(async) # devtools::install_github('gaborcsardi/async')
 library(memoise)
 
 # Data drivers
@@ -31,8 +31,8 @@ library(matrixTests)
 
 # Parsing helpers
 library(gemmaAPI, lib.loc = '/home/omancarci/R/x86_64-redhat-linux-gnu-library/3.6/')
-library(ermineR)
-library(mygene)
+library(ermineR) # devtools::install_github('PavlidisLab/ermineR')
+library(mygene) # BiocManager::install("mygene")
 library(homologene)
 library(jsonlite)
 library(XML)
