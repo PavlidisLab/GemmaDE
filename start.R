@@ -1,4 +1,4 @@
-runApp('main', port = 18232, launch.browser = F)
+runApp('main', port = 18233, launch.browser = F)
 
 # Roadmap ----
 # [?] Consider independent component analysis to reduce feature space
