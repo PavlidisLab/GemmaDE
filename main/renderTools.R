@@ -233,37 +233,6 @@ generateResults <- function(data) {
   renderDT(mTable)
 }
 
-#' Generate GO Page
-#'
-#' @param ora The result of an ermineR::ora
-generateGOPage <- function(ora) {
-  ora$results <- ora$results %>% rename(c('Pval' = 'P-value', 'CorrectedPvalue' = 'FDR'))
-  mTable <- datatable(ora$results[, c('Name', 'P-value', 'FDR')],
-                      rownames = ora$results$ID,
-                      filter = 'top',
-                      options = list(pageLength = 10,
-                                     order = list(
-                                       list(2, 'asc')
-                                     ),
-                                     language = list(lengthMenu = 'Show _MENU_ enrichments per page',
-                                                     processing = '',
-                                                     emptyTable = 'No matching enrichments found.',
-                                                     infoEmpty = 'Showing 0 to 0 of 0 over enrichments',
-                                                     info = 'Showing _START_ to _END_ of _TOTAL_ enrichments',
-                                                     infoFiltered = '(filtered from over _MAX_)'),
-                                     fixedHeader = T,
-                                     autoWidth = T,
-                                     drawCallback = JS('addMathJax'),
-                                     search = list(
-                                       list(regex = T)
-                                     ),
-                                     columnDefs = list(
-                                       list(targets = 2:3,
-                                            render = JS('asPval'), width = '10%')
-                                     )))
-  renderDT(mTable)
-} # TODO May memoise
-
 #' Generate Gene Page
 #'
 #' @param evidence The evidence that was fetched from Gemma (@seealso geneEvidence)

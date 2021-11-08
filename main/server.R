@@ -136,19 +136,6 @@ server <- function(input, output, session) {
               output$results_genes <- generateGenePage(evidence)
             })
         })
-      } else if(tab == 'GO Enrichment' && is.null(session$userData$goRendered)) {
-        session$userData$goRendered <- T
-        
-        # TODO Only doing this on first taxon
-        if(length(session$userData$plotData$options$taxa$value) > 1)
-          mGenes <- mGenes[taxon == session$userData$plotData$options$taxa$value[1],
-                           unique(gene.Name)]
-        else
-          mGenes <- DATA.HOLDER[[session$userData$plotData$options$taxa$value]]@gene.meta[
-            entrez.ID %in% unique(session$userData$plotData$genes), gene.Name]
-        
-        output$results_go <- generateGOPage(ora(hitlist = mGenes,
-                                                annotation = paste0('Generic_', session$userData$plotData$options$taxa$value[1])))
       } else if(tab == 'Gene Contributions' && is.null(session$userData$contribsRendered)) {
         session$userData$contribsRendered <- T
         
@@ -165,7 +152,6 @@ server <- function(input, output, session) {
   # Force an updated of the gene view when we get new search results
   observeEvent(input$UPDATED, {
     session$userData$genesRendered <- NULL
-    session$userData$goRendered <- NULL
     session$userData$contribsRendered <- NULL
     
     # Delay if we're opening the gene info tab (I forget why)
