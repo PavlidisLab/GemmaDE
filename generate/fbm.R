@@ -1,26 +1,4 @@
-
-fixOntoGenes <- function() {
-  lapply(getConfig(key = 'taxa')$core, function(taxa) {
-    matches <- do.call(rbind,
-                       str_match_all(DATA.HOLDER[[taxa]]@experiment.meta[, c(as.character(cf.BaseLongUri),
-                                                                             as.character(cf.ValLongUri))],
-                                     'http://purl.org/commons/record/ncbi_gene/(\\d*)')) %>% unique
-    
-    matches[, 2] <- lapply(getConfig(key = 'taxa')$core, function(taxa) {
-      DATA.HOLDER[[taxa]]@gene.meta[entrez.ID %in% matches[, 2],
-                                    .(entrez.ID, gene.Name = paste0(gene.Name, ' [', taxa, ']'))]
-    }) %>% rbindlist %>% unique(by = 'entrez.ID') %>% .[match(matches[, 2], entrez.ID), gene.Name]
-    
-    data.table(Node_Long = matches[, 1], Definition = matches[, 2], OntologyScope = 'TGEMO')
-  }) %>% rbindlist %>% {
-    rbind(ONTOLOGIES.DEFS[, .(Node_Long = as.character(Node_Long),
-                              Definition = as.character(Definition),
-                              OntologyScope = as.character(OntologyScope))], .) %>%
-      .[, c('Node_Long', 'Definition', 'OntologyScope') := list(as.factor(Node_Long),
-                                                                as.factor(Definition),
-                                                                as.factor(OntologyScope))]
-  }
-}
+source('./main/requirements.R')
 
 setClass('EData', representation(taxon = 'character', data = 'list',
                                  experiment.meta = 'data.table', gene.meta = 'data.table',
@@ -178,15 +156,11 @@ if(!exists('DATA.HOLDER')) {
     
     saveRDS(DATA.HOLDER, '/space/scratch/jcastillo/Thesis Work/data/DATA.HOLDER.rds')
   }
-  
-  #if(Sys.getenv('RSTUDIO') != '1')
-  DATA.HOLDER$artificial <- NULL
-  
-  ONTOLOGIES.DEFS <- fixOntoGenes()
 }
 
-# File-backed, gene-major matrices area HUGE upgrade compared to in-memory experiment-major matrices because 1) way faster to access gene-slices (which are always longer than experiment slices), and 2) data in memory can be reduced to < 1 GB (!)
-# I don't quite understand why the backing file can't persist across sessions, but it would be great if it could...
+# File-backed, gene-major matrices area HUGE upgrade compared to in-memory experiment-major matrices because 
+# 1) way faster to access gene-slices (which are always longer than experiment slices), and 
+# 2) data in memory can be reduced to < 1 GB (!)
 if(class(DATA.HOLDER[[1]]@data$adj.pv) == 'matrix') {
   for(i in names(DATA.HOLDER)) {
     message(paste0('Converting in-memory matrices for ', i, ' to file-backed...'))
