@@ -161,20 +161,6 @@ generateResultsPlot <- function(genes, conditions, expr, options = getConfig(),
                  modeBarButtonsToRemove = c('toggleSpikelines', 'hoverCompareCartesian'))
 }
 
-generateResultsCloud <- function(data, options) {
-  mCloudValues <- data[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, `Test Statistic`)] %>%
-    melt(measure.vars = 1:3) %>%
-    .[, .(`Test Statistic` = mean(`Test Statistic`), variable), value] %>%
-    setorder(-`Test Statistic`) %>% .[`Test Statistic` > 0] %>%
-    head(300)
-  
-  mVals <- mCloudValues[, value]
-  mCounts <- mCloudValues[, `Test Statistic`]
-  
-  mCloud <- d3wordcloud(mVals, mCounts)
-  renderD3wordcloud(mCloud)
-}
-
 #' Generate Results
 #' 
 #' Make a pretty results table and render it

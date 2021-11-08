@@ -149,10 +149,6 @@ server <- function(input, output, session) {
         
         output$results_go <- generateGOPage(ora(hitlist = mGenes,
                                                 annotation = paste0('Generic_', session$userData$plotData$options$taxa$value[1])))
-      } else if(tab == 'Word Cloud' && is.null(session$userData$cloudRendered)) {
-        session$userData$cloudRendered <- T
-        
-        output$results_cloud <- generateResultsCloud(session$userData$plotData$conditions, session$userData$options)
       } else if(tab == 'Gene Contributions' && is.null(session$userData$contribsRendered)) {
         session$userData$contribsRendered <- T
         
@@ -170,7 +166,6 @@ server <- function(input, output, session) {
   observeEvent(input$UPDATED, {
     session$userData$genesRendered <- NULL
     session$userData$goRendered <- NULL
-    session$userData$cloudRendered <- NULL
     session$userData$contribsRendered <- NULL
     
     # Delay if we're opening the gene info tab (I forget why)
