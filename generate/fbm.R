@@ -166,24 +166,31 @@ if(class(DATA.HOLDER[[1]]@data$adj.pv) == 'matrix') {
     message(paste0('Converting in-memory matrices for ', i, ' to file-backed...'))
     file.remove(list.files(paste0('/space/scratch/jcastillo/Thesis Work/data/fbm/', i), full.names = T))
     
-    mDimNames <- dimnames(DATA.HOLDER[[i]]@data$zscore) %>% rev
+    dimnames(DATA.HOLDER[[i]]@data$zscore) %>% 
+      rev() %>%
+      saveRDS(paste0('/space/scratch/jcastillo/Thesis Work/data/fbm/', i, '/z.dimnames.rds'))
     DATA.HOLDER[[i]]@data$zscore <- as_FBM(DATA.HOLDER[[i]]@data$zscore %>% t,
                                            backingfile = paste0('/space/scratch/jcastillo/Thesis Work/data/fbm/', i, '/zscores'),
                                            is_read_only = T)$save()
-    attr(DATA.HOLDER[[i]]@data$zscore, '.dimnames') <- mDimNames
     
-    mDimNames <- dimnames(DATA.HOLDER[[i]]@data$adj.pv) %>% rev
+    dimnames(DATA.HOLDER[[i]]@data$adj.pv) %>% 
+      rev() %>%
+      saveRDS(paste0('/space/scratch/jcastillo/Thesis Work/data/fbm/', i, '/p.dimnames.rds'))
     DATA.HOLDER[[i]]@data$adj.pv <- as_FBM(DATA.HOLDER[[i]]@data$adj.pv %>% t,
                                            backingfile = paste0('/space/scratch/jcastillo/Thesis Work/data/fbm/', i, '/adjpvs'),
                                            is_read_only = T)$save()
-    attr(DATA.HOLDER[[i]]@data$adj.pv, '.dimnames') <- mDimNames
   }
-  rm(i, mDimNames)
+  rm(i)
 }
-
-gc()
 
 dimnames.FBM <- function(object, ...) {
   attr(object, '.dimnames')
 }
 
+# Remove z-scores and t-scores from DATA.HOLDER to allow faster loading with FBMs in load.R
+for (taxon in names(DATA.HOLDER)) {
+  DATA.HOLDER[[taxon]]@data$zscore <- NULL
+  DATA.HOLDER[[taxon]]@data$adj.pv <- NULL
+}
+
+saveRDS(DATA.HOLDER, '/space/scratch/jcastillo/Thesis Work/data/DATA.HOLDER.light.rds')

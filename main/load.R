@@ -97,7 +97,7 @@ if(!exists('ONTOLOGIES') || !exists('ONTOLOGIES.DEFS')) {
   ONTOLOGIES.DEFS$OntologyScope <- ONTOLOGIES.DEFS$OntologyScope %>% as.factor
 }
 
-.DATA_PATH <- '/space/scratch/jcastillo/Thesis Work/data/DATA.HOLDER.rds'
+.DATA_PATH <- '/space/scratch/jcastillo/Thesis Work/data/DATA.HOLDER.light.rds'
 
 # Load the lite versions if they're already created.
 if(!exists('DATA.HOLDER')) {
@@ -113,20 +113,14 @@ if(!exists('DATA.HOLDER')) {
 }
 
 # Read existing FBMs
-if(class(DATA.HOLDER[[1]]@data$adj.pv) == 'matrix') {
-  for(i in names(DATA.HOLDER)) {
-    mDimNames <- dimnames(DATA.HOLDER[[i]]@data$zscore) %>% rev
-    DATA.HOLDER[[i]]@data$zscore <- big_attach(paste0('/space/scratch/jcastillo/Thesis Work/data/fbm/', i, '/zscores.rds'))
-
-    attr(DATA.HOLDER[[i]]@data$zscore, '.dimnames') <- mDimNames
-    
-    mDimNames <- dimnames(DATA.HOLDER[[i]]@data$adj.pv) %>% rev
-    DATA.HOLDER[[i]]@data$adj.pv <- big_attach(paste0('/space/scratch/jcastillo/Thesis Work/data/fbm/', i, '/adjpvs.rds'))
-
-    attr(DATA.HOLDER[[i]]@data$adj.pv, '.dimnames') <- mDimNames
-  }
-  rm(i, mDimNames)
+for(i in names(DATA.HOLDER)) {
+  DATA.HOLDER[[i]]@data$zscore <- big_attach(paste0('/space/scratch/jcastillo/Thesis Work/data/fbm/', i, '/zscores.rds'))
+  attr(DATA.HOLDER[[i]]@data$zscore, '.dimnames') <- readRDS(paste0('/space/scratch/jcastillo/Thesis Work/data/fbm/', i, '/z.dimnames.rds'))
+  
+  DATA.HOLDER[[i]]@data$adj.pv <- big_attach(paste0('/space/scratch/jcastillo/Thesis Work/data/fbm/', i, '/adjpvs.rds'))
+  attr(DATA.HOLDER[[i]]@data$adj.pv, '.dimnames') <- readRDS(paste0('/space/scratch/jcastillo/Thesis Work/data/fbm/', i, '/p.dimnames.rds'))
 }
+rm(i)
 
 gc()
 
