@@ -76,11 +76,6 @@ server <- function(input, output, session) {
     for(mName in Filter(function(x) !(x %in% c('sig', 'fc', 'categories', 'taxa')), names(options))) {
       do.update(session, options[[mName]], ifelse(is.null(query[[mName]]), options[[mName]]$value, query[[mName]]))
     }
-    
-    # Search if any genes are specified. Specify parameters to make sure no reactives.
-    # Run it next ms to give the server time to propagate layout changes.
-    if(!is.null(query$genes))
-      shinyjs::delay(1, searchGenes(genes, sig, jsonify(query$taxa), update = F))
   }, once = T, ignoreNULL = T)
   
   # Send a message to the client if a file is uploaded

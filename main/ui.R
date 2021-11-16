@@ -80,12 +80,14 @@ ui <- fluidPage(style = 'height: 100%;',
                     fluidRow(
                       column(12, htmlOutput('results_suggestions')),
                       column(12, htmlOutput('results_header')),
-                      mainPanel(
-                        tabsetPanel(id = 'tabs',
-                                    tabPanel('Conditions',
-                                             column(12, style = 'margin-top: 16px', dataTableOutput('results') %>% withSpinner(custom.class = 'DNA_cont', custom.html = div(lapply(1:10, function(x) div(class = 'nucleobase')))))),
-                                    tabPanel('Gene Contributions', column(12, style = 'margin-top: 16px', plotlyOutput('results_contribs', height = '30vw') %>% withSpinner(custom.class = 'DNA_cont', custom.html = div(lapply(1:10, function(x) div(class = 'nucleobase')))))),
-                                    tabPanel('Gene Info', column(12, style = 'margin-top: 16px', htmlOutput('results_genes') %>% withSpinner(custom.class = 'DNA_cont', custom.html = div(lapply(1:10, function(x) div(class = 'nucleobase')))))),
+                      conditionalPanel(
+                        condition = 'input.search > 0',
+                        tabsetPanel(
+                          id = 'tabs',
+                          tabPanel('Conditions',
+                                   column(12, style = 'margin-top: 16px', dataTableOutput('results') %>% withSpinner(custom.class = 'DNA_cont', custom.html = div(lapply(1:10, function(x) div(class = 'nucleobase')))))),
+                          tabPanel('Gene Contributions', column(12, style = 'margin-top: 16px', plotlyOutput('results_contribs', height = '30vw') %>% withSpinner(custom.class = 'DNA_cont', custom.html = div(lapply(1:10, function(x) div(class = 'nucleobase')))))),
+                          tabPanel('Gene Info', column(12, style = 'margin-top: 16px', htmlOutput('results_genes') %>% withSpinner(custom.class = 'DNA_cont', custom.html = div(lapply(1:10, function(x) div(class = 'nucleobase')))))),
                         ),
                         width = 12
                       )
