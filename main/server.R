@@ -112,7 +112,7 @@ server <- function(input, output, session) {
 
   # Reset the search bar
   observeEvent(input$reset, {
-    updateTextInput(session, "genes", value = "")
+    session$sendCustomMessage("queryReset", list())
     session$sendCustomMessage("fileUpload", F)
     updatePickerInput(session, "taxa", selected = getConfig("taxa")$value)
     updateSelectizeInput(session, "method", selected = NULL)
