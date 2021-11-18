@@ -208,6 +208,13 @@ generateResults <- function(data) {
     extensions = "Buttons",
     selection = "none",
     rownames = data[, as.character(cf.Cat)],
+    colnames = c(
+      "Condition Comparison" = "Condition Comparison",
+      "Evidence" = "Evidence",
+      "<span title ='Placeholder' data-toggle='tooltip'>Ontology Steps</span>" = "Ontology Steps",
+      "<span title ='Indicates how strongly differentally-expressed the query is' data-toggle='tooltip'>Effect Size</span>" = "Effect Size",
+      "<span title ='Indicates how much the query genes contribute in a statistically significant way. Ranges from zero to the number of genes in the query.' data-toggle='tooltip'>Test Statistic</span>" = "Test Statistic"
+    ),
     callback = JS(
       "var a = document.createElement('a');",
       "$(a).addClass('dt-button');",
@@ -215,7 +222,7 @@ generateResults <- function(data) {
       "$(a).text('Download');",
       "$('div.dwnld').append(a);"
     ),
-    escape = -(c(which(outputColumns == "Condition Comparison"), which(outputColumns == "Evidence")) + 1),
+    escape = FALSE,
     filter = "top",
     options = list(
       pageLength = 10,
