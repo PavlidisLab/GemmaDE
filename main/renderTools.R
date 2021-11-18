@@ -204,7 +204,10 @@ generateResultsPlot <- function(genes, conditions, expr, options = getConfig(),
 generateResults <- function(data) {
   outputColumns <- c("Condition Comparison", "Evidence", "Ontology Steps", "Effect Size", "Test Statistic")
 
-  mTable <- datatable(data[, outputColumns, with = F] %>% .[, c("Effect Size", "Test Statistic") := list(round(`Effect Size`, 2), round(`Test Statistic`, 2))] %>% as.data.frame(),
+  mTable <- datatable(
+    data[, outputColumns, with = F] %>% 
+      .[, c("Effect Size", "Test Statistic") := list(round(`Effect Size`, 2), round(`Test Statistic`, 2))] %>% 
+      as.data.frame(),
     extensions = "Buttons",
     selection = "none",
     rownames = data[, as.character(cf.Cat)],
@@ -212,7 +215,7 @@ generateResults <- function(data) {
       "Condition Comparison" = "Condition Comparison",
       "Evidence" = "Evidence",
       "<span title ='Placeholder' data-toggle='tooltip'>Ontology Steps</span>" = "Ontology Steps",
-      "<span title ='Indicates how strongly differentally-expressed the query is' data-toggle='tooltip'>Effect Size</span>" = "Effect Size",
+      "<span title ='Indicates how strongly differentally-expressed the query gene list is' data-toggle='tooltip'>Effect Size</span>" = "Effect Size",
       "<span title ='Indicates how much the query genes contribute in a statistically significant way. Ranges from zero to the number of genes in the query.' data-toggle='tooltip'>Test Statistic</span>" = "Test Statistic"
     ),
     callback = JS(
@@ -222,7 +225,7 @@ generateResults <- function(data) {
       "$(a).text('Download');",
       "$('div.dwnld').append(a);"
     ),
-    escape = FALSE,
+    escape = F,
     filter = "top",
     options = list(
       pageLength = 10,
@@ -281,11 +284,11 @@ generateResults <- function(data) {
         list(regex = T)
       ),
       buttons = list(
-        list(
-          extend = "collection",
-          text = "Visualize Expression",
-          action = JS("plotData")
-        )
+       #  list(
+       #    extend = "collection",
+       #    text = "Visualize Expression",
+       #    action = JS("plotData")
+       # )
       )
     )
   )
