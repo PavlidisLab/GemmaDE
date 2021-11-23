@@ -50,7 +50,7 @@ ui <- fluidPage(
         column(2, uiOutput("genes.csv.ui")),
 
         # Signature entry
-        column(2, span(selectInput("sig", "DE signature", list(`(optional)` = ""), multiple = T), `data-toggle` = "tooltip", title = "If providing a signature, you should use M-VSM or Correlation as the search algorithm")),
+        # column(2, span(selectInput("sig", "DE signature", list(`(optional)` = ""), multiple = T), `data-toggle` = "tooltip", title = "If providing a signature, you should use M-VSM or Correlation as the search algorithm")),
 
         # Taxa entry
         column(

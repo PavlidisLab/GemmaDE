@@ -42,6 +42,7 @@ customSelectizeIt <- function(inputId, select, options, nonempty = FALSE) {
 environment(customSelectizeIt) <- asNamespace("shiny")
 assignInNamespace("selectizeIt", customSelectizeIt, ns = "shiny")
 
+# UI options to configure algorithm
 addConfig <- function(description, tooltip = "", category, extras = NULL, ...) {
   mList <- getOption("app.registered")
   mNew <- list(...)
@@ -141,7 +142,7 @@ addConfig(dist = 1.5, description = "Maximum term distance", tooltip = "The maxi
 addConfig(confounds = F, description = "Include possibly confounded", tooltip = "Whether or not to include factors that exhibit a possible batch confound", category = "Scoring")
 addConfig(mfx = T, description = "Score multifunctionality", tooltip = "Whether or not to weight each gene's contribution by its multifunctionality rank", category = "Scoring")
 addConfig(geeq = F, description = "Score experiment quality (GEEQ)", tooltip = "Whether or not to weight each experiment's contribution by its GEEQ score", category = "Scoring")
-addConfig(method = "diff", description = "Scoring function", tooltip = "Which scoring algorithm to use. You should use the default unless you want to search for conditions that resemble a specific DE signature", category = "Scoring", extras = list(choices = list(`M-VSM` = "mvsm", `Default` = "diff", `Correlation` = "cor")))
+# addConfig(method = "diff", description = "Scoring function", tooltip = "Which scoring algorithm to use. You should use the default unless you want to search for conditions that resemble a specific DE signature", category = "Scoring", extras = list(choices = list(`M-VSM` = "mvsm", `Default` = "diff", `Correlation` = "cor")))
 
 addConfig(sig = "", description = NA, category = NA)
 
@@ -207,15 +208,15 @@ addConfig(
   extras = list(choices = categories, multiple = T)
 )
 
-addConfig(
-  subset = NA_character_,
-  description = "Subsets to include/exclude", tooltip = "Limit which biomaterial subsets to include or exclude", category = "Filtering",
-  extras = list(choices = subsets, multiple = T, selectize = T)
-)
-addConfig(
-  subsetExcludes = T,
-  description = "Blacklist", "Toggle whether the selected subsets act as a whitelist or blacklist", category = "Filtering"
-)
+# addConfig(
+#   subset = NA_character_,
+#   description = "Subsets to include/exclude", tooltip = "Limit which biomaterial subsets to include or exclude", category = "Filtering",
+#   extras = list(choices = subsets, multiple = T, selectize = T)
+# )
+# addConfig(
+#   subsetExcludes = T,
+#   description = "Blacklist", "Toggle whether the selected subsets act as a whitelist or blacklist", category = "Filtering"
+# )
 
 addConfig(
   taxa = "human", description = NA, category = NA,
