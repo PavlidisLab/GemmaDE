@@ -1,4 +1,3 @@
-
 #' JSONify
 #'
 #' Assuming the input string is entirely unquoted, make it suitable for JSON.
@@ -126,6 +125,8 @@ if (!exists("ONTOLOGIES") || !exists("ONTOLOGIES.DEFS")) {
   ONTOLOGIES.DEFS$OntologyScope <- ONTOLOGIES.DEFS$OntologyScope %>% as.factor()
 }
 
+# small.light is a smaller dataset to work in development, for production use DATA.HOLDER.light.rds
+# .DATA_PATH <- "/space/scratch/jcastillo/Thesis Work/data/DATA.HOLDER.small.light.rds"
 .DATA_PATH <- "/space/scratch/jcastillo/Thesis Work/data/DATA.HOLDER.light.rds"
 
 # Load the lite versions if they're already created.

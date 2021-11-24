@@ -55,9 +55,9 @@ search <- function(genes, options = getConfig(), DATA = NULL) {
     return(NULL)
   }
 
-  if (length(query) == 0 && options$method$value != "diff") {
-    return(NULL)
-  }
+  # if (length(query) == 0 && options$method$value != "diff") {
+  #   return(NULL)
+  # }
 
   # P-values for only the GOI
   mDimNames <- dimnames(mData@data$adj.pv)
@@ -98,44 +98,9 @@ search <- function(genes, options = getConfig(), DATA = NULL) {
   # Adding 1 to not exclude CCs where p.adj is 1
   zScore <- getOption("app.algorithm.gene.pre") %>% eval()
 
-  if (options$method$value == "diff") {
-    ret <- getOption("app.algorithm.gene.post") %>%
-      eval() %>%
-      .[, score := Rfast::rowsums(as.matrix(.))]
-  } else if (options$method$value == "cor") {
-    ret <- getOption("app.algorithm.gene.post") %>%
-      eval() %>%
-      .[, score := abs(cor.wt(zScore %>% as.matrix(), query, MFX_WEIGHT))] %>% # TODO abs?
-      .[is.nan(score), score := 0]
-  } else if (options$method$value == "mvsm") {
-    idf <- Rfast::Log(1 / MFX_WEIGHT) + 1 # TODO check that this is the right way around since 1 -
-    zScore[, query := query]
-    zScore <- zScore * idf
-
-    # Extract the query
-    query <- zScore[, query]
-    zScore[, query := NULL]
-
-    # Cosine similarity
-    zScore <- as.matrix(zScore)
-
-    cross_x <- crossprod(query)
-    scores <- sapply(1:ncol(zScore), function(i) {
-      cross_q <- crossprod(query, zScore[, i])
-      if (cross_q == 0) {
-        0
-      } else {
-        cross_q / sqrt(cross_x * crossprod(zScore[, i]))
-      }
-    })
-
-    ret <- zScore %>%
-      `*`(MFX_WEIGHT) %>%
-      t() %>%
-      as.data.table() %>%
-      .[, score := abs(scores)] %>%
-      .[is.nan(score), score := 0]
-  }
+  ret <- getOption("app.algorithm.gene.post") %>%
+    eval() %>%
+    .[, score := Rfast::rowsums(as.matrix(.))]
 
   experimentN <- Rfast::colsums(pv <= options$pv$value)
 

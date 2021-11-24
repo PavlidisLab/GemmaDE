@@ -42,7 +42,7 @@ customSelectizeIt <- function(inputId, select, options, nonempty = FALSE) {
 environment(customSelectizeIt) <- asNamespace("shiny")
 assignInNamespace("selectizeIt", customSelectizeIt, ns = "shiny")
 
-# UI options to configure algorithm
+# Creates UI options to configure algorithm
 addConfig <- function(description, tooltip = "", category, extras = NULL, ...) {
   mList <- getOption("app.registered")
   mNew <- list(...)
