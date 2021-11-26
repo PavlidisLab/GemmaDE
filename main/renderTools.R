@@ -39,22 +39,20 @@ generateGeneContribs <- function(data, options, plot_conditions = NULL) {
   # .[, value := (value - min(value)) / (max(value) - min(value)), `Condition Comparison`]
 
   fig <- plot_ly(mData, type = 'bar', orientation = 'h')
-  for(group in unique(mData[, `Condition Comparison`])) {
+  for(condition in unique(mData$`Condition Comparison`)) {
     fig <- fig %>%
-      add_trace(x = mData[`Condition Comparison` == group, value],
-                y = ~unique(variable),
-                name = group,
-                marker = list(line = list(width = 3)))
+      add_trace(
+        x = mData[`Condition Comparison` == condition, value],
+        y = mData[`Condition Comparison` == condition, variable],
+        name = condition,
+        marker = list(line = list(width = 3)))
   }
-  
-  renderPlotly(fig %>% 
-                 layout(barmode = 'stack',
-                        yaxis = list(
-                          title = 'Gene')
-                 ) %>% 
-                 config(displaylogo = F,
-                        toImageButtonOptions = list(format = 'svg'),
-                        modeBarButtonsToRemove = c('toggleSpikelines', 'hoverCompareCartesian')))
+  fig %>%
+    config(displaylogo = F,
+           toImageButtonOptions = list(format = 'svg'),
+           modeBarButtonsToRemove = c('toggleSpikelines', 'hoverCompareCartesian')) %>%
+    renderPlotly() 
+                 
 }
 
 #' Generate Results Plot
