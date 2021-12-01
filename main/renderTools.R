@@ -32,27 +32,46 @@ generateGeneContribs <- function(data, options, plot_conditions = NULL) {
       "Test Statistic", "Effect Size", "Ontology Steps", "N", "Evidence",
       "cf.Cat", "cf.BaseLongUri", "cf.ValLongUri"
     )] %>%
-    head(10) %>% # TODO This is a stopgap for picker
+    head(20) %>% # TODO This is a stopgap for picker
     melt(id.vars = "Condition Comparison") %>%
     .[!is.finite(value), value := 0] # %>%
   # .[, value := log10(1 + value / sum(value)), `Condition Comparison`] %>%
   # .[, value := (value - min(value)) / (max(value) - min(value)), `Condition Comparison`]
-
-  fig <- plot_ly(mData, type = 'bar', orientation = 'h')
+  
+  # change height depending of # genes
+  if (length(unique(mData$variable)) < 15)
+    height <- NULL
+  else
+    height <- 40 * length(unique(mData$variable))
+    
+  fig <- plot_ly(mData, height = height)
+  
   for(condition in unique(mData$`Condition Comparison`)) {
     fig <- fig %>%
       add_trace(
+        type = "bar",
         x = mData[`Condition Comparison` == condition, value],
         y = mData[`Condition Comparison` == condition, variable],
         name = condition,
-        marker = list(line = list(width = 3)))
+        hoverinfo = "skip",
+        visible = "legendonly"
+      )
   }
+  
   fig %>%
-    config(displaylogo = F,
-           toImageButtonOptions = list(format = 'svg'),
-           modeBarButtonsToRemove = c('toggleSpikelines', 'hoverCompareCartesian')) %>%
+    style(visible = TRUE, traces = c(1)) %>% # Show first condition comparison
+    layout(
+      yaxis = list(
+        type = "category",
+        categoryorder = "total ascending"),
+      legend = list(
+        title=list(text='<b> Condition Comparison </b>'))
+      ) %>%
+    config(displaylogo = FALSE,
+           toImageButtonOptions = list(format = "svg"),
+           displayModeBar = FALSE,
+           modeBarButtonsToRemove = c("toggleSpikelines", "hoverCompareCartesian")) %>%
     renderPlotly() 
-                 
 }
 
 #' Generate Results Plot

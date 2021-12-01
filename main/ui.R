@@ -103,7 +103,7 @@ ui <- fluidPage(
             "Conditions",
             column(12, style = "margin-top: 16px", dataTableOutput("results") %>% withSpinner(custom.class = "DNA_cont", custom.html = div(lapply(1:10, function(x) div(class = "nucleobase")))))
           ),
-          tabPanel("Gene Contributions", column(12, style = "margin-top: 16px", plotlyOutput("results_contribs", height = "30vw") %>% withSpinner(custom.class = "DNA_cont", custom.html = div(lapply(1:10, function(x) div(class = "nucleobase")))))),
+          tabPanel("Gene Contributions", column(12, style = "margin-top: 16px", plotlyOutput("results_contribs", height = "auto") %>% withSpinner(custom.class = "DNA_cont", custom.html = div(lapply(1:10, function(x) div(class = "nucleobase")))))),
           # tabPanel("Gene Info", column(12, style = "margin-top: 16px", htmlOutput("results_genes") %>% withSpinner(custom.class = "DNA_cont", custom.html = div(lapply(1:10, function(x) div(class = "nucleobase")))))),
         ),
         width = 12
