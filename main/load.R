@@ -125,8 +125,6 @@ if (!exists("ONTOLOGIES") || !exists("ONTOLOGIES.DEFS")) {
   ONTOLOGIES.DEFS$OntologyScope <- ONTOLOGIES.DEFS$OntologyScope %>% as.factor()
 }
 
-# small.light is a smaller dataset to work in development, for production use DATA.HOLDER.light.rds
-# .DATA_PATH <- "/space/scratch/jcastillo/Thesis Work/data/DATA.HOLDER.small.light.rds"
 .DATA_PATH <- "/space/scratch/jcastillo/Thesis Work/data/DATA.HOLDER.light.rds"
 
 # Load the lite versions if they're already created.
@@ -184,3 +182,10 @@ if (!exists("NULLS")) {
 if (!exists("DRUGBANK") && Sys.getenv("RSTUDIO") == "1") {
   DRUGBANK <- loadDrugbank()
 }
+
+# Compile all unique gene names to use as choices in the search bar
+allGenes <- c()
+for (taxon in names(DATA.HOLDER)) {
+  allGenes <- c(allGenes, DATA.HOLDER[[taxon]]@gene.meta$gene.Name)
+}
+allGenes <- unique(allGenes)

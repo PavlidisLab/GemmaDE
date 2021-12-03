@@ -38,7 +38,7 @@ generateGeneContribs <- function(data, options, plot_conditions = NULL) {
   # .[, value := log10(1 + value / sum(value)), `Condition Comparison`] %>%
   # .[, value := (value - min(value)) / (max(value) - min(value)), `Condition Comparison`]
   
-  # change height depending of # genes
+  # Change plot height depending of # genes
   if (length(unique(mData$variable)) < 15)
     height <- NULL
   else

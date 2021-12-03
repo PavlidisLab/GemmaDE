@@ -44,8 +44,9 @@ ui <- fluidPage(
         # Gene entry
         column(
           6,
-          fluidRow(span(selectInput("genes", "Input gene(s) of interest", list(`Enter query...` = ""), multiple = T), `data-toggle` = "tooltip", title = "May be NCBI IDs, Ensembl IDs, official symbols or GO groups")),
-          fluidRow(helpText(HTML('Examples: <a genes=\'["RPS4Y1","EIF1AY","DDX3Y","KDM5D","XIST"]\'>RPS4Y1, EIF1AY, DDX3Y, KDM5D, XIST</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a genes=\'["ENSG00000131095","ENSG00000110436"]\'>ENSG00000131095, ENSG00000110436</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a style="color: #002145" genes=\'"random()"\'>I\'m feeling lucky</a>')))
+          fluidRow(span(selectInput("genes", "Input gene(s) of interest", list(`Enter query...` = ""), multiple = T, choices = allGenes), `data-toggle` = "tooltip", title = "May be NCBI IDs, Ensembl IDs, official symbols or GO groups")),
+          fluidRow(helpText(HTML('Examples: <a genes=\'["RPS4Y1","EIF1AY","DDX3Y","KDM5D","XIST"]\'>RPS4Y1, EIF1AY, DDX3Y, KDM5D, XIST</a>&nbsp;&nbsp;|&nbsp;&nbsp
+                                 <a genes=\'["ENSG00000131095","ENSG00000110436"]\'>ENSG00000131095, ENSG00000110436</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a style="color: #002145" genes=\'"random()"\'>I\'m feeling lucky</a>')))
         ),
         column(2, uiOutput("genes.csv.ui")),
 
