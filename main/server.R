@@ -50,14 +50,14 @@ server <- function(input, output, session) {
     {
       output$results_header <- renderUI(generateResultsHeader({
         HTML(paste0(
-          '<div style="margin-bottom: 10px"><h2 style="display: inline">',
+          '<div style="margin-bottom: 10px"><h3 style="display: inline">',
           paste0(
             "Search across <span>", length(DATA.HOLDER), " species</span>, <span>",
             CORPUS_STATS$studies, " studies</span>, <span>",
             CORPUS_STATS$comparisons, " condition comparisons</span>, <span>",
             CORPUS_STATS$assays, " assays</span>"
           ),
-          "</h2></div>"
+          "</h3></div>"
         ))
       }))
 
@@ -123,7 +123,15 @@ server <- function(input, output, session) {
       do.update(session, options[[mName]], options[[mName]]$value)
     }
   })
+  
+  # Update gene options depending on taxon(s)
+  # observeEvent(input$taxa, {
+  #   print(head(allGenes[[input$taxa]]))
+  #   
+  # })
 
+  # updateSelectizeInput(session, "genes", choices = allGenes, server = TRUE)
+  
   # Search
   observeEvent(input$search, {
     genes <- input$genes
@@ -295,7 +303,7 @@ server <- function(input, output, session) {
   endFailure <- function() {
     setProgress()
     output$results_header <- renderUI({
-      generateResultsHeader(HTML('<h2 style="margin-top: 0;">No results</h2>'))
+      generateResultsHeader(HTML('<h3 style="margin-top: 0;">No results</h2>'))
     })
     output$results <- NULL
   }

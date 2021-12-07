@@ -20,7 +20,7 @@ generateResultsHeader <- function(title) {
   if ("html" %in% class(title)) {
     fluidRow(class = "info-text", column(12, title))
   } else {
-    fluidRow(class = "info-text", column(12, h2(title)))
+    fluidRow(class = "info-text", column(12, h3(title)))
   }
 }
 
