@@ -56,7 +56,7 @@ ui <- fluidPage(
         # Taxa entry
         column(
           2,
-          span(pickerInput("taxa", "Taxon", getConfig("taxa")$choices, getConfig("taxa")$value, multiple = T), `data-toggle` = "tooltip", title = "Taxa to include. Homologs are automatically detected"),
+          span(pickerInput("taxa", "Taxon", getConfig("taxa")$choices, getConfig("taxa")$value, multiple = T), `data-toggle` = "tooltip", title = "Taxa to include. Homologs are detected automatically"),
           helpText(style = "float: right;", HTML('<a data-toggle="collapse" data-target="#options">More options...</a>'))
         )
       ),

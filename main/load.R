@@ -184,8 +184,7 @@ if (!exists("DRUGBANK") && Sys.getenv("RSTUDIO") == "1") {
 }
 
 # Compile all unique gene names to use as choices in the search bar
-allGenes <- c()
+allGenes <- list()
 for (taxon in names(DATA.HOLDER)) {
-  allGenes <- c(allGenes, DATA.HOLDER[[taxon]]@gene.meta$gene.Name)
+  allGenes[[taxon]] <- c(allGenes, DATA.HOLDER[[taxon]]@gene.meta$gene.Name)
 }
-allGenes <- unique(allGenes)
