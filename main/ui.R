@@ -46,9 +46,8 @@ ui <- fluidPage(
           6,
           fluidRow(span(selectizeInput("genes", 
                                        "Input gene(s) of interest", 
-                                       list(`Enter query...` = ""), 
                                        multiple = TRUE, 
-                                       choices = NULL,
+                                       choices = ALL.GENES,
                                        options = list(
                                          'create' = FALSE,
                                          'openOnFocus' = FALSE,
@@ -95,7 +94,7 @@ ui <- fluidPage(
           tags$form(
             style = "float: right;",
             actionButton("reset", "Reset", class = "btn-secondary"),
-            actionButton("search", "Search", class = "btn-primary")
+            actionButton("search", "Search", class = "btn-primary", disabled = NA)
           )
         )
       )

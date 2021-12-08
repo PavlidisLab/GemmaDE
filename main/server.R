@@ -124,10 +124,10 @@ server <- function(input, output, session) {
     }
   })
   
-  # Update gene choices depending on taxon(s)
-  observeEvent(input$taxa, {
-    updateSelectizeInput(session, "genes", choices = ALL.GENES[input$taxa], server = TRUE)
-  })
+  # Update gene choices depending on taxon(s). Commented out because only works with selectize.js
+  # observeEvent(input$taxa, {
+  #   updateSelectizeInput(session, "genes", choices = ALL.GENES[input$taxa], server = TRUE)
+  # })
   
   # Search
   observeEvent(input$search, {

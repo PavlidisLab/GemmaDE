@@ -1,7 +1,7 @@
 var fileValidated = false;
 
 $(function() {
-  new TomSelect('#genes', { plugins: ['remove_button'], persist: false, create: true, createOnBlur: true, hidePlaceholder: true, selectOnTab: true,  openOnFocus: false });
+  new TomSelect('#genes', { plugins: ['remove_button'], persist: false, hidePlaceholder: true, selectOnTab: true, openOnFocus: false });
   new TomSelect('#sig', { plugins: ['remove_button'], persist: false, create: function(input) {
     if(/^[+-]?\d+(\.\d+)?$/.test(input))
       return { value: input, text: input };
