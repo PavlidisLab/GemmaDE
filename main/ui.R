@@ -44,7 +44,17 @@ ui <- fluidPage(
         # Gene entry
         column(
           6,
-          fluidRow(span(selectInput("genes", "Input gene(s) of interest", list(`Enter query...` = ""), multiple = T, choices = ALL.GENES), `data-toggle` = "tooltip", title = "May be NCBI IDs, Ensembl IDs, official symbols or GO groups")),
+          fluidRow(span(selectizeInput("genes", 
+                                       "Input gene(s) of interest", 
+                                       list(`Enter query...` = ""), 
+                                       multiple = TRUE, 
+                                       choices = NULL,
+                                       options = list(
+                                         'create' = FALSE,
+                                         'openOnFocus' = FALSE,
+                                         'plugins' = list('remove_button')
+                                       )
+          ), `data-toggle` = "tooltip", title = "May be NCBI IDs, Ensembl IDs, official symbols or GO groups")),
           fluidRow(helpText(HTML('Examples: <a genes=\'["RPS4Y1","EIF1AY","DDX3Y","KDM5D","XIST"]\'>RPS4Y1, EIF1AY, DDX3Y, KDM5D, XIST</a>&nbsp;&nbsp;|&nbsp;&nbsp
                                  <a genes=\'["ENSG00000131095","ENSG00000110436"]\'>ENSG00000131095, ENSG00000110436</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a style="color: #002145" genes=\'"random()"\'>I\'m feeling lucky</a>')))
         ),
@@ -85,7 +95,7 @@ ui <- fluidPage(
           tags$form(
             style = "float: right;",
             actionButton("reset", "Reset", class = "btn-secondary"),
-            actionButton("search", "Search", class = "btn-primary", disabled = NA)
+            actionButton("search", "Search", class = "btn-primary")
           )
         )
       )

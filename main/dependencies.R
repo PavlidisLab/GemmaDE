@@ -16,31 +16,31 @@ plan(multicore, workers = 32) # Maximum clients that Gemma DE can serve
 # The signature field can potentially have duplicate entries, which Shiny's underlying
 # library (selectize.js) doesn't support. Kinda hacky way to replace the selectize dependency
 # with tom select. Didn't bother perfecting this, seems to work well enough
-customSelectizeIt <- function(inputId, select, options, nonempty = FALSE) {
-  res <- checkAsIs(options)
-  selectizeDep <- htmlDependency("tomselect", "1.7.4", c(href = "libs/tomselect"),
-    stylesheet = "css/tom-select.bootstrap3.min.css", head = format(tagList(tags$script(src = "libs/tomselect/js/tom-select.complete.min.js")))
-  )
-
-  select$children[[2]] <- tagAppendChild(
-    select$children[[2]],
-    tags$script(
-      type = "application/json", `data-for` = inputId,
-      `data-nonempty` = if (nonempty) {
-        ""
-      }, `data-eval` = if (length(res$eval)) {
-        HTML(toJSON(res$eval))
-      }, if (length(res$options)) {
-        HTML(toJSON(res$options))
-      } else {
-        "{}"
-      }
-    )
-  )
-  attachDependencies(select, selectizeDep)
-}
-environment(customSelectizeIt) <- asNamespace("shiny")
-assignInNamespace("selectizeIt", customSelectizeIt, ns = "shiny")
+# customSelectizeIt <- function(inputId, select, options, nonempty = FALSE) {
+#   res <- checkAsIs(options)
+#   selectizeDep <- htmlDependency("tomselect", "1.7.4", c(href = "libs/tomselect"),
+#     stylesheet = "css/tom-select.bootstrap3.min.css", head = format(tagList(tags$script(src = "libs/tomselect/js/tom-select.complete.min.js")))
+#   )
+# 
+#   select$children[[2]] <- tagAppendChild(
+#     select$children[[2]],
+#     tags$script(
+#       type = "application/json", `data-for` = inputId,
+#       `data-nonempty` = if (nonempty) {
+#         ""
+#       }, `data-eval` = if (length(res$eval)) {
+#         HTML(toJSON(res$eval))
+#       }, if (length(res$options)) {
+#         HTML(toJSON(res$options))
+#       } else {
+#         "{}"
+#       }
+#     )
+#   )
+#   attachDependencies(select, selectizeDep)
+# }
+# environment(customSelectizeIt) <- asNamespace("shiny")
+# assignInNamespace("selectizeIt", customSelectizeIt, ns = "shiny")
 
 # Creates UI options to configure algorithm
 addConfig <- function(description, tooltip = "", category, extras = NULL, ...) {
