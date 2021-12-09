@@ -49,7 +49,6 @@ ui <- fluidPage(
                                        multiple = TRUE, 
                                        choices = ALL.GENES,
                                        options = list(
-                                         'create' = FALSE,
                                          'openOnFocus' = FALSE,
                                          'plugins' = list('remove_button')
                                        )

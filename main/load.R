@@ -188,3 +188,4 @@ ALL.GENES <- list()
 for (taxon in names(DATA.HOLDER)) {
   ALL.GENES[[taxon]] <- DATA.HOLDER[[taxon]]@gene.meta$gene.Name
 }
+names(ALL.GENES) <- c("H. sapiens", "M. musculus", "R. norvegicus")
