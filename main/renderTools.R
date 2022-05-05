@@ -234,7 +234,7 @@ generateResults <- function(data) {
       "Evidence" = "Evidence",
       "<span title ='Placeholder' data-toggle='tooltip'>Ontology Steps</span>" = "Ontology Steps",
       "<span title ='Indicates how strongly differentally-expressed the query gene list is' data-toggle='tooltip'>Effect Size</span>" = "Effect Size",
-      "<span title ='Indicates how much the query genes contribute in a statistically significant way. Ranges from zero to the number of genes in the query.' data-toggle='tooltip'>Test Statistic</span>" = "Test Statistic"
+      "<span title ='Indicates how much the query genes contribute in a statistically significant way. Ranges from zero to one.' data-toggle='tooltip'>Test Statistic</span>" = "Test Statistic"
     ),
     callback = JS(
       "var a = document.createElement('a');",
