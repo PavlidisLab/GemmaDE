@@ -231,8 +231,8 @@ generateResults <- function(data) {
     rownames = data[, as.character(cf.Cat)],
     colnames = c(
       "Condition Comparison" = "Condition Comparison",
-      "Evidence" = "Evidence",
-      "<span title ='Placeholder' data-toggle='tooltip'>Ontology Steps</span>" = "Ontology Steps",
+      "<span title ='Shows list of implicated experiments.' data-toggle='tooltip'>Evidence</span>" = "Evidence",
+      "<span title ='Indicates a mean of distances between the baseline and contrasting factors in ontology' data-toggle='tooltip'>Ontology Steps</span>" = "Ontology Steps",
       "<span title ='Indicates how strongly differentally-expressed the query gene list is' data-toggle='tooltip'>Effect Size</span>" = "Effect Size",
       "<span title ='Indicates how much the query genes contribute in a statistically significant way. Ranges from zero to one.' data-toggle='tooltip'>Test Statistic</span>" = "Test Statistic"
     ),
