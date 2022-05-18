@@ -1,4 +1,4 @@
-source('/home/jsicherman/Thesis Work/requirements.R')
+source(paste(PROJDIR, 'main/requirements.R', sep='/'))
 
 library(parallel)
 options(mc.cores = 16)
@@ -8,7 +8,7 @@ OPTIONS <- c('human', 'artificial', 'mouse', 'rat')
 for(x in OPTIONS) {
   if(!exists('DATA.HOLDER') || names(DATA.HOLDER) != x) {
     rm(DATA.HOLDER, NULLS.EXP)
-    source('/home/jsicherman/Thesis Work/dependencies.R')
+    source(paste(PROJDIR, 'main/dependencies.R', sep='/'))
     DATA.HOLDER[OPTIONS[-which(OPTIONS == x)]] <- NULL
     NULLS.EXP[OPTIONS[-which(OPTIONS == x)]] <- NULL
   }
@@ -27,7 +27,7 @@ for(x in OPTIONS) {
         .[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, distance, stat, I = i)]
       }
     }) %>% rbindlist(fill = T) %>%
-      saveRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/singlegene/', x, '_', mID, '.rds'))
+      saveRDS(paste0(paste(DATADIR, 'data/singlegene/', sep='/'), x, '_', mID, '.rds'))
     rm(mBlock)
     gc()
     NULL

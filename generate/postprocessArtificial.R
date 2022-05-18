@@ -1,5 +1,5 @@
-artificial <- readRDS('/space/scratch/jsicherman/Thesis Work/data/artificial/experiment_dat.rds')
-contrasts <- readRDS('/space/scratch/jsicherman/Thesis Work/data/artificial/contrast_aff.rds')
+artificial <- readRDS(paste(DATADIR, 'data/artificial/experiment_dat.rds', sep='/'))
+contrasts <- readRDS(paste(DATADIR, 'data/artificial/contrast_aff.rds', sep='/'))
 
 tmp <- rbindlist(lapply(1:length(artificial), function(i) {
   if(class(artificial[[i]]) == 'try-error' || is.null(artificial[[i]]))
@@ -37,7 +37,7 @@ colnames(fc) <- EXPERIMENTS
 colnames(pv) <- EXPERIMENTS
 names(eContrasts) <- EXPERIMENTS
 
-source('/home/jsicherman/Thesis Work/dependencies.R')
+source(paste(PROJDIR, 'main/dependencies.R', sep='/'))
 
 eMeta <- DATA.HOLDER$human@experiment.meta %>% copy
 eMeta[, c('cf.Cat', 'cf.Baseline', 'cf.Val', 'cf.BaseLongUri', 'cf.ValLongUri') := NULL]
@@ -73,5 +73,5 @@ DATA.HOLDER$artificial@data$zscore <- (fc - DATA.HOLDER$artificial@gene.meta$dis
 
 CACHE.BACKGROUND$artificial <- precomputeTags('artificial')
 
-saveRDS(CACHE.BACKGROUND, '/space/scratch/jsicherman/Thesis Work/data/CACHE.BACKGROUND.rds')
-saveRDS(DATA.HOLDER, '/space/scratch/jsicherman/Thesis Work/data/DATA.HOLDER.rds')
+saveRDS(CACHE.BACKGROUND, paste(DATADIR, 'data/CACHE.BACKGROUND.rds', sep='/'))
+saveRDS(DATA.HOLDER, paste(DATADIR, 'data/DATA.HOLDER.rds', sep='/'))

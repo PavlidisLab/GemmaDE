@@ -71,11 +71,11 @@ fixOntoGenes <- function() {
 }
 
 loadDrugbank <- function() {
-  if (file.exists("/space/scratch/jcastillo/Thesis Work/data/drugbank/drugbank.rds")) {
-    return(readRDS("/space/scratch/jcastillo/Thesis Work/data/drugbank/drugbank.rds"))
+  if (file.exists(paste(DATADIR, 'data/drugbank/drugbank.rds', sep='/'))) {
+    return(readRDS(paste(DATADIR, 'data/drugbank/drugbank.rds', sep='/')))
   }
 
-  dbank <- xmlParse("/space/scratch/jcastillo/Thesis Work/data/drugbank/full database.xml")
+  dbank <- xmlParse(paste(DATADIR, 'data/drugbank/full database.xml', sep='/'))
   droot <- xmlRoot(dbank)
   dsize <- xmlSize(droot)
 
@@ -97,7 +97,7 @@ loadDrugbank <- function() {
   ), I] %>%
     .[, !"I"]
 
-  saveRDS(tmp, "/space/scratch/jcastillo/Thesis Work/data/drugbank/drugbank.rds")
+  saveRDS(tmp, paste(DATADIR, 'data/drugbank/drugbank.rds', sep='/'))
 
   tmp
 }
@@ -125,7 +125,7 @@ if (!exists("ONTOLOGIES") || !exists("ONTOLOGIES.DEFS")) {
   ONTOLOGIES.DEFS$OntologyScope <- ONTOLOGIES.DEFS$OntologyScope %>% as.factor()
 }
 
-.DATA_PATH <- "/space/scratch/jcastillo/Thesis Work/data/DATA.HOLDER.light.rds"
+.DATA_PATH <- paste(DATADIR, 'data/DATA.HOLDER.light.rds', sep='/')
 
 # Load the lite versions if they're already created.
 if (!exists("DATA.HOLDER")) {
@@ -142,11 +142,11 @@ if (!exists("DATA.HOLDER")) {
 
 # Read existing FBMs
 for (i in names(DATA.HOLDER)) {
-  DATA.HOLDER[[i]]@data$zscore <- big_attach(paste0("/space/scratch/jcastillo/Thesis Work/data/fbm/", i, "/zscores.rds"))
-  attr(DATA.HOLDER[[i]]@data$zscore, ".dimnames") <- readRDS(paste0("/space/scratch/jcastillo/Thesis Work/data/fbm/", i, "/z.dimnames.rds"))
+  DATA.HOLDER[[i]]@data$zscore <- big_attach(paste0(paste(DATADIR, 'data/fbm/', sep='/'), i, "/zscores.rds"))
+  attr(DATA.HOLDER[[i]]@data$zscore, ".dimnames") <- readRDS(paste0(paste(DATADIR, 'data/fbm/', sep='/'), i, "/z.dimnames.rds"))
 
-  DATA.HOLDER[[i]]@data$adj.pv <- big_attach(paste0("/space/scratch/jcastillo/Thesis Work/data/fbm/", i, "/adjpvs.rds"))
-  attr(DATA.HOLDER[[i]]@data$adj.pv, ".dimnames") <- readRDS(paste0("/space/scratch/jcastillo/Thesis Work/data/fbm/", i, "/p.dimnames.rds"))
+  DATA.HOLDER[[i]]@data$adj.pv <- big_attach(paste0(paste(DATADIR, 'data/fbm/', sep='/'), i, "/adjpvs.rds"))
+  attr(DATA.HOLDER[[i]]@data$adj.pv, ".dimnames") <- readRDS(paste0(paste(DATADIR, 'data/fbm/', sep='/'), i, "/p.dimnames.rds"))
 }
 rm(i)
 
@@ -158,19 +158,19 @@ dimnames.FBM <- function(object, ...) {
 
 if (!exists("CACHE.BACKGROUND")) {
   # Pre-load all ontology expansions
-  if (file.exists("/space/scratch/jcastillo/Thesis Work/data/CACHE.BACKGROUND.rds")) {
-    CACHE.BACKGROUND <- readRDS("/space/scratch/jcastillo/Thesis Work/data/CACHE.BACKGROUND.rds")
+  if (file.exists(paste(DATADIR, 'data/CACHE.BACKGROUND.rds', sep='/'))) {
+    CACHE.BACKGROUND <- readRDS(paste(DATADIR, 'data/CACHE.BACKGROUND.rds', sep='/'))
   } else {
     CACHE.BACKGROUND <- lapply(names(DATA.HOLDER), precomputeTags) %>%
       setNames(names(DATA.HOLDER))
 
-    saveRDS(CACHE.BACKGROUND, "/space/scratch/jcastillo/Thesis Work/data/CACHE.BACKGROUND.rds")
+    saveRDS(CACHE.BACKGROUND, paste(DATADIR, 'data/CACHE.BACKGROUND.rds', sep='/'))
   }
 }
 
 if (!exists("NULLS")) {
   NULLS <- lapply(names(DATA.HOLDER), function(taxa) {
-    tryCatch(readRDS(paste0("/space/scratch/jcastillo/Thesis Work/data/updated_nulls2/", taxa, ".rds")) %>%
+    tryCatch(readRDS(paste0(paste(DATADIR, 'data/updated_nulls/', sep='/'), taxa, ".rds")) %>%
       .[, .(rn, score.mean, score.sd)], error = function(e) NULL)
   }) %>%
     `names<-`(names(DATA.HOLDER)) %>%

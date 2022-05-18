@@ -1,5 +1,5 @@
-source('/home/jsicherman/Thesis Work/requirements.R')
-source('/home/jsicherman/Thesis Work/dependencies.R')
+source(paste(PROJDIR, 'main/requirements.R', sep='/'))
+source(paste(PROJDIR, 'main/dependencies.R', sep='/'))
 
 library(parallel)
 library(edgeR)
@@ -295,7 +295,7 @@ CONTRAST_AFFINITY <- lapply(unique(EXP_CONTRASTS), function(contrast) {
     .[sample(c(T, F), N_GENES, T, c(0.5012399, 0.4987578)), effect := 1 / effect]
 }) %>% rbindlist
 
-saveRDS(CONTRAST_AFFINITY, '/space/scratch/jsicherman/Thesis Work/data/artificial/contrast_aff.rds')
+saveRDS(CONTRAST_AFFINITY, paste(DATADIR, 'data/artificial/contrast_aff.rds', sep='/'))
 
 mclapply(1:N_EXP, function(experiment) {
   message(paste0(Sys.time(), ' ... ', round(100 * experiment / N_EXP, 2), '%'))
@@ -376,8 +376,8 @@ mclapply(1:N_EXP, function(experiment) {
            a
          })
   }
-}) %>% saveRDS('/space/scratch/jsicherman/Thesis Work/data/artificial/experiment_dat.rds')
+}) %>% saveRDS(paste(DATADIR, 'data/artificial/experiment_dat.rds', sep='/'))
 
 rm(mu.phi.estimates, generateSyntheticData, eMeta, N_GENES,
    N_EXP, CONTRASTS, EXP_CONTRASTS, r1exp, CONTRAST_AFFINITY, USE)
-source('/home/jsicherman/Thesis Work/generate/postprocessArtificial.R')
+source(paste(PROJDIR, 'generate/postprocessArtificial.R', sep='/'))
