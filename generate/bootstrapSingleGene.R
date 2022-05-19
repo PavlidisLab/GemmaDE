@@ -27,7 +27,7 @@ for(x in OPTIONS) {
         .[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, distance, stat, I = i)]
       }
     }) %>% rbindlist(fill = T) %>%
-      saveRDS(paste0(paste(DATADIR, 'data/singlegene/', sep='/'), x, '_', mID, '.rds'))
+      saveRDS(paste0(paste(DATADIR, 'singlegene/', sep='/'), x, '_', mID, '.rds'))
     rm(mBlock)
     gc()
     NULL

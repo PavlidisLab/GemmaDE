@@ -1,6 +1,3 @@
-PROJDIR <- '/home/kchen/projects/GemmaDE'
-DATADIR <- '/space/scratch/kchen/GemmaDE'
-
 source(paste(PROJDIR, 'main/requirements.R', sep='/'))
 #source(paste(PROJDIR, 'main/dependencies.R', sep='/'))
 
@@ -8,7 +5,7 @@ setClass('EData', representation(taxon = 'character', data = 'list',
                                  experiment.meta = 'data.table', gene.meta = 'data.table',
                                  go = 'data.table'))
 
-.DATA_PATH <- paste(DATADIR, 'data/DATA.HOLDER.rds', sep='/')
+.DATA_PATH <- paste(DATADIR, 'DATA.HOLDER.rds', sep='/')
 
 # Load the lite versions if they're already created.
 if(!exists('DATA.HOLDER')) {
@@ -158,7 +155,7 @@ if(!exists('DATA.HOLDER')) {
     }) %>%
       setNames(getConfig(key = 'taxa')$core)
     
-    saveRDS(DATA.HOLDER, paste(DATADIR, 'data/DATA.HOLDER.rds', sep='/'))
+    saveRDS(DATA.HOLDER, paste(DATADIR, 'DATA.HOLDER.rds', sep='/'))
   }
 }
 
@@ -168,20 +165,20 @@ if(!exists('DATA.HOLDER')) {
 if(class(DATA.HOLDER[[1]]@data$adj.pv) == 'matrix') {
   for(i in names(DATA.HOLDER)) {
     message(paste0('Converting in-memory matrices for ', i, ' to file-backed...'))
-    file.remove(list.files(paste0(paste(DATADIR, 'data/fbm/', sep='/'), i), full.names = T))
+    file.remove(list.files(paste0(paste(DATADIR, 'fbm/', sep='/'), i), full.names = T))
     
     dimnames(DATA.HOLDER[[i]]@data$zscore) %>% 
       rev() %>%
-      saveRDS(paste0(paste(DATADIR, 'data/fbm/', sep='/'), i, '/z.dimnames.rds'))
+      saveRDS(paste0(paste(DATADIR, 'fbm/', sep='/'), i, '/z.dimnames.rds'))
     DATA.HOLDER[[i]]@data$zscore <- as_FBM(DATA.HOLDER[[i]]@data$zscore %>% t,
-                                           backingfile = paste0(paste(DATADIR, 'data/fbm/', sep='/'), i, '/zscores'),
+                                           backingfile = paste0(paste(DATADIR, 'fbm/', sep='/'), i, '/zscores'),
                                            is_read_only = T)$save()
     
     dimnames(DATA.HOLDER[[i]]@data$adj.pv) %>% 
       rev() %>%
-      saveRDS(paste0(paste(DATADIR, 'data/fbm/', sep='/'), i, '/p.dimnames.rds'))
+      saveRDS(paste0(paste(DATADIR, 'fbm/', sep='/'), i, '/p.dimnames.rds'))
     DATA.HOLDER[[i]]@data$adj.pv <- as_FBM(DATA.HOLDER[[i]]@data$adj.pv %>% t,
-                                           backingfile = paste0(paste(DATADIR, 'data/fbm/', sep='/'), i, '/adjpvs'),
+                                           backingfile = paste0(paste(DATADIR, 'fbm/', sep='/'), i, '/adjpvs'),
                                            is_read_only = T)$save()
   }
   rm(i)
@@ -197,4 +194,4 @@ for (taxon in names(DATA.HOLDER)) {
   DATA.HOLDER[[taxon]]@data$adj.pv <- NULL
 }
 
-saveRDS(DATA.HOLDER, paste(DATADIR, 'data/DATA.HOLDER.light.rds', sep='/'))
+saveRDS(DATA.HOLDER, paste(DATADIR, 'DATA.HOLDER.light.rds', sep='/'))

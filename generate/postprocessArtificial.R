@@ -1,5 +1,5 @@
-artificial <- readRDS(paste(DATADIR, 'data/artificial/experiment_dat.rds', sep='/'))
-contrasts <- readRDS(paste(DATADIR, 'data/artificial/contrast_aff.rds', sep='/'))
+artificial <- readRDS(paste(DATADIR, 'artificial/experiment_dat.rds', sep='/'))
+contrasts <- readRDS(paste(DATADIR, 'artificial/contrast_aff.rds', sep='/'))
 
 tmp <- rbindlist(lapply(1:length(artificial), function(i) {
   if(class(artificial[[i]]) == 'try-error' || is.null(artificial[[i]]))
@@ -73,5 +73,5 @@ DATA.HOLDER$artificial@data$zscore <- (fc - DATA.HOLDER$artificial@gene.meta$dis
 
 CACHE.BACKGROUND$artificial <- precomputeTags('artificial')
 
-saveRDS(CACHE.BACKGROUND, paste(DATADIR, 'data/CACHE.BACKGROUND.rds', sep='/'))
-saveRDS(DATA.HOLDER, paste(DATADIR, 'data/DATA.HOLDER.rds', sep='/'))
+saveRDS(CACHE.BACKGROUND, paste(DATADIR, 'CACHE.BACKGROUND.rds', sep='/'))
+saveRDS(DATA.HOLDER, paste(DATADIR, 'DATA.HOLDER.rds', sep='/'))

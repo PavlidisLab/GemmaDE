@@ -4,7 +4,7 @@ source(paste(PROJDIR, 'main/dependencies.R', sep='/'))
 library(parallel)
 
 if(!exists('contrasts'))
-  contrasts <- readRDS(paste(DATADIR, 'data/artificial/contrast_aff.rds', sep='/'))
+  contrasts <- readRDS(paste(DATADIR, 'artificial/contrast_aff.rds', sep='/'))
 uContrasts <- contrasts[, unique(contrast)]
 
 DATA.HOLDER[c('human', 'mouse', 'rat')] <- NULL
@@ -57,4 +57,4 @@ mclapply(1:250, function(n) {
     }) %>% rbindlist
   }) %>% rbindlist
 }) %>% rbindlist -> new.rankings2
-saveRDS(new.rankings2, paste(DATADIR, 'data/artificial/search_grid2.rds', sep='/'))
+saveRDS(new.rankings2, paste(DATADIR, 'artificial/search_grid2.rds', sep='/'))

@@ -59,7 +59,7 @@ analyzeArtificial <- function(N_GROUPS, N_GENES, COI = NULL, GOI = NULL, seed = 
 }
 
 if(Sys.getenv('RSTUDIO') == '1') {
-  art_boot <- readRDS(paste(DATADIR, 'data/artificial/bootstrapped_artificial2.rds', sep='/'))
+  art_boot <- readRDS(paste(DATADIR, 'artificial/bootstrapped_artificial2.rds', sep='/'))
   
   lapply(art_boot, '[[', 'enrich') %>%
     sapply(function(x) cor(x$probability, -x$I, use = 'complete')) %>%
@@ -147,7 +147,7 @@ if(Sys.getenv('RSTUDIO') == '1') {
   }
   
   if(!exists('contrasts'))
-    contrasts <- readRDS(paste(DATADIR, 'data/artificial/contrast_aff.rds', sep='/'))
+    contrasts <- readRDS(paste(DATADIR, 'artificial/contrast_aff.rds', sep='/'))
   
   options(mc.cores = 3)
   mclapply(1:nrow(hypercube), function(iter) {
@@ -155,5 +155,5 @@ if(Sys.getenv('RSTUDIO') == '1') {
     analyzeArtificial(hypercube[iter, 1],
                       hypercube[iter, 2],
                       best.index = hypercube[iter, 3])
-  }) %>% saveRDS(paste(DATADIR, 'data/artificial/bootstrapped_artificial2.rds', sep='/'))
+  }) %>% saveRDS(paste(DATADIR, 'artificial/bootstrapped_artificial2.rds', sep='/'))
 }
