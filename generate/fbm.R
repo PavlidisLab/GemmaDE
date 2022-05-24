@@ -12,7 +12,7 @@ if(!exists('DATA.HOLDER')) {
   if(file.exists(.DATA_PATH))
     DATA.HOLDER <- readRDS(.DATA_PATH)
   else {
-    DATA.HOLDER <- lapply(getConfig(key = 'taxa')$core, function(taxon) {
+    DATA.HOLDER <- lapply(c('human', 'mouse', 'rat'), function(taxon) {
       message(paste('Loading', taxon, 'metadata'))
       
       load(paste0('/space/grp/nlim/MDE/RDataRepo/Packaged/Current/', taxon, '/metadata.RDAT'))
@@ -119,6 +119,7 @@ if(!exists('DATA.HOLDER')) {
       metaData <- rbindlist(lapply(lapply(metaData$ee.ID %>% unique %>% split(ceiling(seq_along(.[]) / 500)),
                                           datasetInfo) %>% unlist(recursive = F), function(ee.ID) {
                                             data.table(ee.ID = ee.ID$id,
+                                                       ee.DescriptiveName = ee.ID$name,
                                                        ee.qScore = ee.ID$geeq$publicQualityScore,
                                                        ee.sScore = ee.ID$geeq$publicSuitabilityScore)
                                           }), fill = T) %>% merge(metaData, by = 'ee.ID', all.y = T)
@@ -153,7 +154,7 @@ if(!exists('DATA.HOLDER')) {
       new('EData', taxon = taxon, data = dataHolder,
           experiment.meta = metaData, gene.meta = metaGene, go = unique(goTerms))
     }) %>%
-      setNames(getConfig(key = 'taxa')$core)
+      setNames(c('human', 'mouse', 'rat'))
     
     saveRDS(DATA.HOLDER, paste(DATADIR, 'DATA.HOLDER.rds', sep='/'))
   }
