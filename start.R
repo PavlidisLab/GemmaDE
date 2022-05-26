@@ -1,3 +1,4 @@
+library(shiny)
 runApp('main', port = 18233, launch.browser = F)
 
 # Roadmap ----

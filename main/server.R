@@ -433,7 +433,6 @@ server <- function(input, output, session) {
 
     # Some cleaning
     conditions[, `Condition Comparison` := stringi::stri_c("<b>", cf.BaseLongUri, "</b> vs. <b>", cf.ValLongUri, "</b>")]
-    conditions[, distance := round(distance, 3)]
 
     advanceProgress("Cross-linking")
 
@@ -557,14 +556,20 @@ server <- function(input, output, session) {
               mGenes <- genes$genes
             }
 
+
             conditions <- endSuccess(geneInfo, experiments, conditions, options)
 
+            
             if (!is.null(session$userData$INTERRUPT)) {
               return(NULL)
             }
 
+            getPercentageStat <- function(x, n = 1){
+              x / n
+            }
+            conditions[,10] <- apply(conditions[,10], 2, getPercentageStat, n = nrow(geneInfo))
             output$results <- generateResults(conditions)
-
+            
             # Prepare some plotting information.
             session$userData$plotData <- list(
               options = options,
