@@ -1,6 +1,8 @@
 library(shiny)
+
 PROJDIR <- '/home/kchen/projects/GemmaDE'
 DATADIR <- '/space/scratch/kchen/GemmaDE/data'
+
 runApp('main', port = 18233, launch.browser = F)
 
 # Roadmap ----

@@ -161,14 +161,22 @@ server <- function(input, output, session) {
             output$results_genes <- generateGenePage(evidence)
           })
         })
-      } else if (tab == "Gene Contributions" && is.null(session$userData$contribsRendered)) {
+      } else if (tab == "Gene Contributions" && (is.null(session$userData$contribsRendered) || is.null(session$userData$contribsUpdated) || session$userData$contribsUpdated)) {
         session$userData$contribsRendered <- T
-
-        output$results_contribs <- generateGeneContribs(session$userData$plotData$conditions, session$userData$plotData$options)
+        session$userData$contribsUpdated <- FALSE
+        
+        output$results_contribs <- generateGeneContribs(session$userData$plotData$filteredConditions, session$userData$plotData$options)
       }
     }
   }
-
+  
+  observe({
+    if(!is.null(input$results_rows_all)){
+      session$userData$contribsUpdated = TRUE
+      session$userData$plotData$filteredConditions = session$userData$plotData$conditions[input$results_rows_all,]
+    }
+  })
+  
   # Open other tabs
   observeEvent(input$tabs, {
     openTab(input$tabs)

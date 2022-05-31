@@ -1,6 +1,6 @@
-source(paste(PROJDIR, 'main/requirements.R', sep='/'))
+source('/home/jsicherman/Thesis Work/requirements.R')
 
-source(paste(PROJDIR, 'main/dependencies.R', sep='/'))
+source('dependencies.R')
 
 library(dqrng)
 library(DESeq2)
@@ -446,5 +446,7 @@ mclapply(1:nrow(hypercube), function(iter) {
        search = tmp %>% .[, I := .I] %>% .[, f := I / max(I)] %>%
          .[rn %in% nExp, .(score, I, f)],
        enrich = enriched)
+
 }) %>% saveRDS(paste0(paste(DATADIR, 'artificial', sep='/'),
+
                       SUFFIX, '/bootstrap_experiments.rds'))
