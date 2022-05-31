@@ -1,10 +1,9 @@
-source('/home/jsicherman/Thesis Work/requirements.R')
-source('/home/jsicherman/Thesis Work/dependencies.R')
+source(paste(PROJDIR, 'main/requirements.R', sep='/'))
+source(paste(PROJDIR, 'main/dependencies.R', sep='/'))
 
 library(parallel)
 
 if(!exists('contrasts'))
-
   contrasts <- readRDS(paste(DATADIR, 'artificial/contrast_aff.rds', sep='/'))
 uContrasts <- contrasts[, unique(contrast)]
 
@@ -58,5 +57,4 @@ mclapply(1:250, function(n) {
     }) %>% rbindlist
   }) %>% rbindlist
 }) %>% rbindlist -> new.rankings2
-
 saveRDS(new.rankings2, paste(DATADIR, 'artificial/search_grid2.rds', sep='/'))

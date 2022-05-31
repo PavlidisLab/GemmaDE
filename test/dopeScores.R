@@ -1,5 +1,5 @@
-source('/home/jsicherman/Thesis Work/requirements.R')
-source('/home/jsicherman/Thesis Work/dependencies.R')
+source(paste(PROJDIR, 'main/requirements.R', sep='/'))
+source(paste(PROJDIR, 'main/dependencies.R', sep='/'))
 
 library(lhs)
 library(parallel)
@@ -103,6 +103,4 @@ mclapply(1:nrow(hypercube), function(iter) {
     print(e)
     NULL
   })
-
 }) %>% saveRDS(paste(DATADIR, 'artificial/bootstrapped_scores.rds', sep='/'))
-

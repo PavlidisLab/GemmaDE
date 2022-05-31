@@ -1,4 +1,3 @@
-
 artificial <- readRDS(paste(DATADIR, 'artificial/experiment_dat.rds', sep='/'))
 contrasts <- readRDS(paste(DATADIR, 'artificial/contrast_aff.rds', sep='/'))
 
@@ -38,7 +37,7 @@ colnames(fc) <- EXPERIMENTS
 colnames(pv) <- EXPERIMENTS
 names(eContrasts) <- EXPERIMENTS
 
-source('/home/jsicherman/Thesis Work/dependencies.R')
+source(paste(PROJDIR, 'main/dependencies.R', sep='/'))
 
 eMeta <- DATA.HOLDER$human@experiment.meta %>% copy
 eMeta[, c('cf.Cat', 'cf.Baseline', 'cf.Val', 'cf.BaseLongUri', 'cf.ValLongUri') := NULL]
@@ -73,7 +72,6 @@ DATA.HOLDER$artificial@gene.meta <- DATA.HOLDER$artificial@gene.meta[, c('n.DE',
 DATA.HOLDER$artificial@data$zscore <- (fc - DATA.HOLDER$artificial@gene.meta$dist.Mean) / DATA.HOLDER$artificial@gene.meta$dist.SD
 
 CACHE.BACKGROUND$artificial <- precomputeTags('artificial')
-
 
 saveRDS(CACHE.BACKGROUND, paste(DATADIR, 'CACHE.BACKGROUND.rds', sep='/'))
 saveRDS(DATA.HOLDER, paste(DATADIR, 'DATA.HOLDER.rds', sep='/'))

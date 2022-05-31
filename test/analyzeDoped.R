@@ -1,6 +1,4 @@
-
 tmp <- readRDS(paste(DATADIR, 'artificial/bootstrapped_scores.rds', sep='/'))
-
 
 mSimpleCache <- CACHE.BACKGROUND$human[, .N, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, ID = paste0(cf.Cat, cf.BaseLongUri, cf.ValLongUri))]
 dope_scores <- lapply(1:length(tmp), function(i) {
@@ -28,6 +26,4 @@ dope_scores <- lapply(1:length(tmp), function(i) {
              fD = mFetch$fDelta)
 }) %>% rbindlist(fill = T)
 rm(tmp)
-
 saveRDS(dope_scores, paste(DATADIR, 'artificial/bootstrapped_scores_processed.rds', sep='/'))
-

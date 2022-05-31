@@ -1,5 +1,5 @@
-source('/home/jsicherman/Thesis Work/requirements.R')
-source('/home/jsicherman/Thesis Work/dependencies.R')
+source(paste(PROJDIR, 'main/requirements.R', sep='/'))
+source(paste(PROJDIR, 'main/dependencies.R', sep='/'))
 
 library(parallel)
 library(edgeR)
@@ -376,9 +376,8 @@ mclapply(1:N_EXP, function(experiment) {
            a
          })
   }
-
 }) %>% saveRDS(paste(DATADIR, 'artificial/experiment_dat.rds', sep='/'))
 
 rm(mu.phi.estimates, generateSyntheticData, eMeta, N_GENES,
    N_EXP, CONTRASTS, EXP_CONTRASTS, r1exp, CONTRAST_AFFINITY, USE)
-source('/home/jsicherman/Thesis Work/generate/postprocessArtificial.R')
+source(paste(PROJDIR, 'generate/postprocessArtificial.R', sep='/'))
