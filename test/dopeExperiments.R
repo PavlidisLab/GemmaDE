@@ -446,5 +446,7 @@ mclapply(1:nrow(hypercube), function(iter) {
        search = tmp %>% .[, I := .I] %>% .[, f := I / max(I)] %>%
          .[rn %in% nExp, .(score, I, f)],
        enrich = enriched)
-}) %>% saveRDS(paste0('/space/scratch/jsicherman/Thesis Work/data/artificial',
+
+}) %>% saveRDS(paste0(paste(DATADIR, 'artificial', sep='/'),
+
                       SUFFIX, '/bootstrap_experiments.rds'))

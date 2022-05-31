@@ -1,17 +1,20 @@
-source('./main/requirements.R')
+
+source(paste(PROJDIR, 'main/requirements.R', sep='/'))
+#source(paste(PROJDIR, 'main/dependencies.R', sep='/'))
 
 setClass('EData', representation(taxon = 'character', data = 'list',
                                  experiment.meta = 'data.table', gene.meta = 'data.table',
                                  go = 'data.table'))
 
-.DATA_PATH <- '/space/scratch/jcastillo/Thesis Work/data/DATA.HOLDER.rds'
+
+.DATA_PATH <- paste(DATADIR, 'DATA.HOLDER.rds', sep='/')
 
 # Load the lite versions if they're already created.
 if(!exists('DATA.HOLDER')) {
   if(file.exists(.DATA_PATH))
     DATA.HOLDER <- readRDS(.DATA_PATH)
   else {
-    DATA.HOLDER <- lapply(getConfig(key = 'taxa')$core, function(taxon) {
+    DATA.HOLDER <- lapply(c('human', 'mouse', 'rat'), function(taxon) {
       message(paste('Loading', taxon, 'metadata'))
       
       load(paste0('/space/grp/nlim/MDE/RDataRepo/Packaged/Current/', taxon, '/metadata.RDAT'))
@@ -118,6 +121,7 @@ if(!exists('DATA.HOLDER')) {
       metaData <- rbindlist(lapply(lapply(metaData$ee.ID %>% unique %>% split(ceiling(seq_along(.[]) / 500)),
                                           datasetInfo) %>% unlist(recursive = F), function(ee.ID) {
                                             data.table(ee.ID = ee.ID$id,
+                                                       ee.DescriptiveName = ee.ID$name,
                                                        ee.qScore = ee.ID$geeq$publicQualityScore,
                                                        ee.sScore = ee.ID$geeq$publicSuitabilityScore)
                                           }), fill = T) %>% merge(metaData, by = 'ee.ID', all.y = T)
@@ -152,9 +156,10 @@ if(!exists('DATA.HOLDER')) {
       new('EData', taxon = taxon, data = dataHolder,
           experiment.meta = metaData, gene.meta = metaGene, go = unique(goTerms))
     }) %>%
-      setNames(getConfig(key = 'taxa')$core)
+      setNames(c('human', 'mouse', 'rat'))
     
-    saveRDS(DATA.HOLDER, '/space/scratch/jcastillo/Thesis Work/data/DATA.HOLDER.rds')
+
+    saveRDS(DATA.HOLDER, paste(DATADIR, 'DATA.HOLDER.rds', sep='/'))
   }
 }
 
@@ -164,20 +169,22 @@ if(!exists('DATA.HOLDER')) {
 if(class(DATA.HOLDER[[1]]@data$adj.pv) == 'matrix') {
   for(i in names(DATA.HOLDER)) {
     message(paste0('Converting in-memory matrices for ', i, ' to file-backed...'))
-    file.remove(list.files(paste0('/space/scratch/jcastillo/Thesis Work/data/fbm/', i), full.names = T))
+
+    file.remove(list.files(paste0(paste(DATADIR, 'fbm/', sep='/'), i), full.names = T))
     
     dimnames(DATA.HOLDER[[i]]@data$zscore) %>% 
       rev() %>%
-      saveRDS(paste0('/space/scratch/jcastillo/Thesis Work/data/fbm/', i, '/z.dimnames.rds'))
+      saveRDS(paste0(paste(DATADIR, 'fbm/', sep='/'), i, '/z.dimnames.rds'))
     DATA.HOLDER[[i]]@data$zscore <- as_FBM(DATA.HOLDER[[i]]@data$zscore %>% t,
-                                           backingfile = paste0('/space/scratch/jcastillo/Thesis Work/data/fbm/', i, '/zscores'),
+                                           backingfile = paste0(paste(DATADIR, 'fbm/', sep='/'), i, '/zscores'),
                                            is_read_only = T)$save()
     
     dimnames(DATA.HOLDER[[i]]@data$adj.pv) %>% 
       rev() %>%
-      saveRDS(paste0('/space/scratch/jcastillo/Thesis Work/data/fbm/', i, '/p.dimnames.rds'))
+
+      saveRDS(paste0(paste(DATADIR, 'fbm/', sep='/'), i, '/p.dimnames.rds'))
     DATA.HOLDER[[i]]@data$adj.pv <- as_FBM(DATA.HOLDER[[i]]@data$adj.pv %>% t,
-                                           backingfile = paste0('/space/scratch/jcastillo/Thesis Work/data/fbm/', i, '/adjpvs'),
+                                           backingfile = paste0(paste(DATADIR, 'fbm/', sep='/'), i, '/adjpvs'),
                                            is_read_only = T)$save()
   }
   rm(i)
@@ -193,4 +200,5 @@ for (taxon in names(DATA.HOLDER)) {
   DATA.HOLDER[[taxon]]@data$adj.pv <- NULL
 }
 
-saveRDS(DATA.HOLDER, '/space/scratch/jcastillo/Thesis Work/data/DATA.HOLDER.light.rds')
+
+saveRDS(DATA.HOLDER, paste(DATADIR, 'DATA.HOLDER.light.rds', sep='/'))

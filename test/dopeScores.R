@@ -103,4 +103,6 @@ mclapply(1:nrow(hypercube), function(iter) {
     print(e)
     NULL
   })
-}) %>% saveRDS('/space/scratch/jsicherman/Thesis Work/data/artificial/bootstrapped_scores.rds')
+
+}) %>% saveRDS(paste(DATADIR, 'artificial/bootstrapped_scores.rds', sep='/'))
+
