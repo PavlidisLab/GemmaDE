@@ -1,11 +1,9 @@
-
 source(paste(PROJDIR, 'main/requirements.R', sep='/'))
 #source(paste(PROJDIR, 'main/dependencies.R', sep='/'))
 
 setClass('EData', representation(taxon = 'character', data = 'list',
                                  experiment.meta = 'data.table', gene.meta = 'data.table',
                                  go = 'data.table'))
-
 
 .DATA_PATH <- paste(DATADIR, 'DATA.HOLDER.rds', sep='/')
 
@@ -158,7 +156,6 @@ if(!exists('DATA.HOLDER')) {
     }) %>%
       setNames(c('human', 'mouse', 'rat'))
     
-
     saveRDS(DATA.HOLDER, paste(DATADIR, 'DATA.HOLDER.rds', sep='/'))
   }
 }
@@ -169,7 +166,6 @@ if(!exists('DATA.HOLDER')) {
 if(class(DATA.HOLDER[[1]]@data$adj.pv) == 'matrix') {
   for(i in names(DATA.HOLDER)) {
     message(paste0('Converting in-memory matrices for ', i, ' to file-backed...'))
-
     file.remove(list.files(paste0(paste(DATADIR, 'fbm/', sep='/'), i), full.names = T))
     
     dimnames(DATA.HOLDER[[i]]@data$zscore) %>% 
@@ -181,7 +177,6 @@ if(class(DATA.HOLDER[[1]]@data$adj.pv) == 'matrix') {
     
     dimnames(DATA.HOLDER[[i]]@data$adj.pv) %>% 
       rev() %>%
-
       saveRDS(paste0(paste(DATADIR, 'fbm/', sep='/'), i, '/p.dimnames.rds'))
     DATA.HOLDER[[i]]@data$adj.pv <- as_FBM(DATA.HOLDER[[i]]@data$adj.pv %>% t,
                                            backingfile = paste0(paste(DATADIR, 'fbm/', sep='/'), i, '/adjpvs'),
@@ -199,6 +194,5 @@ for (taxon in names(DATA.HOLDER)) {
   DATA.HOLDER[[taxon]]@data$zscore <- NULL
   DATA.HOLDER[[taxon]]@data$adj.pv <- NULL
 }
-
 
 saveRDS(DATA.HOLDER, paste(DATADIR, 'DATA.HOLDER.light.rds', sep='/'))

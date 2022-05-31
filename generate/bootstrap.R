@@ -1,4 +1,4 @@
-source('/home/jsicherman/Thesis Work/requirements.R')
+source(paste(PROJDIR, 'main/requirements.R', sep='/'))
 
 library(parallel)
 options(mc.cores = 14)
@@ -11,13 +11,12 @@ OPTIONS <- c('artificial', 'human', 'mouse', 'rat')
 for(x in OPTIONS) {
   if(!exists('DATA.HOLDER') || names(DATA.HOLDER) != x) {
     rm(DATA.HOLDER)
-    source('/home/jsicherman/Thesis Work/dependencies.R')
+    source(paste(PROJDIR, 'main/dependencies.R', sep='/'))
     rm(NULLS)
     DATA.HOLDER[OPTIONS[-which(OPTIONS == x)]] <- NULL
   }
   
   message(paste0(Sys.time(), ' ... Starting ', x))
-
   if(F && file.exists(paste0(paste(DATADIR, 'updated_nulls/', sep='/'), x, '.rds'))) {
     message(paste0('File for ', x, ' already exists... Skipping.'))
   } else {
@@ -37,7 +36,6 @@ for(x in OPTIONS) {
       
       .[, .(score.mean = sum(score.sum) / (BLOCK * ITERS),
             score.sd = sqrt(sum(score.sqsum) / (BLOCK * ITERS) - (sum(score.sum) / (BLOCK * ITERS))^2)), rn] %>%
-
         saveRDS(paste0(paste(DATADIR, 'updated_nulls/', sep='/'), x, '.rds'))
       
       gc()

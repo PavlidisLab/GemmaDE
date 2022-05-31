@@ -71,13 +71,11 @@ fixOntoGenes <- function() {
 }
 
 loadDrugbank <- function() {
-
   if (file.exists(paste(DATADIR, 'drugbank/drugbank.rds', sep='/'))) {
     return(readRDS(paste(DATADIR, 'drugbank/drugbank.rds', sep='/')))
   }
 
   dbank <- xmlParse(paste(DATADIR, 'drugbank/full database.xml', sep='/'))
-
   droot <- xmlRoot(dbank)
   dsize <- xmlSize(droot)
 
@@ -98,7 +96,6 @@ loadDrugbank <- function() {
     target = unlist(targets, F) %>% sapply("[[", "name") %>% unname() %>% list()
   ), I] %>%
     .[, !"I"]
-
 
   saveRDS(tmp, paste(DATADIR, 'drugbank/drugbank.rds', sep='/'))
 
@@ -128,7 +125,6 @@ if (!exists("ONTOLOGIES") || !exists("ONTOLOGIES.DEFS")) {
   ONTOLOGIES.DEFS$OntologyScope <- ONTOLOGIES.DEFS$OntologyScope %>% as.factor()
 }
 
-
 .DATA_PATH <- paste(DATADIR, 'DATA.HOLDER.light.rds', sep='/')
 
 # Load the lite versions if they're already created.
@@ -146,7 +142,6 @@ if (!exists("DATA.HOLDER")) {
 
 # Read existing FBMs
 for (i in names(DATA.HOLDER)) {
-
   DATA.HOLDER[[i]]@data$zscore <- big_attach(paste0(paste(DATADIR, 'fbm/', sep='/'), i, "/zscores.rds"))
   attr(DATA.HOLDER[[i]]@data$zscore, ".dimnames") <- readRDS(paste0(paste(DATADIR, 'fbm/', sep='/'), i, "/z.dimnames.rds"))
 
@@ -163,7 +158,6 @@ dimnames.FBM <- function(object, ...) {
 
 if (!exists("CACHE.BACKGROUND")) {
   # Pre-load all ontology expansions
-
   if (file.exists(paste(DATADIR, 'CACHE.BACKGROUND.rds', sep='/'))) {
     CACHE.BACKGROUND <- readRDS(paste(DATADIR, 'CACHE.BACKGROUND.rds', sep='/'))
   } else {
@@ -176,7 +170,6 @@ if (!exists("CACHE.BACKGROUND")) {
 
 if (!exists("NULLS")) {
   NULLS <- lapply(names(DATA.HOLDER), function(taxa) {
-
     tryCatch(readRDS(paste0(paste(DATADIR, 'updated_nulls/', sep='/'), taxa, ".rds")) %>%
       .[, .(rn, score.mean, score.sd)], error = function(e) NULL)
   }) %>%
