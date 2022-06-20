@@ -1,11 +1,11 @@
-source(paste(PROJDIR, 'main/requirements.R', sep='/'))
-#source(paste(PROJDIR, 'main/dependencies.R', sep='/'))
+source(file.path(PROJDIR, 'main', 'requirements.R'))
 
 setClass('EData', representation(taxon = 'character', data = 'list',
                                  experiment.meta = 'data.table', gene.meta = 'data.table',
                                  go = 'data.table'))
 
-.DATA_PATH <- paste(DATADIR, 'DATA.HOLDER.rds', sep='/')
+
+.DATA_PATH <- file.path(DATADIR, 'DATA.HOLDER.rds')
 
 # Load the lite versions if they're already created.
 if(!exists('DATA.HOLDER')) {
@@ -15,7 +15,7 @@ if(!exists('DATA.HOLDER')) {
     DATA.HOLDER <- lapply(c('human', 'mouse', 'rat'), function(taxon) {
       message(paste('Loading', taxon, 'metadata'))
       
-      load(paste0('/space/grp/nlim/MDE/RDataRepo/Packaged/Current/', taxon, '/metadata.RDAT'))
+      load(file.path('/space/grp/nlim/MDE/RDataRepo/Packaged/Current', taxon, 'metadata.RDAT'))
       
       meta.platformCoverage <- melt(meta.platformCoverage, id.vars = 'gene.ID') %>%
         .[, variable := gsub('AD_(.*)', '\\1', variable)]
@@ -116,6 +116,7 @@ if(!exists('DATA.HOLDER')) {
       
       # Split into 500 ee.ID chunks (so the URI doesn't get too long) and fetch quality scores 
       # from Gemma for all experiments.
+      # TODO this is broken with the new Gemma API. Needs to be updated to get this info back
       metaData <- rbindlist(lapply(lapply(metaData$ee.ID %>% unique %>% split(ceiling(seq_along(.[]) / 500)),
                                           datasetInfo) %>% unlist(recursive = F), function(ee.ID) {
                                             data.table(ee.ID = ee.ID$id,
@@ -156,7 +157,8 @@ if(!exists('DATA.HOLDER')) {
     }) %>%
       setNames(c('human', 'mouse', 'rat'))
     
-    saveRDS(DATA.HOLDER, paste(DATADIR, 'DATA.HOLDER.rds', sep='/'))
+    
+    saveRDS(DATA.HOLDER, file.path(DATADIR, 'DATA.HOLDER.rds'))
   }
 }
 
@@ -166,17 +168,20 @@ if(!exists('DATA.HOLDER')) {
 if(class(DATA.HOLDER[[1]]@data$adj.pv) == 'matrix') {
   for(i in names(DATA.HOLDER)) {
     message(paste0('Converting in-memory matrices for ', i, ' to file-backed...'))
-    file.remove(list.files(paste0(paste(DATADIR, 'fbm/', sep='/'), i), full.names = T))
     
+    file.remove(list.files(file.path(DATADIR, 'fbm', i), full.names = T))
+    
+    # TODO you should use file.path instead of paste0 with a '/' delimiter
     dimnames(DATA.HOLDER[[i]]@data$zscore) %>% 
       rev() %>%
-      saveRDS(paste0(paste(DATADIR, 'fbm/', sep='/'), i, '/z.dimnames.rds'))
+      saveRDS(file.path(file.path(DATADIR, 'fbm'), i, 'z.dimnames.rds'))
     DATA.HOLDER[[i]]@data$zscore <- as_FBM(DATA.HOLDER[[i]]@data$zscore %>% t,
                                            backingfile = paste0(paste(DATADIR, 'fbm/', sep='/'), i, '/zscores'),
                                            is_read_only = T)$save()
     
     dimnames(DATA.HOLDER[[i]]@data$adj.pv) %>% 
       rev() %>%
+      
       saveRDS(paste0(paste(DATADIR, 'fbm/', sep='/'), i, '/p.dimnames.rds'))
     DATA.HOLDER[[i]]@data$adj.pv <- as_FBM(DATA.HOLDER[[i]]@data$adj.pv %>% t,
                                            backingfile = paste0(paste(DATADIR, 'fbm/', sep='/'), i, '/adjpvs'),
@@ -194,5 +199,6 @@ for (taxon in names(DATA.HOLDER)) {
   DATA.HOLDER[[taxon]]@data$zscore <- NULL
   DATA.HOLDER[[taxon]]@data$adj.pv <- NULL
 }
+
 
 saveRDS(DATA.HOLDER, paste(DATADIR, 'DATA.HOLDER.light.rds', sep='/'))
