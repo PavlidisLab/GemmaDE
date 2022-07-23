@@ -1,5 +1,5 @@
 library(shiny)
-PROJDIR <- '/home/kchen/projects/GemmaDE'
+PROJDIR <- here::here()
 DATADIR <- '/space/scratch/kchen/GemmaDE/data'
 runApp('main', port = 18233, launch.browser = F)
 

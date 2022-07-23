@@ -43,7 +43,8 @@ Imports:
 	sass,
 	stringdist,
 	promises,
-	future
+	future,
+	here
 Remotes:
 	jsicherman/shinycssloaders,
 	jsicherman/shinypanels,

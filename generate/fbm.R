@@ -1,3 +1,7 @@
+PROJDIR <- here::here()
+DATADIR <- here::here('data-temp')
+dir.create(DATADIR,showWarnings = FALSE)
+
 source(file.path(PROJDIR, 'main', 'requirements.R'))
 
 setClass('EData', representation(taxon = 'character', data = 'list',
@@ -15,7 +19,9 @@ if(!exists('DATA.HOLDER')) {
     DATA.HOLDER <- lapply(c('human', 'mouse', 'rat'), function(taxon) {
       message(paste('Loading', taxon, 'metadata'))
       
-      load(file.path('/space/grp/nlim/MDE/RDataRepo/Packaged/Current', taxon, 'metadata.RDAT'))
+      # nathaniel's data files. need documentation on these - ogan
+      objs = load(file.path('/space/grp/nlim/MDE/RDataRepo/Packaged/Current', taxon, 'metadata.RDAT'))
+      
       
       meta.platformCoverage <- melt(meta.platformCoverage, id.vars = 'gene.ID') %>%
         .[, variable := gsub('AD_(.*)', '\\1', variable)]
