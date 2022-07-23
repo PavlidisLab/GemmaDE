@@ -1,0 +1,55 @@
+Package: GemmaDE
+Title: What the Package Does (One Line, Title Case)
+Version: 0.0.0.9000
+Authors@R: 
+    person("First", "Last", , "first.last@example.com", role = c("aut", "cre"),
+           comment = c(ORCID = "YOUR-ORCID-ID"))
+Description: What the package does (one paragraph).
+License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
+    license
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+Imports:
+	shiny,
+	shinyjs,
+	shinyWidgets,
+	shinycssloaders,
+	htmlwidgets,
+	DT,
+	heatmaply,
+	shinyHeatmaply,
+	shinypanels,
+	circlepackeR,
+	data.tree,
+	RColorBrewer,
+	sass,
+	shinydisconnect,
+	async,
+	memoise,
+	matrixStats,
+	Rfast,
+	igraph,
+	dplyr,
+	data.table,
+	stringr,
+	bigstatsr,
+	matrixTest,
+	gemmaAPI,
+	ermineR,
+	mygene,
+	homologene,
+	jsonlite,
+	XML,
+	sass,
+	stringdist,
+	promises,
+	future
+Remotes:
+	jsicherman/shinycssloaders,
+	jsicherman/shinypanels,
+	jeromefroe/circlepackeR,
+	gaborcsardi/async,
+	oganm/gemmaAPI.R,
+	PavlidisLab/ermineR,
+	bioc::3.9/mygene
+RoxygenNote: 7.1.2
