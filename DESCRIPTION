@@ -33,7 +33,7 @@ Imports:
 	data.table,
 	stringr,
 	bigstatsr,
-	matrixTest,
+	matrixTests,
 	gemmaAPI,
 	ermineR,
 	mygene,
