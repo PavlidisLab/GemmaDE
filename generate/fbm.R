@@ -1,8 +1,9 @@
 PROJDIR <- here::here()
 DATADIR <- here::here('data-temp')
+devtools::load_all()
 dir.create(DATADIR,showWarnings = FALSE)
 
-source(file.path(PROJDIR, 'main', 'requirements.R'))
+# source(file.path(PROJDIR, 'main', 'requirements.R'))
 
 setClass('EData', representation(taxon = 'character', data = 'list',
                                  experiment.meta = 'data.table', gene.meta = 'data.table',
@@ -23,7 +24,7 @@ if(!exists('DATA.HOLDER')) {
       objs = load(file.path('/space/grp/nlim/MDE/RDataRepo/Packaged/Current', taxon, 'metadata.RDAT'))
       
       
-      meta.platformCoverage <- melt(meta.platformCoverage, id.vars = 'gene.ID') %>%
+      meta.platformCoverage <- data.table::melt(meta.platformCoverage, id.vars = 'gene.ID') %>%
         .[, variable := gsub('AD_(.*)', '\\1', variable)]
       
       # TODO Yes I know this is no longer optimal. In the old data dump, values were semicolon delimited...
@@ -98,10 +99,10 @@ if(!exists('DATA.HOLDER')) {
       
       dataHolder$pv <- NULL
       
-      metaData[, n.DE := colSums2(dataHolder$adj.pv <= 0.05, na.rm = T)]
-      metaData[, mean.fc := colMeans2(abs(dataHolder$fc), na.rm = T)]
-      metaData[, mean.up := colMeans2(dataHolder$fc * ifelse(dataHolder$fc > 0, 1, NA), na.rm = T)]
-      metaData[, mean.down := colMeans2(dataHolder$fc * ifelse(dataHolder$fc < 0, 1, NA), na.rm = T)]
+      metaData[, n.DE := matrixStats::colSums2(dataHolder$adj.pv <= 0.05, na.rm = T)]
+      metaData[, mean.fc := matrixStats::colMeans2(abs(dataHolder$fc), na.rm = T)]
+      metaData[, mean.up := matrixStats::colMeans2(dataHolder$fc * ifelse(dataHolder$fc > 0, 1, NA), na.rm = T)]
+      metaData[, mean.down := matrixStats::colMeans2(dataHolder$fc * ifelse(dataHolder$fc < 0, 1, NA), na.rm = T)]
       
       metaData$ee.ID <- metaData$ee.ID %>% as.integer
       
@@ -110,7 +111,7 @@ if(!exists('DATA.HOLDER')) {
                                 gene.Desc, gene.Type, gene.Chromosome,
                                 mfx.Rank = ((mfx.Score - min(mfx.Score)) / (max(mfx.Score) - min(mfx.Score))) * (1 - 0) + 0)] # Rescale between 0 and 1
       
-      metaGene[, n.DE := rowSums2(dataHolder$adj.pv <= 0.05, na.rm = T)]
+      metaGene[, n.DE := matrixStats::rowSums2(dataHolder$adj.pv <= 0.05, na.rm = T)]
       metaGene[, dist.Mean := rowMeans(dataHolder$fc[, metaData$ee.Reprocessed], na.rm = T)]
       metaGene[, dist.SD := Rfast::rowVars(dataHolder$fc[, metaData$ee.Reprocessed], na.rm = T, std = T)]
       
@@ -123,19 +124,19 @@ if(!exists('DATA.HOLDER')) {
       # Split into 500 ee.ID chunks (so the URI doesn't get too long) and fetch quality scores 
       # from Gemma for all experiments.
       # TODO this is broken with the new Gemma API. Needs to be updated to get this info back
-      metaData <- rbindlist(lapply(lapply(metaData$ee.ID %>% unique %>% split(ceiling(seq_along(.[]) / 500)),
-                                          datasetInfo) %>% unlist(recursive = F), function(ee.ID) {
-                                            data.table(ee.ID = ee.ID$id,
+      metaData <- data.table::rbindlist(lapply(lapply(metaData$ee.ID %>% unique %>% split(ceiling(seq_along(.[]) / 500)),
+                                          gemmaAPI::datasetInfo) %>% unlist(recursive = F), function(ee.ID) {
+                                            data.table::data.table(ee.ID = ee.ID$id,
                                                        ee.DescriptiveName = ee.ID$name,
                                                        ee.qScore = ee.ID$geeq$publicQualityScore,
                                                        ee.sScore = ee.ID$geeq$publicSuitabilityScore)
                                           }), fill = T) %>% merge(metaData, by = 'ee.ID', all.y = T)
       
-      goTerms <- queryMany(metaGene$entrez.ID, scopes = 'entrezgene', fields = 'go', species = taxon)
+      goTerms <- mygene::queryMany(metaGene$entrez.ID, scopes = 'entrezgene', fields = 'go', species = taxon)
       
-      goTerms <- rbindlist(lapply(c('CC', 'BP', 'MF'), function(cat) {
+      goTerms <- data.table::rbindlist(lapply(c('CC', 'BP', 'MF'), function(cat) {
         gocat <- paste0('go.', cat)
-        rbindlist(lapply(1:nrow(goTerms), function(indx) {
+        data.table::rbindlist(lapply(1:nrow(goTerms), function(indx) {
           row <- goTerms@listData[[gocat]][[indx]]
           if(!is.null(row))
             data.frame(entrez.ID = goTerms@listData$query[indx], category = cat, id = row$id, term = row$term)
@@ -168,6 +169,8 @@ if(!exists('DATA.HOLDER')) {
   }
 }
 
+
+
 # File-backed, gene-major matrices area HUGE upgrade compared to in-memory experiment-major matrices because 
 # 1) way faster to access gene-slices (which are always longer than experiment slices), and 
 # 2) data in memory can be reduced to < 1 GB (!)
@@ -177,23 +180,24 @@ if(class(DATA.HOLDER[[1]]@data$adj.pv) == 'matrix') {
     
     file.remove(list.files(file.path(DATADIR, 'fbm', i), full.names = T))
     
-    # TODO you should use file.path instead of paste0 with a '/' delimiter
+    dir.create(file.path(DATADIR,'fbm',i),recursive = TRUE, showWarnings =FALSE)
+    
     dimnames(DATA.HOLDER[[i]]@data$zscore) %>% 
       rev() %>%
-      saveRDS(file.path(file.path(DATADIR, 'fbm'), i, 'z.dimnames.rds'))
-    DATA.HOLDER[[i]]@data$zscore <- as_FBM(DATA.HOLDER[[i]]@data$zscore %>% t,
-                                           backingfile = paste0(paste(DATADIR, 'fbm/', sep='/'), i, '/zscores'),
+      saveRDS(file.path(DATADIR, 'fbm', i, 'z.dimnames.rds'))
+    
+    DATA.HOLDER[[i]]@data$zscore <- bigstatsr::as_FBM(DATA.HOLDER[[i]]@data$zscore %>% t,
+                                           backingfile = file.path(DATADIR, 'fbm', i, 'zscores'),
                                            is_read_only = T)$save()
     
     dimnames(DATA.HOLDER[[i]]@data$adj.pv) %>% 
       rev() %>%
       
-      saveRDS(paste0(paste(DATADIR, 'fbm/', sep='/'), i, '/p.dimnames.rds'))
-    DATA.HOLDER[[i]]@data$adj.pv <- as_FBM(DATA.HOLDER[[i]]@data$adj.pv %>% t,
-                                           backingfile = paste0(paste(DATADIR, 'fbm/', sep='/'), i, '/adjpvs'),
+      saveRDS(file.path(DATADIR, 'fbm', i, 'p.dimnames.rds'))
+    DATA.HOLDER[[i]]@data$adj.pv <- bigstatsr::as_FBM(DATA.HOLDER[[i]]@data$adj.pv %>% t,
+                                           backingfile = file.path(DATADIR, 'fbm', i, 'adjpvs'),
                                            is_read_only = T)$save()
   }
-  rm(i)
 }
 
 dimnames.FBM <- function(object, ...) {
