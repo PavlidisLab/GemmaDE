@@ -1,5 +1,7 @@
-source(paste(PROJDIR, 'main/requirements.R', sep='/'))
-
+# source(paste(PROJDIR, 'main/requirements.R', sep='/'))
+devtools::load_all()
+PROJDIR <- here::here()
+DATADIR <- here::here('data-temp')
 library(parallel)
 options(mc.cores = 14)
 
@@ -8,8 +10,10 @@ BLOCK <- 500
 
 OPTIONS <- c('artificial', 'human', 'mouse', 'rat')
 
+x = 'artificial'
+
 for(x in OPTIONS) {
-  if(!exists('DATA.HOLDER') || names(DATA.HOLDER) != x) {
+  if(!exists('DATA.HOLDER') || !x %in% names(DATA.HOLDER)) {
     rm(DATA.HOLDER)
     source(paste(PROJDIR, 'main/dependencies.R', sep='/'))
     rm(NULLS)

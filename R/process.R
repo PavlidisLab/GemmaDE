@@ -125,7 +125,7 @@ search <- function(genes, options = getConfig(), DATA = NULL) {
 getTags <- function(taxa = getConfig(key = "taxa")$value,
                     rsc.IDs = NULL, max.distance = Inf, inv = F, CACHE = NULL) {
   if (length(taxa) > 1) {
-    return(rbindlist(lapply(taxa, getTags, rsc.IDs, max.distance, inv, CACHE)))
+    return(data.table::rbindlist(lapply(taxa, getTags, rsc.IDs, max.distance, inv, CACHE)))
   }
 
   if (is.null(CACHE)) {
@@ -159,7 +159,7 @@ precomputeTags <- function(taxa = getConfig(key = "taxa")$value, mGraph = NULL, 
   }
 
   if (is.null(mGraph)) {
-    mGraph <- simplify(igraph::graph_from_data_frame(ONTOLOGIES[, .(as.character(ChildNode_Long), as.character(ParentNode_Long))]))
+    mGraph <- igraph::simplify(igraph::graph_from_data_frame(ONTOLOGIES[, .(as.character(ChildNode_Long), as.character(ParentNode_Long))]))
   }
   if (is.null(graphTerms)) {
     graphTerms <- unique(ONTOLOGIES[, as.character(ChildNode_Long, ParentNode_Long)])
@@ -214,7 +214,7 @@ precomputeTags <- function(taxa = getConfig(key = "taxa")$value, mGraph = NULL, 
 
   # Compute ontology expansions on ontology terms
   # Applies to both simple tags and bag of word tags that expanded into ontology terms
-  mComputedTags <- rbindlist(lapply(mComputable, function(uri) {
+  mComputedTags <- data.table::rbindlist(lapply(mComputable, function(uri) {
     tag <- igraph::subcomponent(mGraph, uri, "out")
     distance <- igraph::distances(mGraph, uri, tag)
     data.table(startTag = uri, tag = names(tag), distance = c(distance))

@@ -17,13 +17,13 @@ fixOntoGenes <- function() {
         .(entrez.ID, gene.Name = paste0(gene.Name, " [", taxa, "]"))
       ]
     }) %>%
-      rbindlist() %>%
+      data.table::rbindlist() %>%
       unique(by = "entrez.ID") %>%
       .[match(matches[, 2], entrez.ID), gene.Name]
 
-    data.table(Node_Long = matches[, 1], Definition = matches[, 2], OntologyScope = "TGEMO")
+    data.table::data.table(Node_Long = matches[, 1], Definition = matches[, 2], OntologyScope = "TGEMO")
   }) %>%
-    rbindlist() %>%
+    data.table::rbindlist() %>%
     {
       rbind(ONTOLOGIES.DEFS[, .(
         Node_Long = as.character(Node_Long),
@@ -43,17 +43,17 @@ loadDrugbank <- function() {
     return(readRDS(paste(DATADIR, 'drugbank/drugbank.rds', sep='/')))
   }
 
-  dbank <- xmlParse(paste(DATADIR, 'drugbank/full database.xml', sep='/'))
-  droot <- xmlRoot(dbank)
-  dsize <- xmlSize(droot)
+  dbank <- XML::xmlParse(paste(DATADIR, 'drugbank/full database.xml', sep='/'))
+  droot <- XML::xmlRoot(dbank)
+  dsize <- XML::xmlSize(droot)
 
   tmp <- lapply(1:dsize, function(i) {
     droot[[i]] %>%
-      xmlToList() %>%
+      XML::xmlToList() %>%
       .[c("name", "synonyms", "categories", "targets")] %>%
       rbind() %>%
-      as.data.table()
-  }) %>% rbindlist(fill = T)
+      data.table::as.data.table()
+  }) %>% data.table::rbindlist(fill = T)
 
   tmp[, I := .I]
 
@@ -78,8 +78,8 @@ setClass("EData", representation(
 
 # Load the data into the global environment
 if (!exists("ONTOLOGIES") || !exists("ONTOLOGIES.DEFS")) {
-  ONTOLOGIES <- fread("/space/grp/nlim/CronGemmaDump/Ontology/Ontology_Dump_MERGED.TSV")
-  ONTOLOGIES.DEFS <- fread("/space/grp/nlim/CronGemmaDump/Ontology/Ontology_Dump_MERGED_DEF.TSV")
+  ONTOLOGIES <- data.table::fread("/space/grp/nlim/CronGemmaDump/Ontology/Ontology_Dump_MERGED.TSV")
+  ONTOLOGIES.DEFS <- data.table::fread("/space/grp/nlim/CronGemmaDump/Ontology/Ontology_Dump_MERGED_DEF.TSV")
 
   ONTOLOGIES[, c("ChildNode", "ParentNode")] <- NULL
   ONTOLOGIES.DEFS$Node <- NULL
@@ -110,10 +110,10 @@ if (!exists("DATA.HOLDER")) {
 
 # Read existing FBMs
 for (i in names(DATA.HOLDER)) {
-  DATA.HOLDER[[i]]@data$zscore <- big_attach(paste0(paste(DATADIR, 'fbm/', sep='/'), i, "/zscores.rds"))
+  DATA.HOLDER[[i]]@data$zscore <- bigstatsr::big_attach(paste0(paste(DATADIR, 'fbm/', sep='/'), i, "/zscores.rds"))
   attr(DATA.HOLDER[[i]]@data$zscore, ".dimnames") <- readRDS(paste0(paste(DATADIR, 'fbm/', sep='/'), i, "/z.dimnames.rds"))
 
-  DATA.HOLDER[[i]]@data$adj.pv <- big_attach(paste0(paste(DATADIR, 'fbm/', sep='/'), i, "/adjpvs.rds"))
+  DATA.HOLDER[[i]]@data$adj.pv <- bigstatsr::big_attach(paste0(paste(DATADIR, 'fbm/', sep='/'), i, "/adjpvs.rds"))
   attr(DATA.HOLDER[[i]]@data$adj.pv, ".dimnames") <- readRDS(paste0(paste(DATADIR, 'fbm/', sep='/'), i, "/p.dimnames.rds"))
 }
 rm(i)
