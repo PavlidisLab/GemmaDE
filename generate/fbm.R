@@ -125,11 +125,11 @@ if(!exists('DATA.HOLDER')) {
       # from Gemma for all experiments.
       # TODO this is broken with the new Gemma API. Needs to be updated to get this info back
       metaData <- data.table::rbindlist(lapply(lapply(metaData$ee.ID %>% unique %>% split(ceiling(seq_along(.[]) / 500)),
-                                          gemmaAPI::datasetInfo) %>% unlist(recursive = F), function(ee.ID) {
-                                            data.table::data.table(ee.ID = ee.ID$id,
+                                          gemma.R::getDatasetsInfo) %>% unlist(recursive = F), function(ee.ID) {
+                                            data.table::data.table(ee.ID = ee.ID$ee.ID,
                                                        ee.DescriptiveName = ee.ID$name,
-                                                       ee.qScore = ee.ID$geeq$publicQualityScore,
-                                                       ee.sScore = ee.ID$geeq$publicSuitabilityScore)
+                                                       ee.qScore = ee.ID$geeq.qScore,
+                                                       ee.sScore = ee.ID$geeq.sScore)
                                           }), fill = T) %>% merge(metaData, by = 'ee.ID', all.y = T)
       
       goTerms <- mygene::queryMany(metaGene$entrez.ID, scopes = 'entrezgene', fields = 'go', species = taxon)

@@ -34,7 +34,7 @@ Imports:
     stringr,
     bigstatsr,
     matrixTests,
-    gemmaAPI,
+    gemma.R,
     ermineR,
     mygene,
     homologene,
@@ -45,7 +45,12 @@ Imports:
     promises,
     future,
     here,
-    magrittr
+    magrittr,
+    parallel,
+    edgeR,
+    compcodeR,
+    DESeq2,
+    limma
 Remotes:
 	jsicherman/shinycssloaders,
 	jsicherman/shinypanels,
@@ -53,5 +58,9 @@ Remotes:
 	gaborcsardi/async,
 	oganm/gemmaAPI.R,
 	PavlidisLab/ermineR,
-	bioc::3.9/mygene
+	bioc::3.9/mygene,
+	bioc::3.9/edgeR,
+	bioc::3.9/compcodeR,
+	bioc::3.9/DESeq2,
+	bioc::3.9/limma
 RoxygenNote: 7.1.2
