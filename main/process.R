@@ -73,7 +73,7 @@ search <- function(genes, options = getConfig(), DATA = NULL) {
   pv[is.na(pv)] <- 1
   zScore[is.na(zScore)] <- 0
 
-  zScore <- as.data.table(zScore)
+  zScore <- data.table::as.data.table(zScore)
 
   # Number of DEGs for experiments that pass thresholds
   experimentMeta <- mData@experiment.meta[experimentMask, .(rsc.ID, ee.qScore, n.DE, ad.NumGenes)] %>%
@@ -105,12 +105,12 @@ search <- function(genes, options = getConfig(), DATA = NULL) {
   experimentN <- Rfast::colsums(pv <= options$pv$value)
 
   ret %>%
-    setnames(c(mData@gene.meta$gene.Name[geneMask], "score")) %>%
+    data.table::setnames(c(mData@gene.meta$gene.Name[geneMask], "score")) %>%
     .[, f.IN := experimentN / n.genes] %>%
     .[, f.OUT := pmax(0, experimentMeta$n.DE - experimentN) / experimentMeta$ad.NumGenes] %>%
     .[, ee.q := experimentMeta$ee.qScore] %>%
     .[, rn := colnames(zScore)] %>%
-    setorder(-score)
+    data.table::setorder(-score)
 }
 
 #' getTags
@@ -272,7 +272,7 @@ precomputeTags <- function(taxa = getConfig(key = "taxa")$value, mGraph = NULL, 
                 !is.na(ID) & distance < 1, expand.grid(aggregate(distance, by = list(ID), FUN = list)[[-1]]) %>% apply(1, sum),
                 .(rsc.ID, ee.ID, type)
               ] %>% .[, V1]
-        ) %>% setnames("V1", "tag") %>%
+        ) %>% data.table::setnames("V1", "tag") %>%
         .[, .(tag, rsc.ID, ee.ID, type, distance, ID = NA)]
     )
   } else {
@@ -396,7 +396,7 @@ reorderTags3 <- function(data) {
 
   data %>%
     copy() %>%
-    setnames(c("cf.BaseLongUri", "cf.ValLongUri"), c("b", "v")) %>%
+    data.table::setnames(c("cf.BaseLongUri", "cf.ValLongUri"), c("b", "v")) %>%
     merge(vals, by.x = "b", by.y = "tag", sort = F, allow.cartesian = T) %>%
     merge(vals, by.x = "v", by.y = "tag", sort = F, allow.cartesian = T) %>%
     .[, reverse := (N.y > N.x) | (N.y == N.x & as.character(b) < as.character(v))] %>%
@@ -420,12 +420,12 @@ normalize <- function(scores, taxa = getConfig(key = "taxa")$value) {
       .SDcols = !c("score.mean", "score.sd", "rn", "score", "f.IN", "f.OUT", "ee.q")
     ] %>%
     {
-      data.table(rn = scores$rn, ., scores[, .(score, f.IN, f.OUT, ee.q)])
+      data.table::data.table(rn = scores$rn, ., scores[, .(score, f.IN, f.OUT, ee.q)])
     } %>%
     .[, score := rowSums2(as.matrix(.SD), na.rm = T), .SDcols = !c("rn", "score", "f.IN", "f.OUT", "ee.q")] %>%
     .[, normalization := eval(getOption("app.algorithm.experiment"))] %>%
     .[, sn := score * normalization] %>%
-    setorder(-sn) %>%
+    data.table::setorder(-sn) %>%
     .[, !"sn"]
 }
 
@@ -475,7 +475,7 @@ enrich <- function(rankings, options = getConfig(), doNorm = T, CACHE = NULL) {
     ) %>%
     .[, score := Rfast::rowsums(as.matrix(.SD) * normalization), .SDcols = !c("stat", "cf.Cat", "cf.BaseLongUri", "cf.ValLongUri", "distance", "normalization")] %>%
     .[, !"normalization"] %>%
-    setorder(-stat, distance) %>%
+    data.table::setorder(-stat, distance) %>%
     .[, .SD[1], stat] %>%
-    setorder(-score)
+    data.table::setorder(-score)
 }

@@ -8,7 +8,7 @@ options(max.gemma = 1000) # The maximum number of samples to pull from Gemma for
 options(chunk.size = 200) # For artificial data generation; not used in live app
 
 options(app.algorithm.gene.pre = quote(zScore * (1 - log10(Rfast::Pmax(matrix(1e-10, ncol = ncol(pv), nrow = nrow(pv)), pv)))))
-options(app.algorithm.gene.post = quote(zScore %>% abs() %>% `*`(MFX_WEIGHT) %>% t() %>% as.data.table()))
+options(app.algorithm.gene.post = quote(zScore %>% abs() %>% `*`(MFX_WEIGHT) %>% t() %>% data.table::as.data.table()))
 options(app.algorithm.experiment = quote(ee.q * (1 + f.IN) / (1 + 10^f.OUT)))
 
 future::plan(future::multicore, workers = 32) # Maximum clients that Gemma DE can serve
@@ -146,7 +146,7 @@ addConfig(geeq = F, description = "Score experiment quality (GEEQ)", tooltip = "
 
 addConfig(sig = "", description = NA, category = NA)
 
-# source(paste(PROJDIR, 'main/process.R', sep='/'))
+source(paste(PROJDIR, 'main/process.R', sep='/'))
 source(paste(PROJDIR, 'main/renderTools.R', sep='/'))
 source(paste(PROJDIR, 'main/gemmaAPI.R', sep='/'))
 source(paste(PROJDIR, 'main/load.R', sep='/'))

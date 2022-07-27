@@ -38,37 +38,6 @@ fixOntoGenes <- function() {
     }
 }
 
-loadDrugbank <- function() {
-  if (file.exists(paste(DATADIR, 'drugbank/drugbank.rds', sep='/'))) {
-    return(readRDS(paste(DATADIR, 'drugbank/drugbank.rds', sep='/')))
-  }
-
-  dbank <- XML::xmlParse(paste(DATADIR, 'drugbank/full database.xml', sep='/'))
-  droot <- XML::xmlRoot(dbank)
-  dsize <- XML::xmlSize(droot)
-
-  tmp <- lapply(1:dsize, function(i) {
-    droot[[i]] %>%
-      XML::xmlToList() %>%
-      .[c("name", "synonyms", "categories", "targets")] %>%
-      rbind() %>%
-      data.table::as.data.table()
-  }) %>% data.table::rbindlist(fill = T)
-
-  tmp[, I := .I]
-
-  tmp[, name := unlist(name)]
-  tmp <- tmp[, .(name,
-    synonym = unlist(synonyms, F) %>% sapply("[[", "text") %>% unname() %>% list(),
-    category = unlist(categories, F) %>% sapply("[[", "category") %>% unname() %>% list(),
-    target = unlist(targets, F) %>% sapply("[[", "name") %>% unname() %>% list()
-  ), I] %>%
-    .[, !"I"]
-
-  saveRDS(tmp, paste(DATADIR, 'drugbank/drugbank.rds', sep='/'))
-
-  tmp
-}
 
 setClass("EData", representation(
   taxon = "character", data = "list",
@@ -145,10 +114,6 @@ if (!exists("NULLS")) {
     {
       Filter(Negate(is.null), .)
     }
-}
-
-if (!exists("DRUGBANK") && Sys.getenv("RSTUDIO") == "1") {
-  DRUGBANK <- loadDrugbank()
 }
 
 # Compile all unique gene names to use as choices in the search bar

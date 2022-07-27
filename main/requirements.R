@@ -29,7 +29,7 @@ library(bigstatsr)
 library(matrixTests)
 
 # Parsing helpers
-library(gemmaAPI, lib.loc = "/home/omancarci/R/x86_64-redhat-linux-gnu-library/3.6/")
+library(gemma.R)
 library(ermineR) # devtools::install_github('PavlidisLab/ermineR')
 library(mygene) # BiocManager::install("mygene")
 library(homologene)

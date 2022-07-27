@@ -4,7 +4,7 @@
 #' ?genes=[list of genes]&taxa=[human|mouse|rat]&...
 server <- function(input, output, session) {
   session$onSessionEnded(function() {
-    session$userData$INTERRUPT <- T
+    session$userData$INTERRUPT <- TRUE
   })
 
   #' Advance the progress bar one step for the client
