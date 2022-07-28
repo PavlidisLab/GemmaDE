@@ -1,9 +1,9 @@
-source(paste(PROJDIR, 'main/requirements.R', sep='/'))
+devtools::load_all()
+PROJDIR <- here::here()
+DATADIR <- '/cosmos/data/project-data/GemmaDE'
+
 source(paste(PROJDIR, 'main/dependencies.R', sep='/'))
 
-library(parallel)
-library(edgeR)
-library(compcodeR)
 options(mc.cores = 5)
 USE <- 'simulated'
 
@@ -219,7 +219,7 @@ generateSyntheticData <- function (dataset, n.vars, samples.per.cond, n.diffexp,
   n.single.outliers.down.S1 <- apply(single.outliers[, S1] < 0, 1, sum)
   n.single.outliers.down.S2 <- apply(single.outliers[, S2] < 0, 1, sum)
   
-  nf <- calcNormFactors(Z)
+  nf <- edgeR::calcNormFactors(Z)
   norm.factors <- nf * colSums(Z)
   common.libsize <- exp(mean(log(colSums(Z))))
   pseudocounts <- sweep(Z + 0.5, 2, norm.factors, "/") * common.libsize
@@ -266,7 +266,7 @@ generateSyntheticData <- function (dataset, n.vars, samples.per.cond, n.diffexp,
   colnames(Z.TC) <- paste("sample", 1:ncol(Z.TC), sep = "")
   rownames(sample.annotations) <- colnames(Z.TC)
   rownames(variable.annotations.TC) <- rownames(Z.TC)
-  data.object <- compData(count.matrix = Z.TC, variable.annotations = variable.annotations.TC, 
+  data.object <- compcodeR::compData(count.matrix = Z.TC, variable.annotations = variable.annotations.TC, 
                           sample.annotations = sample.annotations, filtering = filtering, 
                           info.parameters = info.parameters)
   if (!is.null(output.file)) {
@@ -275,7 +275,7 @@ generateSyntheticData <- function (dataset, n.vars, samples.per.cond, n.diffexp,
   return(invisible(data.object))
 }
 
-eMeta <- DATA.HOLDER$human@experiment.meta %>% copy
+eMeta <- DATA.HOLDER$human@experiment.meta %>% data.table::copy()
 N_GENES <- nrow(DATA.HOLDER$human@gene.meta)
 N_EXP <- nrow(eMeta)
 CONTRASTS <- eMeta[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>% unique
@@ -288,14 +288,15 @@ r1exp <- function(n, n.1, val.1 = 2, val.1.rate = 1, rate = 1) {
 }
 
 CONTRAST_AFFINITY <- lapply(unique(EXP_CONTRASTS), function(contrast) {
-  data.table(contrast = contrast,
+  data.table::data.table(contrast = contrast,
              entrez.ID = 1:N_GENES,
              probability = r1exp(N_GENES, n.1 = 10)) %>%
     .[, effect := 1.5 + probability / 2] %>%
     .[sample(c(T, F), N_GENES, T, c(0.5012399, 0.4987578)), effect := 1 / effect]
-}) %>% rbindlist
+}) %>% data.table::rbindlist()
 
-saveRDS(CONTRAST_AFFINITY, paste(DATADIR, 'artificial/contrast_aff.rds', sep='/'))
+dir.create(file.path(DATADIR,'artificial'),showWarnings = FALSE)
+saveRDS(CONTRAST_AFFINITY, file.path(DATADIR, 'artificial/contrast_aff.rds'))
 
 mclapply(1:N_EXP, function(experiment) {
   message(paste0(Sys.time(), ' ... ', round(100 * experiment / N_EXP, 2), '%'))
@@ -303,15 +304,15 @@ mclapply(1:N_EXP, function(experiment) {
   # Sample some genes to DE
   if(eMeta$n.DE[experiment] > 0) {
     mDat <- CONTRAST_AFFINITY[contrast == EXP_CONTRASTS[experiment]] %>%
-      setorder(-probability) %>%
+      data.table::setorder(-probability) %>%
       head(floor(1.5 * eMeta$n.DE[experiment])) %>%
       .[sample(1:nrow(.), eMeta$n.DE[experiment], F, .$probability)] %>%
       .[, .(entrez.ID, effect)]
   } else
-    mDat <- data.table(entrez.ID = NA_character_, effect = NA_real_)
+    mDat <- data.table::data.table(entrez.ID = NA_character_, effect = NA_real_)
   
   # Make the others have effect of 1
-  mDat <- data.table(entrez.ID = 1:N_GENES,
+  mDat <- data.table::data.table(entrez.ID = 1:N_GENES,
                      effect = 1) %>% merge(mDat, by = 'entrez.ID', all.x = T) %>%
     .[!is.na(effect.y), effect.x := effect.y] %>%
     .[, c('effect', 'effect.x', 'effect.y') := list(effect.x, NULL, NULL)]
@@ -335,10 +336,11 @@ mclapply(1:N_EXP, function(experiment) {
     sample(MISSING, N_GENES - eMeta$ad.NumGenes[experiment])] <- NA_real_
   
   if(USE == 'DESeq2') {
-    suppressMessages(DESeqDataSetFromMatrix(countData = tmp@count.matrix,
+    suppressMessages(DESeq2::DESeqDataSetFromMatrix(countData = tmp@count.matrix,
                                             colData = tmp@sample.annotations,
-                                            design = ~ condition) %>% DESeq(quiet = T) %>% results %>%
-                       as.data.table(keep.rownames = T) %>% {
+                                            design = ~ condition) %>% DESeq2::DESeq(quiet = T) %>% 
+                       DESeq2::results() %>%
+                       data.table::as.data.table(keep.rownames = T) %>% {
                          list(contrast = EXP_CONTRASTS[experiment],
                               DEGs = mDat[effect != 1, entrez.ID],
                               entrez.ID = .[, as.integer(substring(rn, 2))],
@@ -346,16 +348,16 @@ mclapply(1:N_EXP, function(experiment) {
                               adj.pv = .[, padj])
                        })
   } else if(USE == 'Limma') {
-    d0 <- DGEList(tmp@count.matrix) %>% calcNormFactors()
+    d0 <- edgeR::DGEList(tmp@count.matrix) %>% edgeR::calcNormFactors()
     cutoff <- 1
     drop <- which(apply(cpm(d0), 1, max) < cutoff)
     d <- d0[-drop, ]
     mm <- model.matrix(~0 + condition, tmp@sample.annotations)
-    yy <- voom(d, mm, plot = F)
-    fit <- lmFit(yy, mm)
-    contr <- makeContrasts(conditionB - conditionA, levels = colnames(coef(fit)))
-    contrasts.fit(fit, contr) %>% eBayes %>% topTable(sort.by = 'P', number = Inf) %>%
-      as.data.table(keep.rownames = T) %>% {
+    yy <- limma::voom(d, mm, plot = F)
+    fit <- limma::lmFit(yy, mm)
+    contr <- limma::makeContrasts(conditionB - conditionA, levels = colnames(coef(fit)))
+    limma::contrasts.fit(fit, contr) %>% limma::eBayes() %>% limma::topTable(sort.by = 'P', number = Inf) %>%
+      data.table::as.data.table(keep.rownames = T) %>% {
         list(contrast = EXP_CONTRASTS[experiment],
              DEGs = mDat[effect != 1, entrez.ID],
              entrez.ID = .[, as.integer(substring(rn, 2))],

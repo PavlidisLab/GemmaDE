@@ -1,5 +1,5 @@
 PROJDIR <- here::here()
-DATADIR <- '/space/scratch/Ogdata/GemmaDE/data-temp'
+DATADIR <- '/cosmos/data/project-data/GemmaDE'
 devtools::load_all()
 dir.create(DATADIR,showWarnings = FALSE)
 

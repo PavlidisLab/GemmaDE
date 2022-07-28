@@ -533,7 +533,7 @@ server <- function(input, output, session) {
             }
           },
           globals = c("CACHE.BACKGROUND", "NULLS"),
-          seed = T
+          seed = TRUE
         ) %...>% (function(conditions) {
           if (!is.null(session$userData$INTERRUPT)) {
             return(NULL)

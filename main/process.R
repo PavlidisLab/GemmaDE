@@ -439,6 +439,7 @@ normalize <- function(scores, taxa = getConfig(key = "taxa")$value) {
 #' @param doNorm Whether or not to normalize scores
 #' @param CACHE A cache to use. If null, uses the global CACHE.BACKGROUND
 enrich <- function(rankings, options = getConfig(), doNorm = T, CACHE = NULL) {
+  tictoc::tic()
   terms <- getTags(options$taxa$value, rankings$rn, options$dist$value, CACHE = CACHE)
   
   terms <- rankings %>%
@@ -460,10 +461,16 @@ enrich <- function(rankings, options = getConfig(), doNorm = T, CACHE = NULL) {
   
   # terms_bckp<<-terms
   
+  # filtering singles
+  grouping = paste(terms$cf.Cat,terms$cf.BaseLongUri,terms$cf.ValLongUri)
+  valid_groups = grouping %>% table %>% {names(.[.>1])}
+  terms = terms[grouping %in% valid_groups,]
+  
   gene_names = 
     colnames(terms)[!colnames(terms) %in% c("reverse", "distance", "ee.ID", "rn", "score", "f.IN", "f.OUT", "ee.q", "normalization",'cf.Cat','cf.BaseLongUri','cf.ValLongUri')]
   grouping_vars = c('cf.Cat','cf.BaseLongUri','cf.ValLongUri')
   
+
   keys<- terms %>% 
     dplyr::group_by(cf.Cat,cf.BaseLongUri,cf.ValLongUri) %>% group_keys()
   term_ps <- terms %>% 
@@ -492,5 +499,6 @@ enrich <- function(rankings, options = getConfig(), doNorm = T, CACHE = NULL) {
     data.table::setorder(-stat, distance) %>%
     .[, .SD[1], stat] %>%
     data.table::setorder(-score) -> out
+  tictoc::toc()
   return(out)
 }

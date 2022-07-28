@@ -1,16 +1,19 @@
 # source(paste(PROJDIR, 'main/requirements.R', sep='/'))
 devtools::load_all()
 PROJDIR <- here::here()
-DATADIR <- here::here('data-temp')
+DATADIR <- '/cosmos/data/project-data/GemmaDE'
 library(parallel)
 options(mc.cores = 14)
 
 ITERS <- 1000
 BLOCK <- 500
 
-OPTIONS <- c('artificial', 'human', 'mouse', 'rat')
+# removed artificial from options. the current code never saves it to data 
+# holder light version and don't think it's used in downstream for the app -ogan
+OPTIONS <- c( 'human', 'mouse', 'rat')
 
-x = 'artificial'
+# x = 'human'
+dir.create(file.path(DATADIR,'updated_nulls'),showWarnings = FALSE, recursive = TRUE)
 
 for(x in OPTIONS) {
   if(!exists('DATA.HOLDER') || !x %in% names(DATA.HOLDER)) {
@@ -21,7 +24,8 @@ for(x in OPTIONS) {
   }
   
   message(paste0(Sys.time(), ' ... Starting ', x))
-  if(F && file.exists(paste0(paste(DATADIR, 'updated_nulls/', sep='/'), x, '.rds'))) {
+  # note the hard skip presumably added to force overwriting at some point - ogan
+  if(F && file.exists(file.path(DATADIR, 'updated_nulls',paste0(x, '.rds')))) {
     message(paste0('File for ', x, ' already exists... Skipping.'))
   } else {
     mclapply(1:ITERS, function(j) {
@@ -31,16 +35,16 @@ for(x in OPTIONS) {
       DATA.HOLDER[[x]]@gene.meta[sample(1:nrow(DATA.HOLDER[[x]]@gene.meta), BLOCK), entrez.ID] %>%
         search(getConfig(taxa = x)) %>%
         .[, c(1:500, 505)] %>% # TODO BLOCK
-        melt(id.vars = 'rn') %>%
+        data.table::melt(id.vars = 'rn') %>%
         .[, !'variable'] %>%
         .[, .(score.sum = sum(value, na.rm = T),
               score.sqsum = sum(value^2, na.rm = T)), rn]
-    }) %>% rbindlist %>% {
+    }) %>% data.table::rbindlist() %>% {
       message('Saving...')
       
       .[, .(score.mean = sum(score.sum) / (BLOCK * ITERS),
             score.sd = sqrt(sum(score.sqsum) / (BLOCK * ITERS) - (sum(score.sum) / (BLOCK * ITERS))^2)), rn] %>%
-        saveRDS(paste0(paste(DATADIR, 'updated_nulls/', sep='/'), x, '.rds'))
+        saveRDS(file.path(DATADIR, 'updated_nulls',paste0(x, '.rds')))
       
       gc()
       NULL
