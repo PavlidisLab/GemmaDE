@@ -1,9 +1,7 @@
 library(shiny)
-
-PROJDIR <- '/home/kchen/projects/GemmaDE'
-DATADIR <- '/space/scratch/kchen/GemmaDE/data'
-
-runApp('main', port = 18233, launch.browser = F)
+PROJDIR <- here::here()
+DATADIR <- '/cosmos/data/project-data/GemmaDE'
+runApp('main', port = 18235, launch.browser = F)
 
 # Roadmap ----
 # [?] Consider independent component analysis to reduce feature space

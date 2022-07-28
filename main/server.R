@@ -4,7 +4,7 @@
 #' ?genes=[list of genes]&taxa=[human|mouse|rat]&...
 server <- function(input, output, session) {
   session$onSessionEnded(function() {
-    session$userData$INTERRUPT <- T
+    session$userData$INTERRUPT <- TRUE
   })
 
   #' Advance the progress bar one step for the client
@@ -161,22 +161,14 @@ server <- function(input, output, session) {
             output$results_genes <- generateGenePage(evidence)
           })
         })
-      } else if (tab == "Gene Contributions" && (is.null(session$userData$contribsRendered) || is.null(session$userData$contribsUpdated) || session$userData$contribsUpdated)) {
+      } else if (tab == "Gene Contributions" && is.null(session$userData$contribsRendered)) {
         session$userData$contribsRendered <- T
-        session$userData$contribsUpdated <- FALSE
-        
-        output$results_contribs <- generateGeneContribs(session$userData$plotData$filteredConditions, session$userData$plotData$options)
+
+        output$results_contribs <- generateGeneContribs(session$userData$plotData$conditions, session$userData$plotData$options)
       }
     }
   }
-  
-  observe({
-    if(!is.null(input$results_rows_all)){
-      session$userData$contribsUpdated = TRUE
-      session$userData$plotData$filteredConditions = session$userData$plotData$conditions[input$results_rows_all,]
-    }
-  })
-  
+
   # Open other tabs
   observeEvent(input$tabs, {
     openTab(input$tabs)
@@ -541,7 +533,7 @@ server <- function(input, output, session) {
             }
           },
           globals = c("CACHE.BACKGROUND", "NULLS"),
-          seed = T
+          seed = TRUE
         ) %...>% (function(conditions) {
           if (!is.null(session$userData$INTERRUPT)) {
             return(NULL)

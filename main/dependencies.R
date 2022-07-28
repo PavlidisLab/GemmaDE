@@ -8,10 +8,10 @@ options(max.gemma = 1000) # The maximum number of samples to pull from Gemma for
 options(chunk.size = 200) # For artificial data generation; not used in live app
 
 options(app.algorithm.gene.pre = quote(zScore * (1 - log10(Rfast::Pmax(matrix(1e-10, ncol = ncol(pv), nrow = nrow(pv)), pv)))))
-options(app.algorithm.gene.post = quote(zScore %>% abs() %>% `*`(MFX_WEIGHT) %>% t() %>% as.data.table()))
+options(app.algorithm.gene.post = quote(zScore %>% abs() %>% `*`(MFX_WEIGHT) %>% t() %>% data.table::as.data.table()))
 options(app.algorithm.experiment = quote(ee.q * (1 + f.IN) / (1 + 10^f.OUT)))
 
-plan(multicore, workers = 32) # Maximum clients that Gemma DE can serve
+future::plan(future::multicore, workers = 32) # Maximum clients that Gemma DE can serve
 
 # The signature field can potentially have duplicate entries, which Shiny's underlying
 # library (selectize.js) doesn't support. Kinda hacky way to replace the selectize dependency
@@ -146,13 +146,13 @@ addConfig(geeq = F, description = "Score experiment quality (GEEQ)", tooltip = "
 
 addConfig(sig = "", description = NA, category = NA)
 
-source("process.R")
-source("renderTools.R")
-source("gemmaAPI.R")
-source("load.R")
+source(paste(PROJDIR, 'main/process.R', sep='/'))
+source(paste(PROJDIR, 'main/renderTools.R', sep='/'))
+source(paste(PROJDIR, 'main/gemmaAPI.R', sep='/'))
+source(paste(PROJDIR, 'main/load.R', sep='/'))
 
 CORPUS_STATS <- lapply(DATA.HOLDER, function(x) x@experiment.meta) %>%
-  rbindlist() %>%
+  data.table::rbindlist() %>%
   {
     mComparisons <- nrow(.)
     .[!duplicated(ee.ID), .(

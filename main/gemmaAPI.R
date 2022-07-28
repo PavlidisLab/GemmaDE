@@ -4,7 +4,7 @@
 #'
 #' @param genes The genes to query
 #' @param taxa The taxa to query
-geneEvidence <- async(function(genes, taxa = getConfig("taxa")$value) {
+geneEvidence <- async::async(function(genes, taxa = getConfig("taxa")$value) {
   prettyPrint <- function(evidence) {
     list(
       cf.ValLongUri = evidence$phenotypes[[1]]$valueUri,
@@ -61,7 +61,7 @@ geneEvidence <- async(function(genes, taxa = getConfig("taxa")$value) {
 #' @param taxa The taxa scope
 #' @param genes Genes to search for
 #' @param keepNonSpecific, consolidate Options passed on to Gemma
-geneExpression <- async(function(ee.IDs, rsc.IDs, taxa = getConfig("taxa")$value, genes, keepNonSpecific = T, consolidate = "average") {
+geneExpression <- async::async(function(ee.IDs, rsc.IDs, taxa = getConfig("taxa")$value, genes, keepNonSpecific = T, consolidate = "average") {
   # Get expression information for ee.ID by sending `length(ee.IDs)` async requests
   mLongData <- rbindlist(lapply(taxa, function(i) DATA.HOLDER[[i]]@experiment.meta[, .(ee.ID, rsc.ID, ee.Name = as.character(ee.Name), cf.Baseline, cf.Val, ee.Scale)]))
 
