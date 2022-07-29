@@ -1,5 +1,6 @@
 PROJDIR <- here::here()
 DATADIR <- '/cosmos/data/project-data/GemmaDE'
+FREEZEDIR <- '/cosmos/data/project-data/GemmaDE/gemma_freeze'
 devtools::load_all()
 dir.create(DATADIR,showWarnings = FALSE)
 
@@ -21,7 +22,10 @@ if(!exists('DATA.HOLDER')) {
       message(paste('Loading', taxon, 'metadata'))
       
       # nathaniel's data files. need documentation on these - ogan
-      objs = load(file.path('/space/grp/nlim/MDE/RDataRepo/Packaged/Current', taxon, 'metadata.RDAT'))
+      # backed up everything in cosmos with the rest of the data. 
+      # original path is kept in case it's needed later
+      # objs = load(file.path('/space/grp/nlim/MDE/RDataRepo/Packaged/Current', taxon, 'metadata.RDAT'))
+      objs = load(file.path(FREEZEDIR,'Current', taxon, 'metadata.RDAT'))
       
       
       meta.platformCoverage <- data.table::melt(meta.platformCoverage, id.vars = 'gene.ID') %>%
@@ -78,10 +82,18 @@ if(!exists('DATA.HOLDER')) {
       
       message('Loading data')
       
+      # original paths to nathaniel's freeze is kept in case needed later
+      # dataHolder <- list(
+      #   pv = readRDS(paste0('/space/grp/nlim/MDE/RDataRepo/Packaged/Current/', taxon, '/pv.RDS')) %>%
+      #     `rownames<-`(gsub('GENE_(.*)', '\\1', rownames(.))),
+      #   fc = readRDS(paste0('/space/grp/nlim/MDE/RDataRepo/Packaged/Current/', taxon, '/fc.RDS')) %>%
+      #     `rownames<-`(gsub('GENE_(.*)', '\\1', rownames(.)))
+      # )
+      
       dataHolder <- list(
-        pv = readRDS(paste0('/space/grp/nlim/MDE/RDataRepo/Packaged/Current/', taxon, '/pv.RDS')) %>%
+        pv = readRDS(file.path(FREEZEDIR,'Current/', taxon, '/pv.RDS')) %>%
           `rownames<-`(gsub('GENE_(.*)', '\\1', rownames(.))),
-        fc = readRDS(paste0('/space/grp/nlim/MDE/RDataRepo/Packaged/Current/', taxon, '/fc.RDS')) %>%
+        fc = readRDS(file.path(FREEZEDIR, 'Current/', taxon, '/fc.RDS')) %>%
           `rownames<-`(gsub('GENE_(.*)', '\\1', rownames(.)))
       )
       

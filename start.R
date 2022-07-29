@@ -1,6 +1,7 @@
 library(shiny)
 PROJDIR <- here::here()
 DATADIR <- '/cosmos/data/project-data/GemmaDE'
+FREEZEDIR <- '/cosmos/data/project-data/GemmaDE/gemma_freeze'
 runApp('main', port = 18235, launch.browser = F)
 
 # Roadmap ----

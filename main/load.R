@@ -47,9 +47,16 @@ setClass("EData", representation(
 
 # Load the data into the global environment
 if (!exists("ONTOLOGIES") || !exists("ONTOLOGIES.DEFS")) {
-  ONTOLOGIES <- data.table::fread("/space/grp/nlim/CronGemmaDump/Ontology/Ontology_Dump_MERGED.TSV")
-  ONTOLOGIES.DEFS <- data.table::fread("/space/grp/nlim/CronGemmaDump/Ontology/Ontology_Dump_MERGED_DEF.TSV")
+  
+  # backed up nathaniels files at cosmos with the rest of the data. keeping these
+  # to remember the original paths if needed
+  # ONTOLOGIES <- data.table::fread("/space/grp/nlim/CronGemmaDump/Ontology/Ontology_Dump_MERGED.TSV")
+  # ONTOLOGIES.DEFS <- data.table::fread("/space/grp/nlim/CronGemmaDump/Ontology/Ontology_Dump_MERGED_DEF.TSV")
 
+  ONTOLOGIES <- data.table::fread(file.path(FREEZEDIR,"CronGemmaDump/Ontology/Ontology_Dump_MERGED.TSV"))
+  ONTOLOGIES.DEFS <- data.table::fread(file.path(FREEZEDIR,"CronGemmaDump/Ontology/Ontology_Dump_MERGED_DEF.TSV"))
+  
+  
   ONTOLOGIES[, c("ChildNode", "ParentNode")] <- NULL
   ONTOLOGIES.DEFS$Node <- NULL
 
