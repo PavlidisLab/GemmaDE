@@ -486,10 +486,10 @@ server <- function(input, output, session) {
           lapply(options$taxa$value, function(t) {
             mOp <- options
             mOp$taxa$value <- t
-            search(genes[taxon == t, entrez.ID], mOp)
+            search(genes[taxon == t, entrez.ID], taxa = mOp$taxa$value, confounds = mOp$confounds$value, filter = mOp$filter$value, mfx = mOp$mfx$value, geeq = mOp$geeq$value, p_threshold = mOp$pv$value)
           })
         } else if (length(options$taxa$value) == 1) {
-          search(genes$genes, options)
+          search(genes$genes, taxa = options$taxa$value, confounds = options$confounds$value, filter = options$filter$value,  mfx = options$mfx$value, geeq = options$geeq$value, p_threshold = options$pv$value)
         }
       },
       globals = "DATA.HOLDER",
@@ -512,7 +512,7 @@ server <- function(input, output, session) {
           {
             # Do enrichments asynchronously too.
             if (length(options$taxa$value) == 1) {
-              copy(enrich(experiments, options))
+              copy(enrich(experiments, taxa = options$taxa$value, dist = options$dist$value,categories = options$categories$value))
             } else {
               # TODO it's maybe reasonable to mclapply this as long as the
               # multicore workers (@seealso dependencies.R) is sufficiently low
@@ -521,7 +521,7 @@ server <- function(input, output, session) {
                 mOp$taxa$value <- options$taxa$value[t]
                 mSearchable <- experiments[[t]]
 
-                enrich(mSearchable, mOp) %>%
+                enrich(mSearchable, taxa = mOp$taxa$value, dist = mOp$dist$value,categories = mOp$categories$value) %>%
                   setnames(genes[taxon == options$taxa$value[t], gene.realName],
                     genes[taxon == options$taxa$value[t], identifier],
                     skip_absent = T
@@ -583,8 +583,8 @@ server <- function(input, output, session) {
             }, function(file) {
               write.csv(session$userData$plotData$conditions %>%
                 .[, !c("Condition Comparison", "Evidence")] %>%
-                setorder(-`Test Statistic`, `Ontology Steps`) %>%
-                setnames(c("cf.Cat", "cf.BaseLongUri", "cf.ValLongUri"), c("Category", "Baseline", "Value")), file)
+                data.table::setorder(-`Test Statistic`, `Ontology Steps`) %>%
+                data.table::setnames(c("cf.Cat", "cf.BaseLongUri", "cf.ValLongUri"), c("Category", "Baseline", "Value")), file)
             }, "text/csv")
           }
         })

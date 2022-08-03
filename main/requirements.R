@@ -1,6 +1,6 @@
 # trying to replace this file with a package load for all parts. 
 # new dependencies are added to DESCRIPTION and function calls are made explicit
-# across all files
+# across all files - ogan
 
 # Visualizations
 library(shiny)

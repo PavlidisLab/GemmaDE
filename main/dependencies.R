@@ -146,7 +146,6 @@ addConfig(geeq = F, description = "Score experiment quality (GEEQ)", tooltip = "
 
 addConfig(sig = "", description = NA, category = NA)
 
-source(paste(PROJDIR, 'main/process.R', sep='/'))
 source(paste(PROJDIR, 'main/renderTools.R', sep='/'))
 source(paste(PROJDIR, 'main/gemmaAPI.R', sep='/'))
 source(paste(PROJDIR, 'main/load.R', sep='/'))

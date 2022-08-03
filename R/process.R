@@ -18,101 +18,6 @@ cor.wt <- function(x, y, w = rep(1, length(y))) {
   }
 }
 
-#' Search
-#'
-#' Uses the M-VSM to sort experiments that show at least one of the genes as DE.
-#'
-#' @param genes A list of Entrez Gene IDs (ie. 1, 22, 480) as characters
-#' @param options Optional extra parameters to pass from @seealso(getConfig)
-search <- function(genes, options = getConfig(), DATA = NULL) {
-  if (is.null(DATA)) {
-    DATA <- DATA.HOLDER
-  }
-  
-  mData <- DATA[[options$taxa$value]]
-  
-  if (!options$confounds$value) {
-    experimentMask <- !mData@experiment.meta$ef.IsBatchConfounded
-  } else {
-    experimentMask <- rep(T, nrow(mData@experiment.meta))
-  }
-  
-  if (!is.null(options$filter$value)) {
-    experimentMask <- experimentMask & options$filter$value
-  }
-  
-  # Only retain GOI
-  geneMask <- which(mData@gene.meta$entrez.ID %in% genes)
-  
-  n.genes <- length(geneMask)
-  if (n.genes == 0) {
-    return(NULL)
-  }
-  
-  query <- suppressWarnings(options$sig$value %>% as.numeric())
-  # TODO Should signal why it stopped (mismatch of signature length)
-  if (length(query) > 1 && length(query) != n.genes) {
-    return(NULL)
-  }
-  
-  # if (length(query) == 0 && options$method$value != "diff") {
-  #   return(NULL)
-  # }
-  
-  # P-values for only the GOI
-  mDimNames <- dimnames(mData@data$adj.pv)
-  pv <- mData@data$adj.pv[, geneMask, drop = F] %>%
-    `dimnames<-`(list(mDimNames[[1]], mDimNames[[2]][geneMask])) %>%
-    .[experimentMask, , drop = F] %>%
-    t()
-  zScore <- mData@data$zscore[, geneMask, drop = F] %>%
-    `dimnames<-`(list(mDimNames[[1]], mDimNames[[2]][geneMask])) %>%
-    .[experimentMask, , drop = F] %>%
-    t()
-  
-  pv[is.na(pv)] <- 1
-  zScore[is.na(zScore)] <- 0
-  
-  zScore <- data.table::as.data.table(zScore)
-  
-  # Number of DEGs for experiments that pass thresholds
-  experimentMeta <- mData@experiment.meta[experimentMask, .(rsc.ID, ee.qScore, n.DE, ad.NumGenes)] %>%
-    as.data.frame() %>%
-    `rownames<-`(.[, "rsc.ID"])
-  
-  experimentMeta$n.DE[is.na(experimentMeta$n.DE)] <- 0
-  
-  if (!options$geeq$value) {
-    experimentMeta$ee.qScore <- 2
-  } else {
-    experimentMeta$ee.qScore <- pmax(experimentMeta$ee.qScore + 1, 0, na.rm = T)
-  }
-  experimentMeta$ee.qScore <- sqrt(experimentMeta$ee.qScore / 2)
-  
-  if (options$mfx$value) {
-    MFX_WEIGHT <- 1.5 - mData@gene.meta$mfx.Rank[geneMask]
-  } else {
-    MFX_WEIGHT <- rep(1, n.genes)
-  }
-  
-  # Adding 1 to not exclude CCs where p.adj is 1
-  zScore <- getOption("app.algorithm.gene.pre") %>% eval()
-  
-  ret <- getOption("app.algorithm.gene.post") %>%
-    eval() %>%
-    .[, score := Rfast::rowsums(as.matrix(.))]
-  
-  experimentN <- Rfast::colsums(pv <= options$pv$value)
-  
-  ret %>%
-    data.table::setnames(c(mData@gene.meta$gene.Name[geneMask], "score")) %>%
-    .[, f.IN := experimentN / n.genes] %>%
-    .[, f.OUT := pmax(0, experimentMeta$n.DE - experimentN) / experimentMeta$ad.NumGenes] %>%
-    .[, ee.q := experimentMeta$ee.qScore] %>%
-    .[, rn := colnames(zScore)] %>%
-    data.table::setorder(-score)
-}
-
 #' getTags
 #'
 #' Get tags for the specified experiments within a specified distance.
@@ -122,7 +27,7 @@ search <- function(genes, options = getConfig(), DATA = NULL) {
 #' @param max.distance The maximum tree traversal distance to include
 #' @param inv Whether or not to inverse the selected rscs
 #' @param CACHE A cache to use. If null, uses the global CACHE.BACKGROUND
-getTags <- function(taxa = getConfig(key = "taxa")$value,
+getTags <- function(taxa,
                     rsc.IDs = NULL, max.distance = Inf, inv = F, CACHE = NULL) {
   if (length(taxa) > 1) {
     return(data.table::rbindlist(lapply(taxa, getTags, rsc.IDs, max.distance, inv, CACHE)))
@@ -143,6 +48,90 @@ getTags <- function(taxa = getConfig(key = "taxa")$value,
   CACHE[[taxa]][distance <= max.distance & rsc.ID %in% rsc.IDs]
 }
 
+
+#' Reorder Tags
+#'
+#' Reorders the baseline and contrast so that the most common one is in the baseline.
+#'
+#' @param cache The cache entry
+#'
+#' @return A reordered cache entry
+reorderTags <- function(cache) {
+  vals <- cache[, .N, cf.BaseLongUri] %>%
+    merge(cache[, .N, cf.ValLongUri],
+          by.x = "cf.BaseLongUri", by.y = "cf.ValLongUri", all = T, sort = F, allow.cartesian = T
+    ) %>%
+    .[is.na(N.x), N.x := 0] %>%
+    .[is.na(N.y), N.y := 0] %>%
+    .[, N := N.x + N.y, cf.BaseLongUri] %>%
+    .[, .(tag = cf.BaseLongUri, N)]
+  
+  cache[, .(rsc.ID, ee.ID, cf.Cat, b = cf.BaseLongUri, v = cf.ValLongUri, distance)] %>%
+    merge(vals, by.x = "b", by.y = "tag", sort = F, allow.cartesian = T) %>%
+    merge(vals, by.x = "v", by.y = "tag", sort = F, allow.cartesian = T) %>%
+    .[, reverse := (N.y > N.x) | (N.y == N.x & as.character(b) < as.character(v))] %>%
+    .[reverse == T, c("b", "v") := list(v, b)] %>%
+    .[, .(
+      rsc.ID = as.factor(rsc.ID), ee.ID,
+      cf.Cat = as.factor(cf.Cat), cf.BaseLongUri = as.factor(b), cf.ValLongUri = as.factor(v),
+      reverse, distance
+    )]
+}
+
+#' Reorder Tags
+#'
+#' Reorders the baseline and contrast so that the most common one is in the baseline for the expanded
+#' set of tags.
+#'
+#' @param cache The cache entry
+#'
+#' @return A reordered cache entry
+reorderTags2 <- function(cache) {
+  vals <- cache[, .N, cf.BaseLongUri] %>%
+    merge(cache[, .N, cf.ValLongUri],
+          by.x = "cf.BaseLongUri", by.y = "cf.ValLongUri", all = T, sort = F, allow.cartesian = T
+    ) %>%
+    .[is.na(N.x), N.x := 0] %>%
+    .[is.na(N.y), N.y := 0] %>%
+    .[, N := N.x + N.y, cf.BaseLongUri] %>%
+    .[, .(tag = cf.BaseLongUri, N)]
+  
+  cache[, .(rsc.ID, ee.ID, cf.Cat, b = cf.BaseLongUri, v = cf.ValLongUri, distance, oreverse = reverse)] %>%
+    merge(vals, by.x = "b", by.y = "tag", sort = F, allow.cartesian = T) %>%
+    merge(vals, by.x = "v", by.y = "tag", sort = F, allow.cartesian = T) %>%
+    .[, reverse := (N.y > N.x) | (N.y == N.x & as.character(b) < as.character(v))] %>%
+    .[reverse == T, c("b", "v") := list(v, b)] %>%
+    .[, reverse := ifelse(oreverse, !reverse, reverse)] %>%
+    .[, .(
+      rsc.ID = as.factor(rsc.ID), ee.ID,
+      cf.Cat = as.factor(cf.Cat), cf.BaseLongUri = as.factor(b), cf.ValLongUri = as.factor(v),
+      reverse, distance
+    )]
+}
+
+# TODO this could be merged with reorderTags2
+reorderTags3 <- function(data) {
+  vals <- data[, .N, cf.BaseLongUri] %>%
+    merge(data[, .N, cf.ValLongUri],
+          by.x = "cf.BaseLongUri", by.y = "cf.ValLongUri", all = T, sort = F, allow.cartesian = T
+    ) %>%
+    .[is.na(N.x), N.x := 0] %>%
+    .[is.na(N.y), N.y := 0] %>%
+    .[, N := N.x + N.y, cf.BaseLongUri] %>%
+    .[, .(tag = cf.BaseLongUri, N)]
+  
+  data %>%
+    data.table::copy() %>%
+    data.table::setnames(c("cf.BaseLongUri", "cf.ValLongUri"), c("b", "v")) %>%
+    merge(vals, by.x = "b", by.y = "tag", sort = F, allow.cartesian = T) %>%
+    merge(vals, by.x = "v", by.y = "tag", sort = F, allow.cartesian = T) %>%
+    .[, reverse := (N.y > N.x) | (N.y == N.x & as.character(b) < as.character(v))] %>%
+    .[reverse == T, c("b", "v") := list(v, b)] %>%
+    .[, c("cf.Cat", "cf.BaseLongUri", "cf.ValLongUri") :=
+        list(as.factor(cf.Cat), as.factor(b), as.factor(v))] %>%
+    .[, !c("reverse", "b", "v", "N.x", "N.y")]
+}
+
 #' Precompute Tags
 #'
 #' Get all the expanded ontology tags within a given taxon.
@@ -152,10 +141,18 @@ getTags <- function(taxa = getConfig(key = "taxa")$value,
 #' @param graphTerms The unique ontology terms. Computes internally if not supplied
 #' @param DATA Data to use. If null, uses the global DATA.HOLDER
 #' @param POST Whether to do "post-pre-processing" like reordering and trimming
-precomputeTags <- function(taxa = getConfig(key = "taxa")$value, mGraph = NULL, graphTerms = NULL,
-                           DATA = NULL, POST = T) {
+precomputeTags <- function(taxa, mGraph = NULL, graphTerms = NULL,
+                           DATA = NULL, ONTOLOGIES = NULL, ONTOLOGIES.DEFS = NULL , POST = T) {
   if (is.null(DATA)) {
     DATA <- DATA.HOLDER
+  }
+  
+  if(is.null(ONTOLOGIES)){
+    ONTOLOGIES = parent.frame()$ONTOLOGIES
+  }
+  
+  if(is.null(ONTOLOGIES.DEFS)){
+    ONTOLOGIES.DEFS = parent.frame()$ONTOLOGIES.DEFS
   }
   
   if (is.null(mGraph)) {
@@ -323,88 +320,6 @@ precomputeTags <- function(taxa = getConfig(key = "taxa")$value, mGraph = NULL, 
     }
 }
 
-#' Reorder Tags
-#'
-#' Reorders the baseline and contrast so that the most common one is in the baseline.
-#'
-#' @param cache The cache entry
-#'
-#' @return A reordered cache entry
-reorderTags <- function(cache) {
-  vals <- cache[, .N, cf.BaseLongUri] %>%
-    merge(cache[, .N, cf.ValLongUri],
-          by.x = "cf.BaseLongUri", by.y = "cf.ValLongUri", all = T, sort = F, allow.cartesian = T
-    ) %>%
-    .[is.na(N.x), N.x := 0] %>%
-    .[is.na(N.y), N.y := 0] %>%
-    .[, N := N.x + N.y, cf.BaseLongUri] %>%
-    .[, .(tag = cf.BaseLongUri, N)]
-  
-  cache[, .(rsc.ID, ee.ID, cf.Cat, b = cf.BaseLongUri, v = cf.ValLongUri, distance)] %>%
-    merge(vals, by.x = "b", by.y = "tag", sort = F, allow.cartesian = T) %>%
-    merge(vals, by.x = "v", by.y = "tag", sort = F, allow.cartesian = T) %>%
-    .[, reverse := (N.y > N.x) | (N.y == N.x & as.character(b) < as.character(v))] %>%
-    .[reverse == T, c("b", "v") := list(v, b)] %>%
-    .[, .(
-      rsc.ID = as.factor(rsc.ID), ee.ID,
-      cf.Cat = as.factor(cf.Cat), cf.BaseLongUri = as.factor(b), cf.ValLongUri = as.factor(v),
-      reverse, distance
-    )]
-}
-
-#' Reorder Tags
-#'
-#' Reorders the baseline and contrast so that the most common one is in the baseline for the expanded
-#' set of tags.
-#'
-#' @param cache The cache entry
-#'
-#' @return A reordered cache entry
-reorderTags2 <- function(cache) {
-  vals <- cache[, .N, cf.BaseLongUri] %>%
-    merge(cache[, .N, cf.ValLongUri],
-          by.x = "cf.BaseLongUri", by.y = "cf.ValLongUri", all = T, sort = F, allow.cartesian = T
-    ) %>%
-    .[is.na(N.x), N.x := 0] %>%
-    .[is.na(N.y), N.y := 0] %>%
-    .[, N := N.x + N.y, cf.BaseLongUri] %>%
-    .[, .(tag = cf.BaseLongUri, N)]
-  
-  cache[, .(rsc.ID, ee.ID, cf.Cat, b = cf.BaseLongUri, v = cf.ValLongUri, distance, oreverse = reverse)] %>%
-    merge(vals, by.x = "b", by.y = "tag", sort = F, allow.cartesian = T) %>%
-    merge(vals, by.x = "v", by.y = "tag", sort = F, allow.cartesian = T) %>%
-    .[, reverse := (N.y > N.x) | (N.y == N.x & as.character(b) < as.character(v))] %>%
-    .[reverse == T, c("b", "v") := list(v, b)] %>%
-    .[, reverse := ifelse(oreverse, !reverse, reverse)] %>%
-    .[, .(
-      rsc.ID = as.factor(rsc.ID), ee.ID,
-      cf.Cat = as.factor(cf.Cat), cf.BaseLongUri = as.factor(b), cf.ValLongUri = as.factor(v),
-      reverse, distance
-    )]
-}
-
-# TODO this could be merged with reorderTags2
-reorderTags3 <- function(data) {
-  vals <- data[, .N, cf.BaseLongUri] %>%
-    merge(data[, .N, cf.ValLongUri],
-          by.x = "cf.BaseLongUri", by.y = "cf.ValLongUri", all = T, sort = F, allow.cartesian = T
-    ) %>%
-    .[is.na(N.x), N.x := 0] %>%
-    .[is.na(N.y), N.y := 0] %>%
-    .[, N := N.x + N.y, cf.BaseLongUri] %>%
-    .[, .(tag = cf.BaseLongUri, N)]
-  
-  data %>%
-    copy() %>%
-    data.table::setnames(c("cf.BaseLongUri", "cf.ValLongUri"), c("b", "v")) %>%
-    merge(vals, by.x = "b", by.y = "tag", sort = F, allow.cartesian = T) %>%
-    merge(vals, by.x = "v", by.y = "tag", sort = F, allow.cartesian = T) %>%
-    .[, reverse := (N.y > N.x) | (N.y == N.x & as.character(b) < as.character(v))] %>%
-    .[reverse == T, c("b", "v") := list(v, b)] %>%
-    .[, c("cf.Cat", "cf.BaseLongUri", "cf.ValLongUri") :=
-        list(as.factor(cf.Cat), as.factor(b), as.factor(v))] %>%
-    .[, !c("reverse", "b", "v", "N.x", "N.y")]
-}
 
 #' Normalize scores
 #'
@@ -413,7 +328,8 @@ reorderTags3 <- function(data) {
 #'
 #' @param scores The output of (@seealso search).
 #' @param taxa The taxon
-normalize <- function(scores, taxa = getConfig(key = "taxa")$value) {
+normalize <- function(scores, #taxa = getConfig(key = "taxa")$value
+                      taxa) {
   scores %>%
     merge(NULLS[[taxa]], by = "rn", sort = F) %>%
     .[, lapply(.SD, function(x) (x - score.mean) / score.sd),
@@ -429,6 +345,7 @@ normalize <- function(scores, taxa = getConfig(key = "taxa")$value) {
     .[, !"sn"]
 }
 
+
 #' Enrich
 #'
 #' Given rankings (@seealso search), generate a ranking-weighted count of all terms that can be
@@ -438,21 +355,27 @@ normalize <- function(scores, taxa = getConfig(key = "taxa")$value) {
 #' @param options The options
 #' @param doNorm Whether or not to normalize scores
 #' @param CACHE A cache to use. If null, uses the global CACHE.BACKGROUND
-enrich <- function(rankings, options = getConfig(), doNorm = T, CACHE = NULL) {
+enrich <- function(rankings, # options = getConfig(),
+                   taxa,
+                   dist,
+                   categories,
+                   doNorm = T, CACHE = NULL) {
   tictoc::tic()
-  terms <- getTags(options$taxa$value, rankings$rn, options$dist$value, CACHE = CACHE)
-  
+  # terms <- getTags(options$taxa$value, rankings$rn, options$dist$value, CACHE = CACHE)
+  terms <- getTags(taxa, rankings$rn, dist, CACHE = CACHE)
   terms <- rankings %>%
     {
       if (doNorm) {
-        normalize(., options$taxa$value)
+        # normalize(., options$taxa$value)
+        normalize(., taxa)
       } else {
         .
       }
     } %>%
     merge(terms, by.x = "rn", by.y = "rsc.ID", sort = F) %>%
     .[score > 0] %>%
-    .[cf.Cat %in% options$categories$value]
+    # .[cf.Cat %in% options$categories$value]
+    .[cf.Cat %in% categories]
   # .[, N := length(unique(ee.ID)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
   # .[N > 1, !'N']
   
@@ -470,7 +393,7 @@ enrich <- function(rankings, options = getConfig(), doNorm = T, CACHE = NULL) {
     colnames(terms)[!colnames(terms) %in% c("reverse", "distance", "ee.ID", "rn", "score", "f.IN", "f.OUT", "ee.q", "normalization",'cf.Cat','cf.BaseLongUri','cf.ValLongUri')]
   grouping_vars = c('cf.Cat','cf.BaseLongUri','cf.ValLongUri')
   
-
+  
   keys<- terms %>% 
     dplyr::group_by(cf.Cat,cf.BaseLongUri,cf.ValLongUri) %>% group_keys()
   term_ps <- terms %>% 
@@ -502,3 +425,120 @@ enrich <- function(rankings, options = getConfig(), doNorm = T, CACHE = NULL) {
   tictoc::toc()
   return(out)
 }
+
+
+
+
+
+#' Search
+#'
+#' Uses the M-VSM to sort experiments that show at least one of the genes as DE.
+#'
+#' @param genes A list of Entrez Gene IDs (ie. 1, 22, 480) as characters
+#' @param options Optional extra parameters to pass from @seealso(getConfig)
+search <- function(genes, 
+                   taxa,
+                   confounds,
+                   filter = NULL,
+                   mfx,
+                   geeq,
+                   p_threshold,
+                   DATA = NULL) {
+  if (is.null(DATA)) {
+    DATA <- DATA.HOLDER
+  }
+  
+  # mData <- DATA[[options$taxa$value]]
+  mData <- DATA[[taxa]]
+  
+  # if (!options$confounds$value) {
+  if(!confounds){
+    experimentMask <- !mData@experiment.meta$ef.IsBatchConfounded
+  } else {
+    experimentMask <- rep(T, nrow(mData@experiment.meta))
+  }
+  
+  # if (!is.null(options$filter$value)) {
+  #   experimentMask <- experimentMask & options$filter$value
+  # }
+  if(!is.null(filter)){
+    experimentMask <- experimentMask & filter
+  }
+  
+  # Only retain GOI
+  geneMask <- which(mData@gene.meta$entrez.ID %in% genes)
+  
+  n.genes <- length(geneMask)
+  if (n.genes == 0) {
+    return(NULL)
+  }
+  # the signature input appears to be disabled in the upstream menus which means
+  # this piece of code isn't doing anything. there are other conflicting references in
+  # the shiny code too either to "input$sig" or "input$signature" if we bring it
+  # back this check should be moved into the server code to keep the function independent
+  # from options - ogan
+  # query <- suppressWarnings(options$sig$value %>% as.numeric())
+  # print(query)
+  # # TODO Should signal why it stopped (mismatch of signature length)
+  # if (length(query) > 1 && length(query) != n.genes) {
+  #   return(NULL)
+  # }
+  
+  # if (length(query) == 0 && options$method$value != "diff") {
+  #   return(NULL)
+  # }
+  
+  # P-values for only the GOI
+  mDimNames <- dimnames(mData@data$adj.pv)
+  pv <- mData@data$adj.pv[, geneMask, drop = F] %>%
+    `dimnames<-`(list(mDimNames[[1]], mDimNames[[2]][geneMask])) %>%
+    .[experimentMask, , drop = F] %>%
+    t()
+  zScore <- mData@data$zscore[, geneMask, drop = F] %>%
+    `dimnames<-`(list(mDimNames[[1]], mDimNames[[2]][geneMask])) %>%
+    .[experimentMask, , drop = F] %>%
+    t()
+  
+  pv[is.na(pv)] <- 1
+  zScore[is.na(zScore)] <- 0
+  
+  zScore <- data.table::as.data.table(zScore)
+  
+  # Number of DEGs for experiments that pass thresholds
+  experimentMeta <- mData@experiment.meta[experimentMask, .(rsc.ID, ee.qScore, n.DE, ad.NumGenes)] %>%
+    as.data.frame() %>%
+    `rownames<-`(.[, "rsc.ID"])
+  
+  experimentMeta$n.DE[is.na(experimentMeta$n.DE)] <- 0
+  
+  if (!geeq) {
+    experimentMeta$ee.qScore <- 2
+  } else {
+    experimentMeta$ee.qScore <- pmax(experimentMeta$ee.qScore + 1, 0, na.rm = T)
+  }
+  experimentMeta$ee.qScore <- sqrt(experimentMeta$ee.qScore / 2)
+  if (mfx) {
+    MFX_WEIGHT <- 1.5 - mData@gene.meta$mfx.Rank[geneMask]
+  } else {
+    MFX_WEIGHT <- rep(1, n.genes)
+  }
+  
+  # Adding 1 to not exclude CCs where p.adj is 1
+  zScore <- getOption("app.algorithm.gene.pre") %>% eval()
+  
+  ret <- getOption("app.algorithm.gene.post") %>%
+    eval() %>%
+    .[, score := Rfast::rowsums(as.matrix(.))]
+  
+  experimentN <- Rfast::colsums(pv <= p_threshold)
+  
+  ret %>%
+    data.table::setnames(c(mData@gene.meta$gene.Name[geneMask], "score")) %>%
+    .[, f.IN := experimentN / n.genes] %>%
+    .[, f.OUT := pmax(0, experimentMeta$n.DE - experimentN) / experimentMeta$ad.NumGenes] %>%
+    .[, ee.q := experimentMeta$ee.qScore] %>%
+    .[, rn := colnames(zScore)] %>%
+    data.table::setorder(-score)
+}
+
+
