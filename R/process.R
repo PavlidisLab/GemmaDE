@@ -359,7 +359,7 @@ enrich <- function(rankings, # options = getConfig(),
                    taxa,
                    dist,
                    categories,
-                   doNorm = T, CACHE = NULL) {
+                   doNorm = T, CACHE = NULL, cores = 8) {
   tictoc::tic()
   # terms <- getTags(options$taxa$value, rankings$rn, options$dist$value, CACHE = CACHE)
   terms <- getTags(taxa, rankings$rn, dist, CACHE = CACHE)
@@ -382,7 +382,7 @@ enrich <- function(rankings, # options = getConfig(),
   # TODO Excluding singles because their p-value will always be 0.5
   # and so score highly driven by fIN/fOUT... This is maybe okay
   
-  # terms_bckp<<-terms
+  terms_bckp<<-terms
   
   # filtering singles
   grouping = paste(terms$cf.Cat,terms$cf.BaseLongUri,terms$cf.ValLongUri)
@@ -401,8 +401,8 @@ enrich <- function(rankings, # options = getConfig(),
     {
       .[,c(gene_names,grouping_vars)]
     } %>% group_split()  %>%  mclapply(function(x){
-      out = 1-col_wilcoxon_onesample(as.matrix(x[gene_names]),alternative= 'greater', exact = FALSE)$pvalue
-    },mc.cores = 8) %>% do.call(rbind,.)
+      out = 1-matrixTests::col_wilcoxon_onesample(as.matrix(x[gene_names]),alternative= 'greater', exact = FALSE)$pvalue
+    },mc.cores = cores) %>% do.call(rbind,.)
   colnames(term_ps) = gene_names
   
   wilcox_ps = cbind(keys,term_ps)
