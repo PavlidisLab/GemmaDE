@@ -51,7 +51,8 @@ Imports:
     compcodeR,
     DESeq2,
     limma,
-    tictoc
+    tictoc,
+    usethis
 Remotes:
 	jsicherman/shinycssloaders,
 	jsicherman/shinypanels,
@@ -65,3 +66,6 @@ Remotes:
 	bioc::3.9/DESeq2,
 	bioc::3.9/limma
 RoxygenNote: 7.1.2
+Depends: 
+    R (>= 2.10)
+LazyData: true

@@ -1,7 +1,5 @@
 # source(paste(PROJDIR, 'main/requirements.R', sep='/'))
 devtools::load_all()
-PROJDIR <- here::here()
-DATADIR <- '/cosmos/data/project-data/GemmaDE'
 library(parallel)
 options(mc.cores = 14)
 
