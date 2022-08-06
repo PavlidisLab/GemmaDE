@@ -542,3 +542,26 @@ search <- function(genes,
 }
 
 
+#' Process input taxa
+#' @param taxa taxonomy ids, common or scientific names'
+#' @return A vector with the taxanomic IDs of the input taxa
+processTaxa <- function(taxa){
+  apply(TAX.DATA, 1, function(x){
+    (taxa %in% x)
+  }) %>% apply(2,any) %>%
+    {TAX.DATA$id[.]}
+}
+
+#' Process input genes
+#' 
+#' Replacement for the tidyGenes function for the API
+#' 
+#' @param genes a vector of genes. Symbols, ensembl ids or 
+#' @param taxa Taxanomy ids
+processGenes <- function(genes, taxa){
+  taxa %>% processTaxa() %>%
+    lapply(function(x){
+      
+    })
+
+}

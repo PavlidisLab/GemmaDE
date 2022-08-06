@@ -223,7 +223,7 @@ addConfig(
     choices = mChoices,
     core = c("human", "mouse", "rat"),
     multiple = T,
-    mapping = c(human = 9606, mouse = 10090, rat = 10116)
+    mapping = TAX.DATA$id %>% {names(.) = c("human", "mouse", "rat");.}
   )
 )
 

@@ -478,7 +478,7 @@ server <- function(input, output, session) {
     # For some reason genes becomes a Promise and this resolves it?
     # TODO this is dirty and needs to be re-examined
     genes
-
+    
     future(
       {
         # First run a search asynchronously
@@ -599,7 +599,7 @@ server <- function(input, output, session) {
   #' @param taxa A (set of) taxa these genes may belong to
   tidyGenes <- function(genes, taxa) {
     if (length(taxa) > 1) {
-      taxIDs <- getConfig(key = "taxa")$mapping[taxa]
+      taxIDs <- processTaxa(taxa)
 
       symbols <- lapply(taxa, function(x) {
         data.table(entrez.ID = tidyGenes(genes, x)$genes, taxon = x) %>%

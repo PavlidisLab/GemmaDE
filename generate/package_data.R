@@ -115,8 +115,11 @@ usethis::use_data(ALL.GENES,overwrite = TRUE)
 
 
 # taxonomy information -------
-tax_data = homologene::taxData %>% filter(tax_id %in%  c(9606, 10090, 10116))
+tax_data = homologene::taxData[match(c(9606, 10090, 10116),homologene::taxData$tax_id),]
 
 TAX.DATA= data.frame(id = tax_data$tax_id,
+                     common_names = c("human", "mouse", "rat"),
+                     names = tax_data$name_txt
                      )
 
+usethis::use_data(TAX.DATA,overwrite = TRUE)
