@@ -549,19 +549,196 @@ processTaxa <- function(taxa){
   apply(TAX.DATA, 1, function(x){
     (taxa %in% x)
   }) %>% apply(2,any) %>%
-    {TAX.DATA$id[.]}
+    {out=TAX.DATA$id[.];names(out)=TAX.DATA$common_names[.];out}
 }
 
 #' Process input genes
 #' 
-#' Replacement for the tidyGenes function for the API
+#' Replacement for the tidyGenes function for the API. 
+#' Only difference is that it always returns the data.table
 #' 
 #' @param genes a vector of genes. Symbols, ensembl ids or 
 #' @param taxa Taxanomy ids
 processGenes <- function(genes, taxa){
-  taxa %>% processTaxa() %>%
+  taxIDs <- processTaxa(taxa)
+  
+  symbols = taxIDs %>%
     lapply(function(x){
+      tax_name <- TAX.DATA$common_names[TAX.DATA$id == x]
       
-    })
+      symbols <- data.table(entrez.ID = tidyGenes(genes, tax_name)$genes, taxon = tax_name) %>%
+        {
+          if (is.null(.) || ncol(.) == 1) {
+            NULL
+          } else {
+            merge(., DATA.HOLDER[[tax_name]]@gene.meta[, .(.I, entrez.ID = as.character(entrez.ID), gene.Name)], by = "entrez.ID")
+          }
+        }
+    }) %>% data.table::rbindlist()
+  
+  if (!is.null(symbols) && nrow(symbols) > 0) {
+    symbols <- symbols %>%
+      merge(data.table(taxon.ID = taxIDs, taxon = names(taxIDs)), by = "taxon") %>%
+      .[, .SD[1], gene.Name]
+  } else {
+    return(symbols)
+  }
+  
+  
+  # Identify homologs/orthologs/whatever
+  orthologs <- symbols[, list(lapply(taxIDs[taxIDs != unique(taxon.ID)], function(t) {
+    homologs <- homologene::homologene(entrez.ID, unique(taxon.ID), t)
+    if (nrow(homologs) == 0) {
+      NULL
+    } else {
+      homologs %>%
+        as.data.table() %>%
+        melt(measure.vars = which(!grepl("_ID", colnames(.))), value.name = "gene.realName", variable.name = "taxon.ID") %>%
+        .[, entrez.ID := unlist(lapply(1:nrow(.), function(I) {
+          .SD[I, grepl(paste0(taxon.ID[I], "_ID"), colnames(.SD)), with = F]
+        }))] %>%
+        .[, !grepl("_ID", colnames(.)), with = F] %>%
+        .[, taxon.ID := as.integer(levels(taxon.ID))[taxon.ID]] %>%
+        cbind(identifier = unique(homologs[, as.character(unique(taxon.ID))])) %>%
+        merge(DATA.HOLDER[[names(taxIDs)[taxIDs == t]]]@gene.meta[, .(.I, entrez.ID = as.integer(entrez.ID))], by = "entrez.ID")
+    }
+  })), taxon] %>%
+    .[, V1] %>%
+    data.table::rbindlist() %>%
+    rbind(symbols[, .(entrez.ID, taxon.ID, gene.realName = gene.Name, identifier = gene.Name, I)]) %>%
+    unique() %>%
+    merge(data.table(taxon.ID = taxIDs, taxon = names(taxIDs)), by = "taxon.ID") %>%
+    .[, entrez.ID := as.character(entrez.ID)] %>%
+    .[, identifier := make.names(identifier, T), taxon.ID]
+  
+  return(orthologs)
+  
+}
 
+
+#' Convert gene identifiers/symbols/names/etc to Entrez IDs and generate suggestions
+#' for any mismatches or homologs if taxa is plural
+#'
+#' @param genes A set of genes in any supported format
+#' @param taxa A (set of) taxa these genes may belong to
+tidyGenes <- function(genes, taxa) {
+  if (length(taxa) > 1) {
+    taxIDs <- processTaxa(taxa)
+    
+    symbols <- lapply(taxa, function(x) {
+      data.table(entrez.ID = tidyGenes(genes, x)$genes, taxon = x) %>%
+        {
+          if (is.null(.) || ncol(.) == 1) {
+            NULL
+          } else {
+            merge(., DATA.HOLDER[[x]]@gene.meta[, .(.I, entrez.ID = as.character(entrez.ID), gene.Name)], by = "entrez.ID")
+          }
+        }
+    }) %>% data.table::rbindlist()
+    
+    if (!is.null(symbols) && nrow(symbols) > 0) {
+      symbols <- symbols %>%
+        merge(data.table(taxon.ID = taxIDs, taxon = names(taxIDs)), by = "taxon") %>%
+        .[, .SD[1], gene.Name]
+    } else {
+      return(tidyGenes(genes, taxa[1]))
+    }
+    
+    # Identify homologs/orthologs/whatever
+    orthologs <- symbols[, list(lapply(taxIDs[taxIDs != unique(taxon.ID)], function(t) {
+      homologs <- homologene::homologene(entrez.ID, unique(taxon.ID), t)
+      if (nrow(homologs) == 0) {
+        NULL
+      } else {
+        homologs %>%
+          as.data.table() %>%
+          melt(measure.vars = which(!grepl("_ID", colnames(.))), value.name = "gene.realName", variable.name = "taxon.ID") %>%
+          .[, entrez.ID := unlist(lapply(1:nrow(.), function(I) {
+            .SD[I, grepl(paste0(taxon.ID[I], "_ID"), colnames(.SD)), with = F]
+          }))] %>%
+          .[, !grepl("_ID", colnames(.)), with = F] %>%
+          .[, taxon.ID := as.integer(levels(taxon.ID))[taxon.ID]] %>%
+          cbind(identifier = unique(homologs[, as.character(unique(taxon.ID))])) %>%
+          merge(DATA.HOLDER[[names(taxIDs)[taxIDs == t]]]@gene.meta[, .(.I, entrez.ID = as.integer(entrez.ID))], by = "entrez.ID")
+      }
+    })), taxon] %>%
+      .[, V1] %>%
+      data.table::rbindlist() %>%
+      rbind(symbols[, .(entrez.ID, taxon.ID, gene.realName = gene.Name, identifier = gene.Name, I)]) %>%
+      unique() %>%
+      merge(data.table(taxon.ID = taxIDs, taxon = names(taxIDs)), by = "taxon.ID") %>%
+      .[, entrez.ID := as.character(entrez.ID)] %>%
+      .[, identifier := make.names(identifier, T), taxon.ID]
+    
+    return(orthologs)
+  }
+  
+  oGenes <- genes
+  
+  # Clean numerics (interpreted as entrez IDs) and remove them from further processing.
+  cleanGenes <- suppressWarnings(Filter(function(x) !is.na(as.integer(x)), genes))
+  idMap <- sapply(as.character(cleanGenes), function(x) which(oGenes == x), USE.NAMES = F)
+  
+  genes <- genes[!(genes %in% cleanGenes)]
+  
+  # If it matches (ENSG|ENSMUS|ENSRNO)\d{11}, it's an Ensembl ID (for human, mouse or rat).
+  if (length(genes) > 0) {
+    ensembl <- grep("(ENSG|ENSMUS|ENSRNO)\\d{11}", genes, value = T)
+    
+    if (length(ensembl) != 0) {
+      # Extract genes with a matching Ensembl ID and clean them too.
+      ensembls <- DATA.HOLDER[[taxa]]@gene.meta[ensembl.ID %in% ensembl, .(entrez.ID, ensembl.ID)]
+      cleanGenes <- c(cleanGenes, ensembls[, entrez.ID])
+      idMap <- c(idMap, sapply(ensembls[, ensembl.ID], function(x) which(oGenes == x), USE.NAMES = F))
+      
+      genes <- genes[!(genes %in% ensembls[, ensembl.ID])]
+    }
+  }
+  
+  # Match GO identifiers
+  if (length(genes > 0)) {
+    go <- grep("(GO:)\\d{7}", genes, value = T)
+    
+    if (length(go) != 0) {
+      gos <- DATA.HOLDER[[taxa]]@go[id %in% go, .(id, entrez.ID)]
+      cleanGenes <- c(cleanGenes, gos[, entrez.ID])
+      idMap <- c(idMap, sapply(gos[, id], function(x) which(oGenes == x), USE.NAMES = F))
+      
+      genes <- genes[!(genes %in% gos[, id])]
+    }
+  }
+  
+  # Try to match to gene names
+  if (length(genes) > 0) {
+    descriptors <- DATA.HOLDER[[taxa]]@gene.meta[gene.Name %in% genes, .(entrez.ID, gene.Name)]
+    if (nrow(descriptors) != 0) {
+      cleanGenes <- c(cleanGenes, descriptors[, entrez.ID])
+      idMap <- c(idMap, sapply(descriptors[, gene.Name], function(x) which(oGenes == x), USE.NAMES = F))
+      
+      genes <- genes[!(genes %in% descriptors[, gene.Name])]
+    }
+  }
+  
+  # Make suggestions for approximate matches
+  mSuggestions <- NULL
+  if (length(genes) > 0) {
+    mSuggestions <- sapply(genes, function(gene) {
+      stringdist::stringdist(tolower(gene), tolower(DATA.HOLDER[[taxa]]@gene.meta[, gene.Name])) %>%
+        {
+          DATA.HOLDER[[taxa]]@gene.meta[which.min(.), gene.Name]
+        }
+    }) %>% stats::setNames(genes)
+  }
+  
+  # Return the new genes in the same order they were provided (hopefully)
+  mGenes <- NULL
+  if (length(cleanGenes) > 0) {
+    mGenes <- cleanGenes[order(unlist(idMap))]
+  }
+  
+  if (length(mGenes) > 0 || length(mSuggestions) > 0) {
+    list(genes = mGenes, suggestions = mSuggestions)
+  } else {
+    NULL
+  }
 }
