@@ -486,10 +486,10 @@ server <- function(input, output, session) {
           lapply(options$taxa$value, function(t) {
             mOp <- options
             mOp$taxa$value <- t
-            search(genes[taxon == t, entrez.ID], taxa = mOp$taxa$value, confounds = mOp$confounds$value, filter = mOp$filter$value, mfx = mOp$mfx$value, geeq = mOp$geeq$value, p_threshold = mOp$pv$value)
+            vsmSearch(genes[taxon == t, entrez.ID], taxa = mOp$taxa$value, confounds = mOp$confounds$value, filter = mOp$filter$value, mfx = mOp$mfx$value, geeq = mOp$geeq$value, p_threshold = mOp$pv$value)
           })
         } else if (length(options$taxa$value) == 1) {
-          search(genes$genes, taxa = options$taxa$value, confounds = options$confounds$value, filter = options$filter$value,  mfx = options$mfx$value, geeq = options$geeq$value, p_threshold = options$pv$value)
+          vsmSearch(genes$genes, taxa = options$taxa$value, confounds = options$confounds$value, filter = options$filter$value,  mfx = options$mfx$value, geeq = options$geeq$value, p_threshold = options$pv$value)
         }
       },
       globals = "DATA.HOLDER",

@@ -436,7 +436,7 @@ enrich <- function(rankings, # options = getConfig(),
 #'
 #' @param genes A list of Entrez Gene IDs (ie. 1, 22, 480) as characters
 #' @param options Optional extra parameters to pass from @seealso(getConfig)
-search <- function(genes, 
+vsmSearch <- function(genes, 
                    taxa,
                    confounds,
                    filter = NULL,

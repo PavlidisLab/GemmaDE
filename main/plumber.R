@@ -1,7 +1,6 @@
 
 
 devtools::load_all()
-source(here::here("main/requirements.R"))
 source(here::here("main/dependencies.R"))
 
 
@@ -29,7 +28,7 @@ de_search = function(genes,
   
   experiments <- taxa %>% 
     lapply(function(t){
-      search(genes[taxon == t, entrez.ID],
+      vsmSearch(genes[taxon == t, entrez.ID],
              taxa = taxa,
              confounds = confounds,
              filter = NULL,
