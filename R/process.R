@@ -592,8 +592,8 @@ processGenes <- function(genes, taxa){
       NULL
     } else {
       homologs %>%
-        as.data.table() %>%
-        melt(measure.vars = which(!grepl("_ID", colnames(.))), value.name = "gene.realName", variable.name = "taxon.ID") %>%
+        data.table::as.data.table() %>%
+        data.table::melt(measure.vars = which(!grepl("_ID", colnames(.))), value.name = "gene.realName", variable.name = "taxon.ID") %>%
         .[, entrez.ID := unlist(lapply(1:nrow(.), function(I) {
           .SD[I, grepl(paste0(taxon.ID[I], "_ID"), colnames(.SD)), with = F]
         }))] %>%
@@ -651,8 +651,8 @@ tidyGenes <- function(genes, taxa) {
         NULL
       } else {
         homologs %>%
-          as.data.table() %>%
-          melt(measure.vars = which(!grepl("_ID", colnames(.))), value.name = "gene.realName", variable.name = "taxon.ID") %>%
+          data.table::as.data.table() %>%
+          data.table::melt(measure.vars = which(!grepl("_ID", colnames(.))), value.name = "gene.realName", variable.name = "taxon.ID") %>%
           .[, entrez.ID := unlist(lapply(1:nrow(.), function(I) {
             .SD[I, grepl(paste0(taxon.ID[I], "_ID"), colnames(.SD)), with = F]
           }))] %>%

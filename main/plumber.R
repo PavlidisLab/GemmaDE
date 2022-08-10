@@ -29,7 +29,7 @@ de_search = function(genes,
   experiments <- taxa %>% 
     lapply(function(t){
       vsmSearch(genes[taxon == t, entrez.ID],
-             taxa = taxa,
+             taxa = t,
              confounds = confounds,
              filter = NULL,
              mfx = multifunctionality,
