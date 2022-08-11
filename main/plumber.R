@@ -20,14 +20,13 @@ de_search = function(genes,
                      categories = c("age", "behavior", "biological process", "biological sex", 
                                     "cell type", "clinical history", "diet", "disease", "environmental history", 
                                     "environmental stress", "genotype", "medical procedure", "molecular entity", 
-                                    "organism part", "phenotype", "sex", "temperature", "treatment"
-                     )){
+                                    "organism part", "phenotype", "sex", "temperature", "treatment"),
+                     cores = 8){
   
-  # delegate the checks to the user function
-  genes = processGenes(genes,taxa)
+  genes <- processGenes(genes,taxa)
   
   experiments <- taxa %>% 
-    lapply(function(t){
+    mclapply(function(t){
       vsmSearch(genes[taxon == t, entrez.ID],
              taxa = t,
              confounds = confounds,
@@ -35,8 +34,32 @@ de_search = function(genes,
              mfx = multifunctionality,
              geeq = geeq,
              p_threshold = p_threshold)
-    })
+    },cores = cores)
+  names(experiments) = taxa
   
-  enrich(experiments, taxa = taxa, dist = max_dist,categories = categories)
-    
+  conditions <- taxa %>% lapply(function(t){
+    enrich(experiments[[t]], taxa = t, dist = max_dist,categories = categories,cores = cores) %>% 
+      data.table::setnames(genes[taxon == t, gene.realName],
+               genes[taxon == t, identifier],
+               skip_absent = T)
+  }) %>% data.table::rbindlist(fill = TRUE) %>% 
+    reorderTags3() %>%
+    .[, lapply(.SD, mean, na.rm = T), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
+  
+  geneInfo <- genes %>%
+    data.table::copy() %>%
+    data.table::setnames("identifier", "gene.Name")
+  mGenes <- genes %>% data.table::copy()
+  
+  # components of the endSuccess function
+  exps <- lapply(experiments, "[[", "rn") %>% unlist()
+  
+  tmp <- data.table::rbindlist(lapply(taxa, function(i) {
+    DATA.HOLDER[[i]]@experiment.meta[rsc.ID %in% exps, .(rsc.ID, ee.ID, ee.Name, ee.NumSample, ef.IsBatchConfounded)]
+  }))
+  
+  
+  studies <- length(unique(tmp$ee.ID))
+  assays <- tmp[!duplicated(ee.ID), sum(ee.NumSample)]
+  n_exp <- length(exps)
 }

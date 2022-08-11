@@ -338,7 +338,7 @@ normalize <- function(scores, #taxa = getConfig(key = "taxa")$value
     {
       data.table::data.table(rn = scores$rn, ., scores[, .(score, f.IN, f.OUT, ee.q)])
     } %>%
-    .[, score := rowSums2(as.matrix(.SD), na.rm = T), .SDcols = !c("rn", "score", "f.IN", "f.OUT", "ee.q")] %>%
+    .[, score := matrixStats::rowSums2(as.matrix(.SD), na.rm = T), .SDcols = !c("rn", "score", "f.IN", "f.OUT", "ee.q")] %>%
     .[, normalization := eval(getOption("app.algorithm.experiment"))] %>%
     .[, sn := score * normalization] %>%
     data.table::setorder(-sn) %>%
@@ -395,12 +395,12 @@ enrich <- function(rankings, # options = getConfig(),
   
   
   keys<- terms %>% 
-    dplyr::group_by(cf.Cat,cf.BaseLongUri,cf.ValLongUri) %>% group_keys()
+    dplyr::group_by(cf.Cat,cf.BaseLongUri,cf.ValLongUri) %>% dplyr::group_keys()
   term_ps <- terms %>% 
     dplyr::group_by(cf.Cat,cf.BaseLongUri,cf.ValLongUri) %>% 
     {
       .[,c(gene_names,grouping_vars)]
-    } %>% group_split()  %>%  mclapply(function(x){
+    } %>% dplyr::group_split()  %>%  parallel::mclapply(function(x){
       out = 1-matrixTests::col_wilcoxon_onesample(as.matrix(x[gene_names]),alternative= 'greater', exact = FALSE)$pvalue
     },mc.cores = cores) %>% do.call(rbind,.)
   colnames(term_ps) = gene_names
