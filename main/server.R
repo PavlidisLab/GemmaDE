@@ -567,7 +567,7 @@ server <- function(input, output, session) {
             getPercentageStat <- function(x, n = 1){
               x / n
             }
-            conditions[,'distance'] <- apply(conditions[,'distance'], 2, getPercentageStat, n = nrow(geneInfo))
+            conditions[,'Test Statistic'] <- apply(conditions[,'Test Statistic'], 2, getPercentageStat, n = nrow(geneInfo))
             output$results <- generateResults(conditions)
             
             # Prepare some plotting information.
