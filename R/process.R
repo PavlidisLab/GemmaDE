@@ -388,24 +388,25 @@ enrich <- function(rankings, # options = getConfig(),
   grouping = paste(terms$cf.Cat,terms$cf.BaseLongUri,terms$cf.ValLongUri)
   valid_groups = grouping %>% table %>% {names(.[.>1])}
   terms = terms[grouping %in% valid_groups,]
+  grouping = grouping[grouping %in% valid_groups]
+  core_split = grouping %>% factor %>% as.numeric() %>% {.%%cores}
   
   gene_names = 
     colnames(terms)[!colnames(terms) %in% c("reverse", "distance", "ee.ID", "rn", "score", "f.IN", "f.OUT", "ee.q", "normalization",'cf.Cat','cf.BaseLongUri','cf.ValLongUri')]
   grouping_vars = c('cf.Cat','cf.BaseLongUri','cf.ValLongUri')
   
+  terms$core_split = core_split
+  grouped = terms %>% data.table:::split.data.table(by = c('core_split'))
   
-  keys<- terms %>% 
-    dplyr::group_by(cf.Cat,cf.BaseLongUri,cf.ValLongUri) %>% dplyr::group_keys()
-  term_ps <- terms %>% 
-    dplyr::group_by(cf.Cat,cf.BaseLongUri,cf.ValLongUri) %>% 
-    {
-      .[,c(gene_names,grouping_vars)]
-    } %>% dplyr::group_split()  %>%  parallel::mclapply(function(x){
-      out = 1-matrixTests::col_wilcoxon_onesample(as.matrix(x[gene_names]),alternative= 'greater', exact = FALSE)$pvalue
-    },mc.cores = cores) %>% do.call(rbind,.)
-  colnames(term_ps) = gene_names
-  
-  wilcox_ps = cbind(keys,term_ps)
+  grouped %>% parallel::mclapply(function(t){
+    t[, matrixTests::col_wilcoxon_onesample(as.matrix(.SD), alternative = "greater", exact = F) %>%
+        {
+          list(pv = 1 - .[, "pvalue"], gene = rownames(.)) # Small p-value if real effect (= score closer to 1)
+        }, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri),
+      .SDcols = !c("reverse", "distance", "ee.ID", "rn", "score", "f.IN", "f.OUT", "ee.q", "normalization")
+    ] %>%
+      data.table::dcast(... ~ gene, value.var = "pv", fill = 0)
+  },mc.cores = cores) %>% do.call(rbind,.) -> wilcox_ps
   
   
   terms[, .(
