@@ -389,14 +389,14 @@ server <- function(input, output, session) {
   #' @param experiments The experiment rankings that were obtained
   #' @param conditions The condition rankings that were obtained
   #' @param options Any additional options that were passed
-  endSuccess <- function(genes, experiments, conditions, options) {
+  endSuccess <- function(genes, experiments, conditions, taxa) {
     if (is.data.table(experiments)) {
       exps <- experiments$rn
     } else {
       exps <- lapply(experiments, "[[", "rn") %>% unlist()
     }
 
-    tmp <- rbindlist(lapply(options$taxa$value, function(i) {
+    tmp <- rbindlist(lapply(taxa, function(i) {
       DATA.HOLDER[[i]]@experiment.meta[rsc.ID %in% exps, .(rsc.ID, ee.ID, ee.Name, ee.NumSample, ef.IsBatchConfounded)]
     }))
 
@@ -419,10 +419,10 @@ server <- function(input, output, session) {
               nrow(genes), " gene", ifelse(nrow(genes) > 1, "s", ""), "</span>"
             )
           ),
-          ifelse(length(options$taxa$value) > 1,
+          ifelse(length(taxa) > 1,
             paste0(
-              ' across <span data-toggle="tooltip" data-placement="top" title="', paste0(options$taxa$value, collapse = ", "), '">',
-              length(options$taxa$value), " taxa</span>"
+              ' across <span data-toggle="tooltip" data-placement="top" title="', paste0(taxa, collapse = ", "), '">',
+              length(taxa), " taxa</span>"
             ), ""
           ),
           '</h2><span class="timestamp">in ',
@@ -438,7 +438,7 @@ server <- function(input, output, session) {
 
     # Associating experiments with tags
     tmp <- tmp %>%
-      merge(getTags(options$taxa$value, exps), sort = F) %>%
+      merge(getTags(taxa, exps), sort = F) %>%
       .[, N := length(unique(ee.ID)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
       .[N < 0.03 * nrow(tmp)] # Get rid of contrasts that overlap in more than 3% experiments
 
@@ -557,7 +557,7 @@ server <- function(input, output, session) {
             }
 
 
-            conditions <- endSuccess(geneInfo, experiments, conditions, options)
+            conditions <- endSuccess(geneInfo, experiments, conditions, options$taxa$value)
 
             
             if (!is.null(session$userData$INTERRUPT)) {
@@ -567,7 +567,7 @@ server <- function(input, output, session) {
             getPercentageStat <- function(x, n = 1){
               x / n
             }
-            conditions[,10] <- apply(conditions[,10], 2, getPercentageStat, n = nrow(geneInfo))
+            conditions[,'distance'] <- apply(conditions[,'distance'], 2, getPercentageStat, n = nrow(geneInfo))
             output$results <- generateResults(conditions)
             
             # Prepare some plotting information.
