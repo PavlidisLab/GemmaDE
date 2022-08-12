@@ -389,13 +389,14 @@ enrich <- function(rankings, # options = getConfig(),
   valid_groups = grouping %>% table %>% {names(.[.>1])}
   terms = terms[grouping %in% valid_groups,]
   grouping = grouping[grouping %in% valid_groups]
+  # assign rows belonging to same groups to same cores
   core_split = grouping %>% factor %>% as.numeric() %>% {.%%cores}
   
   gene_names = 
     colnames(terms)[!colnames(terms) %in% c("reverse", "distance", "ee.ID", "rn", "score", "f.IN", "f.OUT", "ee.q", "normalization",'cf.Cat','cf.BaseLongUri','cf.ValLongUri')]
   grouping_vars = c('cf.Cat','cf.BaseLongUri','cf.ValLongUri')
   
-  terms$core_split = core_split
+  terms[,core_split := core_split]
   grouped = terms %>% data.table:::split.data.table(by = c('core_split'))
   
   grouped %>% parallel::mclapply(function(t){
@@ -549,7 +550,7 @@ vsmSearch <- function(genes,
 processTaxa <- function(taxa){
   apply(TAX.DATA, 1, function(x){
     (taxa %in% x)
-  }) %>% apply(2,any) %>%
+  }) %>% matrix(ncol = ncol(TAX.DATA)) %>% apply(2,any) %>%
     {out=TAX.DATA$id[.];names(out)=TAX.DATA$common_names[.];out}
 }
 
