@@ -13,8 +13,9 @@ taxa = 'human'
 #* @param taxa
 #* @param max_dist
 #* @get /de_search
-de_search = function(genes,
-                     taxa,
+de_search = function(req,
+                     genes = NULL,
+                     taxa =NULL,
                      max_dist = 1.5,
                      confounds = FALSE,
                      multifunctionality = TRUE,
@@ -25,6 +26,16 @@ de_search = function(genes,
                                     "environmental stress", "genotype", "medical procedure", "molecular entity", 
                                     "organism part", "phenotype", "sex", "temperature", "treatment"),
                      cores =8){
+  browser()
+  if(is.null(genes)){
+    genes = req$HEADERS['genes'] %>% strsplit(',') %>% {.[[1]]}
+  }
+  if(is.null(taxa)){
+    taxa = req$HEADERS['taxa'] %>% strsplit(',') %>% {.[[1]]}
+  }
+  if(is.null(caregories)){
+    caregories = req$HEADERS['caregories'] %>% strsplit(',') %>% {.[[1]]}
+  }
   
   tictoc::tic()
   genes <- processGenes(genes,taxa)
@@ -79,8 +90,7 @@ de_search = function(genes,
     conditions
   
   # out of endSuccess
-  # conditions = tmp
-  
+
   getPercentageStat <- function(x, n = 1){
     x / n
   }
