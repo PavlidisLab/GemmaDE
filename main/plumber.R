@@ -1,8 +1,11 @@
 
 
+
 devtools::load_all()
 source(here::here("main/dependencies.R"))
 
+genes = c('RPS4Y1','EIF1AY','DDX3Y','KDM5D','XIST')
+taxa = 'human'
 
 #* DE Search
 #* 
@@ -21,12 +24,13 @@ de_search = function(genes,
                                     "cell type", "clinical history", "diet", "disease", "environmental history", 
                                     "environmental stress", "genotype", "medical procedure", "molecular entity", 
                                     "organism part", "phenotype", "sex", "temperature", "treatment"),
-                     cores = 8){
+                     cores =8){
   
+  tictoc::tic()
   genes <- processGenes(genes,taxa)
   
   experiments <- taxa %>% 
-    mclapply(function(t){
+    parallel::mclapply(function(t){
       vsmSearch(genes[taxon == t, entrez.ID],
              taxa = t,
              confounds = confounds,
@@ -34,7 +38,7 @@ de_search = function(genes,
              mfx = multifunctionality,
              geeq = geeq,
              p_threshold = p_threshold)
-    },cores = cores)
+    },mc.cores = cores)
   names(experiments) = taxa
   
   conditions <- taxa %>% lapply(function(t){
@@ -59,7 +63,29 @@ de_search = function(genes,
   }))
   
   
-  studies <- length(unique(tmp$ee.ID))
-  assays <- tmp[!duplicated(ee.ID), sum(ee.NumSample)]
-  n_exp <- length(exps)
+  
+  conditions[, `Condition Comparison` := paste0( cf.BaseLongUri, " vs. ", cf.ValLongUri)]
+  
+  tmp <- tmp %>%
+    merge(getTags(taxa, exps), sort = F) %>%
+    .[, N := length(unique(ee.ID)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
+    .[N < 0.03 * nrow(tmp)] # Get rid of contrasts that overlap in more than 3% experiments
+  
+  
+  tmp[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, N)] %>%
+    unique() %>%
+    merge(conditions, by = c("cf.Cat", "cf.BaseLongUri", "cf.ValLongUri"), sort = F) %>%
+    data.table::setnames(c("stat", "score", "distance"), c("Effect Size", "Test Statistic", "Ontology Steps")) ->
+    conditions
+  
+  # out of endSuccess
+  # conditions = tmp
+  
+  getPercentageStat <- function(x, n = 1){
+    x / n
+  }
+  conditions[,'Test Statistic'] <- apply(conditions[,'Test Statistic'], 2, getPercentageStat, n = nrow(geneInfo))
+  
+  tictoc::toc()
+  return(conditions)
 }
