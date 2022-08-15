@@ -12,8 +12,10 @@ taxa = 'human'
 #* @param genes
 #* @param taxa
 #* @param max_dist
+#* @post /de_search
 #* @get /de_search
-de_search = function(req,
+#* @serializer tsv
+de_search = function(req, # this is the request object
                      genes = NULL,
                      taxa =NULL,
                      max_dist = 1.5,
@@ -26,15 +28,28 @@ de_search = function(req,
                                     "environmental stress", "genotype", "medical procedure", "molecular entity", 
                                     "organism part", "phenotype", "sex", "temperature", "treatment"),
                      cores =8){
+  
   browser()
+  # accept variables that can be long as body parts. long urls caused issues before
+  # this should keep them at reasonable lengths
   if(is.null(genes)){
-    genes = req$HEADERS['genes'] %>% strsplit(',') %>% {.[[1]]}
+    genes = req$body$genes
   }
   if(is.null(taxa)){
-    taxa = req$HEADERS['taxa'] %>% strsplit(',') %>% {.[[1]]}
+    taxa = req$body$taxa
   }
-  if(is.null(caregories)){
-    caregories = req$HEADERS['caregories'] %>% strsplit(',') %>% {.[[1]]}
+  if(is.null(categories)){
+    categories = req$body$categories
+  }
+  
+  if(!is.logical(geeq)){
+    as.logical(toupper(geeq))
+  }
+  if(!is.logical(multifunctionality)){
+    as.logical(toupper(multifunctionality))
+  }
+  if(!is.logical(confounds)){
+    as.logical(toupper(confounds))
   }
   
   tictoc::tic()
