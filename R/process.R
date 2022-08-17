@@ -360,7 +360,6 @@ enrich <- function(rankings, # options = getConfig(),
                    dist,
                    categories,
                    doNorm = T, CACHE = NULL, cores = 8) {
-  tictoc::tic()
   # terms <- getTags(options$taxa$value, rankings$rn, options$dist$value, CACHE = CACHE)
   terms <- getTags(taxa, rankings$rn, dist, CACHE = CACHE)
   terms <- rankings %>%
@@ -424,7 +423,6 @@ enrich <- function(rankings, # options = getConfig(),
     data.table::setorder(-stat, distance) %>%
     .[, .SD[1], stat] %>%
     data.table::setorder(-score) -> out
-  tictoc::toc()
   return(out)
 }
 
