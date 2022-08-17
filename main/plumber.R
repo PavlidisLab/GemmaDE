@@ -3,9 +3,10 @@
 
 devtools::load_all()
 source(here::here("main/dependencies.R"))
+crs = 16
 
-genes = c('RPS4Y1','EIF1AY','DDX3Y','KDM5D','XIST')
-taxa = 'human'
+# genes = c('RPS4Y1','EIF1AY','DDX3Y','KDM5D','XIST')
+# taxa = 'human'
 
 #* DE Search
 #* 
@@ -27,34 +28,28 @@ de_search = function(req, # this is the request object
                                     "cell type", "clinical history", "diet", "disease", "environmental history", 
                                     "environmental stress", "genotype", "medical procedure", "molecular entity", 
                                     "organism part", "phenotype", "sex", "temperature", "treatment"),
-                     cores =8){
-  
-  browser()
+                     cores = crs){
   # accept variables that can be long as body parts. long urls caused issues before
   # this should keep them at reasonable lengths
-  if(is.null(genes)){
-    genes = req$body$genes
+
+  args = rlang::fn_fmls(fn = de_search)[-1]
+  # read arguments from request body if body is used instead of URLs
+  for (x in names(args)){
+    if(!is.null(req$body[[x]])){
+      assign(x,req$body[[x]])
+    }
   }
-  if(is.null(taxa)){
-    taxa = req$body$taxa
-  }
-  if(is.null(categories)){
-    categories = req$body$categories
-  }
-  
   if(!is.logical(geeq)){
-    as.logical(toupper(geeq))
+    geeq = as.logical(toupper(geeq))
   }
   if(!is.logical(multifunctionality)){
-    as.logical(toupper(multifunctionality))
+    multifunctionality = as.logical(toupper(multifunctionality))
   }
   if(!is.logical(confounds)){
-    as.logical(toupper(confounds))
+    confounds = as.logical(toupper(confounds))
   }
-  
   tictoc::tic()
   genes <- processGenes(genes,taxa)
-  
   experiments <- taxa %>% 
     parallel::mclapply(function(t){
       vsmSearch(genes[taxon == t, entrez.ID],
@@ -112,5 +107,6 @@ de_search = function(req, # this is the request object
   conditions[,'Test Statistic'] <- apply(conditions[,'Test Statistic'], 2, getPercentageStat, n = nrow(geneInfo))
   
   tictoc::toc()
-  return(conditions)
+  return(conditions %>% 
+           data.table::setnames(c("cf.Cat", "cf.BaseLongUri", "cf.ValLongUri"), c("Category", "Baseline", "Value")))
 }

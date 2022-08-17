@@ -601,7 +601,7 @@ processGenes <- function(genes, taxa){
         }))] %>%
         .[, !grepl("_ID", colnames(.)), with = F] %>%
         .[, taxon.ID := as.integer(levels(taxon.ID))[taxon.ID]] %>%
-        cbind(identifier = unique(homologs[, as.character(unique(taxon.ID))])) %>%
+        cbind(identifier = homologs[, as.character(unique(taxon.ID))]) %>%
         merge(DATA.HOLDER[[names(taxIDs)[taxIDs == t]]]@gene.meta[, .(.I, entrez.ID = as.integer(entrez.ID))], by = "entrez.ID")
     }
   })), taxon] %>%
@@ -613,8 +613,8 @@ processGenes <- function(genes, taxa){
     .[, entrez.ID := as.character(entrez.ID)] %>%
     .[, identifier := make.names(identifier, T), taxon.ID]
   
-  return(orthologs)
-  
+  # subsetting here fixes inputting same gene orthologue for different genes in one query
+  return(orthologs[!duplicated(I),.SD])  
 }
 
 
@@ -660,7 +660,7 @@ tidyGenes <- function(genes, taxa) {
           }))] %>%
           .[, !grepl("_ID", colnames(.)), with = F] %>%
           .[, taxon.ID := as.integer(levels(taxon.ID))[taxon.ID]] %>%
-          cbind(identifier = unique(homologs[, as.character(unique(taxon.ID))])) %>%
+          cbind(identifier = homologs[, as.character(unique(taxon.ID))]) %>%
           merge(DATA.HOLDER[[names(taxIDs)[taxIDs == t]]]@gene.meta[, .(.I, entrez.ID = as.integer(entrez.ID))], by = "entrez.ID")
       }
     })), taxon] %>%
@@ -671,8 +671,8 @@ tidyGenes <- function(genes, taxa) {
       merge(data.table(taxon.ID = taxIDs, taxon = names(taxIDs)), by = "taxon.ID") %>%
       .[, entrez.ID := as.character(entrez.ID)] %>%
       .[, identifier := make.names(identifier, T), taxon.ID]
-    
-    return(orthologs)
+    # subsetting here fixes inputting same gene orthologue for different genes in one query
+    return(orthologs[!duplicated(I),.SD])
   }
   
   oGenes <- genes
