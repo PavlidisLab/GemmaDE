@@ -568,7 +568,7 @@ processGenes <- function(genes, taxa){
     lapply(function(x){
       tax_name <- TAX.DATA$common_names[TAX.DATA$id == x]
       
-      symbols <- data.table(entrez.ID = tidyGenes(genes, tax_name)$genes, taxon = tax_name) %>%
+      symbols <- data.table(entrez.ID = as.character(tidyGenes(genes, tax_name)$genes), taxon = tax_name) %>%
         {
           if (is.null(.) || ncol(.) == 1) {
             NULL
