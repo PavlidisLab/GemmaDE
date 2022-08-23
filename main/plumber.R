@@ -5,6 +5,7 @@ devtools::load_all()
 source(here::here("main/dependencies.R"))
 crs = 16
 
+# genes=readr::read_csv('test.csv') %>% unlist
 # genes = c('RPS4Y1','EIF1AY','DDX3Y','KDM5D','XIST')
 # taxa = 'human'
 
@@ -16,7 +17,7 @@ crs = 16
 #* @post /de_search
 #* @get /de_search
 #* @serializer tsv
-de_search = function(req, # this is the request object
+de_search = function(req = NULL, # this is the request object
                      genes = NULL,
                      taxa =NULL,
                      max_dist = 1.5,
@@ -50,6 +51,8 @@ de_search = function(req, # this is the request object
   }
   tictoc::tic()
   genes <- processGenes(genes,taxa)
+  print('vsmSearch')
+  tictoc::tic()
   experiments <- taxa %>% 
     parallel::mclapply(function(t){
       vsmSearch(genes[taxon == t, entrez.ID],
@@ -61,7 +64,10 @@ de_search = function(req, # this is the request object
              p_threshold = p_threshold)
     },mc.cores = cores)
   names(experiments) = taxa
+  tictoc::toc()
   
+  print('enrich')
+  tictoc::tic()
   conditions <- taxa %>% lapply(function(t){
     enrich(experiments[[t]], taxa = t, dist = max_dist,categories = categories,cores = cores) %>% 
       data.table::setnames(genes[taxon == t, gene.realName],
@@ -70,7 +76,10 @@ de_search = function(req, # this is the request object
   }) %>% data.table::rbindlist(fill = TRUE) %>% 
     reorderTags3() %>%
     .[, lapply(.SD, mean, na.rm = T), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
+  tictoc::toc()
   
+  print('ending')
+  tictoc::tic()
   geneInfo <- genes %>%
     data.table::copy() %>%
     data.table::setnames("identifier", "gene.Name")
@@ -105,8 +114,11 @@ de_search = function(req, # this is the request object
     x / n
   }
   conditions[,'Test Statistic'] <- apply(conditions[,'Test Statistic'], 2, getPercentageStat, n = nrow(geneInfo))
+  tictoc::toc()
   
   tictoc::toc()
   return(conditions %>% 
            data.table::setnames(c("cf.Cat", "cf.BaseLongUri", "cf.ValLongUri"), c("Category", "Baseline", "Value")))
 }
+
+# de_search(genes=genes,taxa = taxa)

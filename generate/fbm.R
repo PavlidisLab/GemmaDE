@@ -1,5 +1,5 @@
 devtools::load_all()
-dir.create(DATADIR,showWarnings = FALSE)
+dir.create(DATADIR,showWarnings = FALSE, TRUE)
 
 # source(file.path(PROJDIR, 'main', 'requirements.R'))
 
@@ -25,14 +25,14 @@ if(!exists('DATA.HOLDER')) {
       objs = load(file.path(FREEZEDIR,'Current', taxon, 'metadata.RDAT'))
       
       
-      meta.platformCoverage <- data.table::melt(meta.platformCoverage, id.vars = 'gene.ID') %>%
+      meta.platformCoverage.melted <- data.table::melt(meta.platformCoverage, id.vars = 'gene.ID') %>%
         .[, variable := gsub('AD_(.*)', '\\1', variable)]
       
       # TODO Yes I know this is no longer optimal. In the old data dump, values were semicolon delimited...
       # It's too deeply integrated for me to change everything else at this point
       metaData <- meta.fvAnnot %>%
         merge(meta.full, by = c('rsc.ID', 'ee.ID'), sort = F) %>%
-        merge(meta.platformCoverage[, .(n.detect = sum(value)), variable],
+        merge(meta.platformCoverage.melted[, .(n.detect = sum(value)), variable],
               by.x = 'ad.ID', by.y = 'variable', sort = F) %>%
         .[, .(ee.ID, rsc.ID, ee.Name, ee.Source, ee.Scale = ee.DataScale, ee.Reprocessed = ee.IsReprocessed,
               ef.IsBatchConfounded, ad.ID, ad.Type, ad.NumGenes = n.detect, ee.NumSample, sf.NumSample,
