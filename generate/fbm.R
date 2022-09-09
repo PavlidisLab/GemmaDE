@@ -133,12 +133,12 @@ if(!exists('DATA.HOLDER')) {
       # Split into 500 ee.ID chunks (so the URI doesn't get too long) and fetch quality scores 
       # from Gemma for all experiments.
       # TODO this is broken with the new Gemma API. Needs to be updated to get this info back
-      metaData <- data.table::rbindlist(lapply(lapply(metaData$ee.ID %>% unique %>% split(ceiling(seq_along(.[]) / 500)),
-                                          gemma.R::get_datasets_by_ids) %>% unlist(recursive = F), function(ee.ID) {
-                                            data.table::data.table(ee.ID = ee.ID$ee.ID,
-                                                       ee.DescriptiveName = ee.ID$name,
-                                                       ee.qScore = ee.ID$geeq.qScore,
-                                                       ee.sScore = ee.ID$geeq.sScore)
+      metaData <- data.table::rbindlist(lapply(lapply(metaData$ee.ID %>% unique %>% split(ceiling(seq_along(.[]) / 100)),
+                                          gemma.R::get_datasets_by_ids,limit = 100), function(x) {
+                                            data.table::data.table(ee.ID = x$ee.ID,
+                                                       ee.DescriptiveName = x$name,
+                                                       ee.qScore = x$geeq.qScore,
+                                                       ee.sScore = x$geeq.sScore)
                                           }), fill = T) %>% merge(metaData, by = 'ee.ID', all.y = T)
       
       goTerms <- mygene::queryMany(metaGene$entrez.ID, scopes = 'entrezgene', fields = 'go', species = taxon)
