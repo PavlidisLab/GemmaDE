@@ -94,15 +94,16 @@ lapply(c('human', 'mouse', 'rat'), function(taxon){
     
     platform <- gemma.R::get_dataset_platforms(dataset$experiment.ID)
     platform_annots <- platform$platform.ID %>% lapply(function(x){
-     all_platform_annotations[[x]]
+       all_platform_annotations[[as.character(x)]]
     }) %>% do.call(rbind,.)
     # data frame is manually re-created from the components to ensure
     # compatibility with downstream use by replicating nathaniel's structure
     data.frame(ee.ID = dataset$experiment.ID,
                ee.qScore = dataset$geeq.qScore,
                ee.sScore = dataset$geeq.sScore,
-               rsc.ID = differential$rsc.ID,
+               rsc.ID = paste0('RSCID.',differential$result.ID,'.',differential$contrast.id),
                result.id = differential$result.ID,
+               contrast.id = differential$contrast.id,
                ee.Name = dataset$experiment.ShortName,
                ee.Source = dataset$experiment.Database,
                ee.Scale = NA, # not accessible with the current API, not used in the dataset either
@@ -125,6 +126,16 @@ lapply(c('human', 'mouse', 'rat'), function(taxon){
                ee.TagLongUri = dataset_annotations$term.URL%>% paste(collapse = '; '))
     
   })  %>% do.call(rbind,.) -> new_metaData
+  
+  
+  differentials <- new_metaData$result.id %>% unique
+  
+  
+  all_differential_values <- differentials %>% lapply(function(x){
+    print(which(differentials %in% x)/length(differential))
+    gemma.R::get_differential_expression_values(resultSet = x)[[1]]
+  })
+  
   
   new_metaDataTable <- new_metaData %>% data.table
   
