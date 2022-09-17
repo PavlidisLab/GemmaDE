@@ -48,6 +48,7 @@ lapply(c('human', 'mouse', 'rat'), function(taxon){
   
   print('Getting platform annotations')
   all_platform_annotations <- all_platform_ids %>% lapply(function(x){
+    cat('=')
     gemma.R::get_platform_annotations(x)
   })
   names(all_platform_annotations) <- all_platform_ids
@@ -135,7 +136,7 @@ lapply(c('human', 'mouse', 'rat'), function(taxon){
   
   print("Getting differential expression data")
   all_differential_values <- differentials %>% lapply(function(x){
-    print(x)
+    cat('=')
     gemma.R::get_differential_expression_values(resultSet = x)[[1]]
   })
   names(all_differential_values)= differentials
@@ -148,10 +149,9 @@ lapply(c('human', 'mouse', 'rat'), function(taxon){
   # probeset with the lowest p value was selected to
   # to represent a gene. need a deeper look to make sure
   # but assuming that is the case for now -Ogan
-  z = 1
+  print('Processing differential expression data')
   all_differential_values %<>% lapply(function(x){
-    print(z)
-    z<<- z + 1
+    cat('=')
     x %<>% dplyr::filter(NCBIid!='' & !grepl('|',NCBIid,fixed = TRUE))
     p_value_cols = names(x)[grepl('contrast.*?pvalue',names(x))]
     logfc_cols = names(x)[grepl('contrast.*?log2fc',names(x))]
@@ -192,7 +192,7 @@ lapply(c('human', 'mouse', 'rat'), function(taxon){
   ncbi_ids = all_differential_values %>% lapply(function(x){
     as.integer(x$NCBIid)
   }) %>% unlist %>% unique %>% sort
-  
+  print('calculating adj.p values')
   lapply(seq_len(nrow(contrast_metaData)),function(i){
     result_id = contrast_metaData$result.id[i]
     contrast_id = contrast_metaData$contrast.id[i]
