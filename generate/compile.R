@@ -32,17 +32,19 @@ lapply(c('human', 'mouse', 'rat'), function(taxon){
   poke_call = gemma.R::get_taxon_datasets(taxon,limit = 1)
   
   # temporary for debuggin
-  attributes(poke_call)$totalElements = 99
+  # attributes(poke_call)$totalElements = 99
   
   print('Getting all datasets')
   seq(0,attributes(poke_call)$totalElements,100) %>% lapply(function(x){
+    cat('=')
     out = gemma.R::get_taxon_datasets(taxon,offset = x,limit = 100)
   }) %>% do.call(rbind,.) -> all_datasets
   
   saveRDS(all_datasets,file.path(RAWDIR,'midway_backups',taxon,'all_datasets.rds'))
   
-  print('Getting dataset platforms')
+  print('Getting d platforms')
   all_datasets$experiment.ID %>% lapply(function(x){
+    cat('=')
     gemma.R::get_dataset_platforms(x)$platform.ID
   }) %>% unlist %>% unique -> all_platform_ids
   
@@ -59,12 +61,11 @@ lapply(c('human', 'mouse', 'rat'), function(taxon){
   
   print('Compiling the datasets table')
   
-  # seq_len(10) %>% lapply(function(i){
+  # (5000:5200) %>% lapply(function(i){
   seq_len(nrow(all_datasets)) %>% lapply(function(i){
     cat("=")
     dataset <- all_datasets[i,]
-    dataset_raw <- all_datasets_raw[[i]]
-    
+
     dataset_annotations <- gemma.R::get_dataset_annotations(dataset$experiment.ID)
     differential <- gemma.R::get_dataset_differential_expression_analyses(dataset$experiment.ID)
     
@@ -109,7 +110,7 @@ lapply(c('human', 'mouse', 'rat'), function(taxon){
                ef.IsBatchConfounded = dataset$geeq.batchConfound == -1,
                ad.ID = paste0(platform$platform.ID,collapse = '; '),
                ad.Type = paste0(platform$technology.Type,collapse = '; '),
-               ad.NumGenes = platform_annots$GeneSymbols %>% unique %>% length(), # this counts genes a bit differently than what gemma displays as I think it should be closer to the intended purpose. gemma counts by splitting genes that are aligned to the same probeset which presumably shouldn't be used as differential expression results. need to reconsider
+               ad.NumGenes = platform_annots$NCBIids %>% {.[.!='' | grepl('|',.,fixed = TRUE)]} %>% unique %>% length, # this counts genes a bit differently than what gemma displays as I think it should be closer to the intended purpose. gemma counts by splitting genes that are aligned to the same probeset which presumably shouldn't be used as differential expression results. need to reconsider
                ee.NumSample = dataset$experiment.SampleCount,
                sf.NumSample =  sf.NumSample,
                cf.Cat = differential$baseline.category,
