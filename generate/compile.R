@@ -56,10 +56,11 @@ lapply(c('human', 'mouse', 'rat'), function(taxon){
   null_platforms <- all_platform_annotations %>% purrr::map_lgl(is.null)
   all_platform_annotations <- all_platform_annotations[!null_platforms]
   
+  print('Compiling the datasets table')
   
   # seq_len(10) %>% lapply(function(i){
   seq_len(nrow(all_datasets)) %>% lapply(function(i){
-    print(i)
+    cat("=")
     dataset <- all_datasets[i,]
     dataset_raw <- all_datasets_raw[[i]]
     
@@ -103,7 +104,7 @@ lapply(c('human', 'mouse', 'rat'), function(taxon){
                ee.Name = dataset$experiment.ShortName,
                ee.Source = dataset$experiment.Database,
                ee.Scale = NA, # not accessible with the current API, not used in the dataset either
-               ee.Reprocessed = NA, # not accessible with the current API, it's used in processing but we'll see...
+               ee.Reprocessed = dataset$geeq.rawData==1, # not sure if this field matches 1-1
                ef.IsBatchConfounded = dataset$geeq.batchConfound == -1,
                ad.ID = paste0(platform$platform.ID,collapse = '; '),
                ad.Type = paste0(platform$technology.Type,collapse = '; '),
@@ -121,16 +122,16 @@ lapply(c('human', 'mouse', 'rat'), function(taxon){
                ee.Tag = dataset_annotations$term.Name %>% paste(collapse = '; '),
                ee.TagLongUri = dataset_annotations$term.URI%>% paste(collapse = '; '))
     
-  })  %>% do.call(rbind,.) -> new_metaData
+  })  %>% do.call(rbind,.) -> contrast_metaData
   
-  saveRDS(new_metaData, file.path(RAWDIR,'midway_backups',taxon,'metadata_first_pass.rds'))
+  saveRDS(contrast_metaData, file.path(RAWDIR,'midway_backups',taxon,'metadata_first_pass.rds'))
   
-  new_metaData %<>% mutate_cond(is.na(cf.BaseLongUri), cf.BaseLongUri = cf.Baseline)
-  new_metaData %<>% mutate_cond(is.na(cf.ValLongUri), cf.ValLongUri = cf.Val)
-  new_metaData <- new_metaData[!is.na(new_metaData$cf.BaseLongUri),]
+  contrast_metaData %<>% mutate_cond(is.na(cf.BaseLongUri), cf.BaseLongUri = cf.Baseline)
+  contrast_metaData %<>% mutate_cond(is.na(cf.ValLongUri), cf.ValLongUri = cf.Val)
+  contrast_metaData <- contrast_metaData[!is.na(contrast_metaData$cf.BaseLongUri),]
   
   
-  differentials <- new_metaData$result.id %>% unique
+  differentials <- contrast_metaData$result.id %>% unique
   
   print("Getting differential expression data")
   all_differential_values <- differentials %>% lapply(function(x){
@@ -141,22 +142,6 @@ lapply(c('human', 'mouse', 'rat'), function(taxon){
   saveRDS(all_differential_values, file.path(RAWDIR,'midway_backups',taxon,'differentials.rds'))
   bad_differentials = all_differential_values %>% sapply(nrow) %>% {.==0}
   all_differential_values = all_differential_values[!bad_differentials]
-  # probeset selection
-  # comparing with the old results, this doesn't appear to be the method used
-  # print('Selecting probesets by using expression data')
-  # for (x in unique(new_metaData$ee.ID)){
-  #   expr <- gemma.R::get_dataset_expression(x)
-  #   expr %<>%dplyr::filter(NCBIid!='' & !grepl('|',NCBIid,fixed = TRUE))
-  #   dup_genes <- expr$NCBIid[duplicated(expr$NCBIid)]
-  #   expr %<>% dplyr::filter(NCBIid %in% dup_genes)
-  #   gene_var <- expr %>% ogbox::sepExpr() %>% {.[[2]]} %>% apply(1,function(x){var(na.omit(x))})
-  #   probes_to_remove <- expr[order(gene_var,decreasing = TRUE),] %>% filter(duplicated(NCBIid)) %$%  Probe
-  #   relevant_differentials = new_metaData %>% filter(ee.ID %in% x) %$% result.id
-  #   all_differential_values[as.character(relevant_differentials)] %<>% lapply(function(diff){
-  #     diff %>% dplyr::filter(!Probe %in% probes_to_remove)
-  #   })
-  # }
-  
 
   # remove duplicates, calculate additional statistics
   # looking at nathaniel's old freeze, it appears that 
@@ -201,27 +186,128 @@ lapply(c('human', 'mouse', 'rat'), function(taxon){
   })
   
 
+  # construct the dataHolder object-----------
+  dh = list()
   
-  lapply(seq_len(nrow(new_metaData)),function(i){
-    result_id = new_metaData$result.id[i]
-    contrast_id = new_metaData$contrast.id[i]
+  ncbi_ids = all_differential_values %>% lapply(function(x){
+    as.integer(x$NCBIid)
+  }) %>% unlist %>% unique %>% sort
+  
+  lapply(seq_len(nrow(contrast_metaData)),function(i){
+    result_id = contrast_metaData$result.id[i]
+    contrast_id = contrast_metaData$contrast.id[i]
     differential = all_differential_values[[as.character(result_id)]]
-    n.DE = differential[[glue::glue()]]
-    
-  })
+    differential[[
+      glue::glue('contrast_{contrast_id}_pvalue_adjusted')
+      ]][match(ncbi_ids,differential$NCBIid)]
+  }) %>% {names(.) = contrast_metaData$rsc.ID;.}%>% do.call(cbind,.) -> adj.pv
+  rownames(adj.pv) = ncbi_ids
+  full_na_genes =  adj.pv %>% apply(1,function(x){all(is.na(x))})
+  full_na_samples = adj.pv %>% apply(2,function(x){all(is.na(x))})
+  adj.pv = adj.pv[!full_na_genes,!full_na_samples]
+  
+  saveRDS(adj.pv, file.path(RAWDIR,'midway_backups',taxon,'adj.pv.rds'))
+  dh$adj.pv = adj.pv
   
   
+  # remove differentials without differential expression from the metadata
+  contrast_metaData %<>% dplyr::filter(rsc.ID %in% colnames(dh$adj.pv))
+  
+  dh$fc = lapply(seq_len(nrow(contrast_metaData)),function(i){
+    result_id = contrast_metaData$result.id[i]
+    contrast_id = contrast_metaData$contrast.id[i]
+    differential = all_differential_values[[as.character(result_id)]]
+    differential[[
+      glue::glue('contrast_{contrast_id}_log2fc')
+    ]][match(ncbi_ids,differential$NCBIid)]
+  }) %>% {names(.) = contrast_metaData$rsc.ID;.}%>% do.call(cbind,.) %>% 
+    {rownames(.) = ncbi_ids;.}
   
   
+  assertthat::assert_that(all(contrast_metaData$rsc.ID == colnames(adj.pv)))
+  contrast_metaData$n.DE = matrixStats::colSums2(adj.pv <= 0.05, na.rm = T)
+  contrast_metaData$mean.fc = matrixStats::colMeans2(abs(dh$fc), na.rm = T)
+  contrast_metaData$mean.up = matrixStats::colMeans2(dh$fc * ifelse(dh$fc > 0, 1, NA), na.rm = T)
+  contrast_metaData$mean.down = matrixStats::colMeans2(dh$fc * ifelse(dh$fc < 0, 1, NA), na.rm = T)
   
-  saveRDS(new_metaData, file.path(RAWDIR,'metadata',paste0(taxon,'.rds')))
-  return(new_metaDataTable)
-}) -> species_metadata
+  saveRDS(contrast_metaData, file.path(RAWDIR,'midway_backups',taxon,'metadata_final.rds'))
+  
+  print('compiling gene metadata')
+  seq(1,length(ncbi_ids),50) %>% lapply(function(i){
+    gemma.R::get_genes(ncbi_ids[seq(i,min(i+49,length(ncbi_ids)))],raw= TRUE)
+  }) %>% do.call(c,.) -> all_genes
+  
+  # not used, can add later if needed
+  # ncbi_ids %>% lapply(function(id){
+  #   print(id)
+  #   gemma.R::get_gene_locations(id)
+  # }) %>% do.call(rbind,.)
+  gene_metaData = data.frame(
+    entrez.ID = ncbi_ids,
+    gene.ID = all_genes %>% purrr::map_int('id'),
+    ensembl.ID =  all_genes %>% purrr::map_chr(function(x){if(is.null(x$ensemblId)){NA_character_}else{x$ensemblId}}),
+    gene.Name = all_genes %>% purrr::map_chr('name'),
+    alias.Name = "", # not populated by gemma api
+    gene.Desc = all_genes %>% purrr::map_chr('officialName'),
+    gene.Type = NA, # not populated by gemma api
+    gene.Chromosome = NA, # populated by gemmaAPI but takes quite long and we don't need it
+    mfx.Rank = NA, # not populated by gemma, should calculate by hand later
+    n.DE = matrixStats::rowSums2(dh$adj.pv <= 0.05, na.rm = T),
+    dist.Mean =  rowMeans(dh$fc[, contrast_metaData$ee.Reprocessed], na.rm = T),
+    dist.SD = Rfast::rowVars(dh$fc[, contrast_metaData$ee.Reprocessed], na.rm = T, std = T)
+  )
+  
+  print('calculating z scores')
+  dh$zscore <- (dh$fc - gene_metaData$dist.Mean) / gene_metaData$dist.SD
+  
+  print('getting go terms')
+  
+  go_terms <- mygene::queryMany(gene_metaData$entrez.ID, scopes = 'entrezgene', fields = 'go', species = taxon)
+  
+  go_terms <- data.table::rbindlist(lapply(c('CC', 'BP', 'MF'), function(cat) {
+    gocat <- paste0('go.', cat)
+    data.table::rbindlist(lapply(1:nrow(go_terms), function(indx) {
+      row <- go_terms@listData[[gocat]][[indx]]
+      if(!is.null(row))
+        data.frame(entrez.ID = go_terms@listData$query[indx], category = cat, id = row$id, term = row$term)
+    }), fill = T)
+  }), fill = T)
+  
+  # metaData is contrast_metaData : complete
+  # dataHolder is dh: finished
+  # metaGene is gene_metaData : complete
+  # goTerms is go_terms: finished
+  
+  print('final touches')
+  contrast_metaData$ee.Name %<>% as.factor
+  contrast_metaData$ee.Source %<>% as.factor
+  contrast_metaData$ee.Scale %<>% as.factor
+  contrast_metaData$ee.Tag %<>% as.factor
+  contrast_metaData$ee.TagLongUri %<>% as.factor
+  contrast_metaData$ad.Type %<>% as.factor
+  contrast_metaData$ad.ID %<>% as.factor
+  contrast_metaData$sf.Val %<>% as.factor
+  contrast_metaData$sf.ValLongUri %<>% as.factor
+  contrast_metaData$cf.Cat %<>% as.factor
+  contrast_metaData$cf.CatLongUri %<>% as.factor
+  contrast_metaData$cf.Baseline %<>% as.factor
+  contrast_metaData$cf.Val %<>% as.factor
+  contrast_metaData$cf.BaseLongUri %<>% as.factor
+  contrast_metaData$cf.ValLongUri %<>% as.factor
+  
+  contrast_metaData %<>% data.table()
+  gene_metaData %<>% data.table()
+  
+  out <- new('EData', taxon = taxon, data = dh,
+      experiment.meta = contrast_metaData, gene.meta = gene_metaData, go = unique(go_terms))
+  dir.create(file.path(RAWDIR,taxon),showWarnings = FALSE)
+  saveRDS(out, file.path(RAWDIR,taxon,'Edata.rds'))
+  
+}) ->  data.holder
 
+data.holder %<>%  setNames(c('human', 'mouse', 'rat'))
+
+saveRDS(data.holder, file.path(RAWDIR, 'DATA.HOLDER.rds'))
 # needs calculation for metadata
 # n.DE number of differentially expressed genes per difExp
 
-
-
-
-saveRDS(species_metadata,file = file.path(RAWDIR,'species_metadata.rds'))
