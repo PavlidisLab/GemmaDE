@@ -447,13 +447,12 @@ vsmSearch <- function(genes,
   if (is.null(DATA)) {
     DATA <- DATA.HOLDER
   }
-  
   # mData <- DATA[[options$taxa$value]]
   mData <- DATA[[taxa]]
   
   # if (!options$confounds$value) {
   if(!confounds){
-    experimentMask <- !mData@experiment.meta$ef.IsBatchConfounded
+    experimentMask <- !mData@experiment.meta$ef.IsBatchConfounded | is.na(mData@experiment.meta$ef.IsBatchConfounded)
   } else {
     experimentMask <- rep(T, nrow(mData@experiment.meta))
   }
@@ -531,7 +530,6 @@ vsmSearch <- function(genes,
     .[, score := Rfast::rowsums(as.matrix(.))]
   
   experimentN <- Rfast::colsums(pv <= p_threshold)
-  
   ret %>%
     data.table::setnames(c(mData@gene.meta$gene.Name[geneMask], "score")) %>%
     .[, f.IN := experimentN / n.genes] %>%
