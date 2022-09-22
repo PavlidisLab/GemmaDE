@@ -4,6 +4,7 @@
 # to simplify the loading process- ogan
 
 devtools::load_all()
+source('main/dependencies.R')
 .DATA_PATH <- paste(DATADIR, 'DATA.HOLDER.light.rds', sep='/')
 
 
@@ -85,7 +86,11 @@ usethis::use_data(ONTOLOGIES.DEFS,overwrite = TRUE)
 
 
 # CACHE.BACKGROUND ------------
-CACHE.BACKGROUND <- lapply(names(DATA.HOLDER), precomputeTags) %>%
+CACHE.BACKGROUND <- lapply(names(DATA.HOLDER), function(x){
+  ONTOLOGIES = ONTOLOGIES
+  ONTOLOGIES.DEFS = ONTOLOGIES.DEFS
+  precomputeTags(x)
+}) %>%
   setNames(names(DATA.HOLDER))
 
 usethis::use_data(CACHE.BACKGROUND,overwrite = TRUE)

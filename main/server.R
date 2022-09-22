@@ -482,6 +482,7 @@ server <- function(input, output, session) {
     future(
       {
         # First run a search asynchronously
+        print(options$mfx$value)
         if (!is.null(genes) && length(options$taxa$value) > 1 && "data.table" %in% class(genes)) {
           lapply(options$taxa$value, function(t) {
             mOp <- options

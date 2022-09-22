@@ -30,8 +30,10 @@ for(x in OPTIONS) {
       if(j %% (ITERS / 20) == 0)
         message(paste0(Sys.time(), ' ... ', x, ' ... ', round(100 * j / ITERS, 2), '%'))
       
+      opts = getConfig(taxa = x)
+      
       DATA.HOLDER[[x]]@gene.meta[sample(1:nrow(DATA.HOLDER[[x]]@gene.meta), BLOCK), entrez.ID] %>%
-        search(getConfig(taxa = x)) %>%
+        vsmSearch(taxa = opts$taxa$value, confounds = opts$confounds$value, filter = opts$filter$value, mfx = opts$mfx$value, geeq = opts$geeq$value, p_threshold = opts$pv$value) %>%
         .[, c(1:500, 505)] %>% # TODO BLOCK
         data.table::melt(id.vars = 'rn') %>%
         .[, !'variable'] %>%

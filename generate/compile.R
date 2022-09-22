@@ -1,11 +1,18 @@
+# Rscript generate/compile.R >gen.log 2>gen_err.log
+# cat gen.log;echo ""
+
 devtools::load_all()
 library(gemma.R)
 library(magrittr)
+library(dplyr)
+
+load_from_backups = TRUE
+trust_cache = TRUE
 
 
 mutate_cond <- function(.data, condition, ..., envir = parent.frame()) {
   condition <- eval(substitute(condition), .data, envir)
-  .data[condition, ] <- .data[condition, ] %>% mutate(...)
+  .data[condition, ] <- .data[condition, ] %>% dplyr::mutate(...)
   .data
 }
 # some fields require a logged in user to access
@@ -19,6 +26,14 @@ dir.create(RAWDIR,showWarnings = FALSE,recursive = TRUE)
 # alternative is to process everything before that but lets stick to
 # the easy way for now
 options('gemma.cache' = file.path(DATADIR,'gemma_cache'))
+options('gemma.cache' = CACHEDIR)
+
+if(!trust_cache){
+  # just in case...
+  warning("You are trying to delete the cache. It's currently disabled for your own good")
+  # gemma.R::forget_gemma_memoised()
+}
+
 options('gemma.memoised' = TRUE)
 
 dir.create(file.path(RAWDIR,'midway_backups'),showWarnings = FALSE,recursive = TRUE)
@@ -34,100 +49,123 @@ lapply(c('human', 'mouse', 'rat'), function(taxon){
   # temporary for debuggin
   # attributes(poke_call)$totalElements = 99
   
-  print('Getting all datasets')
-  seq(0,attributes(poke_call)$totalElements,100) %>% lapply(function(x){
-    cat('=')
-    out = gemma.R::get_taxon_datasets(taxon,offset = x,limit = 100)
-  }) %>% do.call(rbind,.) -> all_datasets
+  print('/nGetting all datasets')
+  bc_path = file.path(RAWDIR,'midway_backups',taxon,'all_datasets.rds')
+  if(load_from_backups && file.exists(bc_path)){
+    all_datasets = readRDS(bc_path)
+  } else {
+    seq(0,attributes(poke_call)$totalElements,100) %>% lapply(function(x){
+      cat('=')
+      out = gemma.R::get_taxon_datasets(taxon,offset = x,limit = 100)
+    }) %>% do.call(rbind,.) -> all_datasets
+    saveRDS(all_datasets,bc_path)
+  }
   
-  saveRDS(all_datasets,file.path(RAWDIR,'midway_backups',taxon,'all_datasets.rds'))
+  print('\nGetting platforms')
+  bc_path = file.path(RAWDIR,'midway_backups',taxon,'platform_ids.rds')
+  if(load_from_backups && file.exists(bc_path)){
+    all_platform_ids <- readRDS(bc_path)
+  } else {
+    all_datasets$experiment.ID %>% lapply(function(x){
+      cat('=')
+      gemma.R::get_dataset_platforms(x)$platform.ID
+    }) %>% unlist %>% unique -> all_platform_ids
+    saveRDS(all_platform_ids, bc_path)
+  }
   
-  print('Getting d platforms')
-  all_datasets$experiment.ID %>% lapply(function(x){
-    cat('=')
-    gemma.R::get_dataset_platforms(x)$platform.ID
-  }) %>% unlist %>% unique -> all_platform_ids
   
-  print('Getting platform annotations')
-  all_platform_annotations <- all_platform_ids %>% lapply(function(x){
-    cat('=')
-    gemma.R::get_platform_annotations(x)
-  })
-  names(all_platform_annotations) <- all_platform_ids
-  saveRDS(all_platform_annotations,file.path(RAWDIR,'midway_backups',taxon,'all_platform_annotations.rds'))
+  
+  print('/nGetting platform annotations')
+  bc_path = file.path(RAWDIR,'midway_backups',taxon,'all_platform_annotations.rds')
+  if(load_from_backups && file.exists(bc_path)){
+    all_platform_annotations <- readRDS(bc_path)
+  } else {
+    all_platform_annotations <- all_platform_ids %>% lapply(function(x){
+      cat('=')
+      gemma.R::get_platform_annotations(x)
+    })
+    names(all_platform_annotations) <- all_platform_ids
+    saveRDS(all_platform_annotations,bc_path)
+    
+  }
+  
+  
   
   null_platforms <- all_platform_annotations %>% purrr::map_lgl(is.null)
   all_platform_annotations <- all_platform_annotations[!null_platforms]
   
-  print('Compiling the datasets table')
+  print('/nCompiling the datasets table')
   
-  # (5000:5200) %>% lapply(function(i){
-  seq_len(nrow(all_datasets)) %>% lapply(function(i){
-    cat("=")
-    dataset <- all_datasets[i,]
-
-    dataset_annotations <- gemma.R::get_dataset_annotations(dataset$experiment.ID)
-    differential <- gemma.R::get_dataset_differential_expression_analyses(dataset$experiment.ID)
+  bc_path = file.path(RAWDIR,'midway_backups',taxon,'metadata_first_pass.rds')
+  if(load_from_backups && file.exists(bc_path)){
+    contrast_metaData <- readRDS(bc_path)
+  } else {
+    seq_len(nrow(all_datasets)) %>% lapply(function(i){
+      cat("=")
+      dataset <- all_datasets[i,]
+      
+      dataset_annotations <- gemma.R::get_dataset_annotations(dataset$experiment.ID)
+      differential <- gemma.R::get_dataset_differential_expression_analyses(dataset$experiment.ID)
+      
+      if(length(differential)==0){
+        return(NULL)
+      }
+      
+      samples <- tryCatch(gemma.R::get_dataset_samples(dataset$experiment.ID),
+                          error = function(e){
+                            if(e$message == "500: Internal server error."){
+                              return(list())
+                            }else{
+                              stop(e$message)
+                            }
+                          })
+      
+      # count sf.NumSample
+      if (any(c('DE_Include','DE_Exclude') %in% samples$sample.FactorValues[[1]]$name)){
+        samples$sample.FactorValues %>% purrr::map('name') %>% purrr::map_lgl(function(x){
+          'DE_Include' %in% x
+        }) %>% sum -> sf.NumSample
+      } else{
+        sf.NumSample <- dataset$experiment.SampleCount
+      }
+      
+      platform <- gemma.R::get_dataset_platforms(dataset$experiment.ID)
+      platform_annots <- platform$platform.ID %>% lapply(function(x){
+        all_platform_annotations[[as.character(x)]]
+      }) %>% do.call(rbind,.)
+      # data frame is manually re-created from the components to ensure
+      # compatibility with downstream use by replicating nathaniel's structure
+      data.frame(ee.ID = dataset$experiment.ID,
+                 ee.qScore = dataset$geeq.qScore,
+                 ee.sScore = dataset$geeq.sScore,
+                 rsc.ID = paste0('RSCID.',differential$result.ID,'.',differential$contrast.id),
+                 result.id = differential$result.ID,
+                 contrast.id = differential$contrast.id,
+                 ee.Name = dataset$experiment.ShortName,
+                 ee.Source = dataset$experiment.Database,
+                 ee.Scale = NA, # not accessible with the current API, not used in the dataset either
+                 ee.Reprocessed = dataset$geeq.rawData==1, # not sure if this field matches 1-1
+                 ef.IsBatchConfounded = dataset$geeq.batchConfound == -1,
+                 ad.ID = paste0(platform$platform.ID,collapse = '; '),
+                 ad.Type = paste0(platform$technology.Type,collapse = '; '),
+                 ad.NumGenes = platform_annots$NCBIids %>% {.[.!='' | grepl('|',.,fixed = TRUE)]} %>% unique %>% length, # this counts genes a bit differently than what gemma displays as I think it should be closer to the intended purpose. gemma counts by splitting genes that are aligned to the same probeset which presumably shouldn't be used as differential expression results. need to reconsider
+                 ee.NumSample = dataset$experiment.SampleCount,
+                 sf.NumSample =  sf.NumSample,
+                 cf.Cat = differential$baseline.category,
+                 cf.CatLongUri = differential$baseline.categoryURI,
+                 cf.Baseline = differential$baseline.factorValue,
+                 cf.BaseLongUri = differential$baseline.factorValueURI,
+                 cf.Val = differential$experimental.factorValue,
+                 cf.ValLongUri = differential$experimental.factorValueURI,
+                 sf.Val = differential$subsetFactor.factorValue,
+                 sf.ValLongUri = differential$subsetFactor.factorValueURI,
+                 ee.Tag = dataset_annotations$term.Name %>% paste(collapse = '; '),
+                 ee.TagLongUri = dataset_annotations$term.URI%>% paste(collapse = '; '))
+      
+    })  %>% do.call(rbind,.) -> contrast_metaData
     
-    if(length(differential)==0){
-      return(NULL)
-    }
-    
-    samples <- tryCatch(gemma.R::get_dataset_samples(dataset$experiment.ID),
-                        error = function(e){
-                          if(e$message == "500: Internal server error."){
-                            return(list())
-                          }else{
-                            stop(e$message)
-                          }
-                        })
-    
-    # count sf.NumSample
-    if (any(c('DE_Include','DE_Exclude') %in% samples$sample.FactorValues[[1]]$name)){
-      samples$sample.FactorValues %>% purrr::map('name') %>% purrr::map_lgl(function(x){
-        'DE_Include' %in% x
-      }) %>% sum -> sf.NumSample
-    } else{
-      sf.NumSample <- dataset$experiment.SampleCount
-    }
-    
-    platform <- gemma.R::get_dataset_platforms(dataset$experiment.ID)
-    platform_annots <- platform$platform.ID %>% lapply(function(x){
-       all_platform_annotations[[as.character(x)]]
-    }) %>% do.call(rbind,.)
-    # data frame is manually re-created from the components to ensure
-    # compatibility with downstream use by replicating nathaniel's structure
-    data.frame(ee.ID = dataset$experiment.ID,
-               ee.qScore = dataset$geeq.qScore,
-               ee.sScore = dataset$geeq.sScore,
-               rsc.ID = paste0('RSCID.',differential$result.ID,'.',differential$contrast.id),
-               result.id = differential$result.ID,
-               contrast.id = differential$contrast.id,
-               ee.Name = dataset$experiment.ShortName,
-               ee.Source = dataset$experiment.Database,
-               ee.Scale = NA, # not accessible with the current API, not used in the dataset either
-               ee.Reprocessed = dataset$geeq.rawData==1, # not sure if this field matches 1-1
-               ef.IsBatchConfounded = dataset$geeq.batchConfound == -1,
-               ad.ID = paste0(platform$platform.ID,collapse = '; '),
-               ad.Type = paste0(platform$technology.Type,collapse = '; '),
-               ad.NumGenes = platform_annots$NCBIids %>% {.[.!='' | grepl('|',.,fixed = TRUE)]} %>% unique %>% length, # this counts genes a bit differently than what gemma displays as I think it should be closer to the intended purpose. gemma counts by splitting genes that are aligned to the same probeset which presumably shouldn't be used as differential expression results. need to reconsider
-               ee.NumSample = dataset$experiment.SampleCount,
-               sf.NumSample =  sf.NumSample,
-               cf.Cat = differential$baseline.category,
-               cf.CatLongUri = differential$baseline.categoryURI,
-               cf.Baseline = differential$baseline.factorValue,
-               cf.BaseLongUri = differential$baseline.factorValueURI,
-               cf.Val = differential$experimental.factorValue,
-               cf.ValLongUri = differential$experimental.factorValueURI,
-               sf.Val = differential$subsetFactor.factorValue,
-               sf.ValLongUri = differential$subsetFactor.factorValueURI,
-               ee.Tag = dataset_annotations$term.Name %>% paste(collapse = '; '),
-               ee.TagLongUri = dataset_annotations$term.URI%>% paste(collapse = '; '))
-    
-  })  %>% do.call(rbind,.) -> contrast_metaData
-  
-  saveRDS(contrast_metaData, file.path(RAWDIR,'midway_backups',taxon,'metadata_first_pass.rds'))
-  
+    saveRDS(contrast_metaData, bc_path)
+  }
   contrast_metaData %<>% mutate_cond(is.na(cf.BaseLongUri), cf.BaseLongUri = cf.Baseline)
   contrast_metaData %<>% mutate_cond(is.na(cf.ValLongUri), cf.ValLongUri = cf.Val)
   contrast_metaData <- contrast_metaData[!is.na(contrast_metaData$cf.BaseLongUri),]
@@ -135,79 +173,116 @@ lapply(c('human', 'mouse', 'rat'), function(taxon){
   
   differentials <- contrast_metaData$result.id %>% unique
   
-  print("Getting differential expression data")
-  all_differential_values <- differentials %>% lapply(function(x){
-    cat('=')
-    gemma.R::get_differential_expression_values(resultSet = x)[[1]]
-  })
-  names(all_differential_values)= differentials
-  saveRDS(all_differential_values, file.path(RAWDIR,'midway_backups',taxon,'differentials.rds'))
-  bad_differentials = all_differential_values %>% sapply(nrow) %>% {.==0}
-  all_differential_values = all_differential_values[!bad_differentials]
-
-  # remove duplicates, calculate additional statistics
-  # looking at nathaniel's old freeze, it appears that 
-  # probeset with the lowest p value was selected to
-  # to represent a gene. need a deeper look to make sure
-  # but assuming that is the case for now -Ogan
-  print('Processing differential expression data')
-  all_differential_values %<>% lapply(function(x){
-    cat('=')
-    x %<>% dplyr::filter(NCBIid!='' & !grepl('|',NCBIid,fixed = TRUE))
-    p_value_cols = names(x)[grepl('contrast.*?pvalue',names(x))]
-    logfc_cols = names(x)[grepl('contrast.*?log2fc',names(x))]
-    stat_cols =names(x)[grepl('contrast.*?tstat',names(x))]
-    dup_genes = x$NCBIid[duplicated(x$NCBIid)]
-    out = x %>% filter(!NCBIid %in% dup_genes) %>% select(-Probe,-pvalue,-corrected_pvalue,-rank)
-    
-    # add dups with lowest p value
-    lapply(seq_along(p_value_cols),function(i){
-      x %>% filter(NCBIid %in% dup_genes) %>% arrange(!!sym(p_value_cols[i])) %>% 
-        filter(!duplicated(NCBIid)) %>%
-        select(NCBIid,GeneSymbol,GeneName,!!sym(logfc_cols[i]),!!sym(stat_cols[i]),!!sym(p_value_cols[i]))
-    }) %>% {
-      if(length(.)>1){
-        out = .[[1]]
-        for (j in seq_len(length(.)-1)){
-          out = merge(out,.[[j+1]])
+  print("/nGetting differential expression data")
+  bc_path =  file.path(RAWDIR,'midway_backups',taxon,'differentials.rds')
+  bc_path2 = file.path(RAWDIR,'midway_backups',taxon,'differentials_filtered.rds')
+  if(load_from_backups && file.exists(bc_path) && !file.exists(bc_path2)){
+    all_differential_values <- readRDS(bc_path)
+  } else if(!(file.exists(bc_path2) && load_from_backups)){
+    all_differential_values <- differentials %>% lapply(function(x){
+      cat('=')
+      tryCatch(
+        gemma.R::get_differential_expression_values(resultSet = x)[[1]],
+        error = function(e){
+          if(grepl('502',e$message)){
+            return(data.frame())
+          } else{
+            stop(e$message)
+          }
         }
-        out
-     } else{
-        .[[1]]
-      }
-      } -> to_append
-    
-    out = rbind(out,to_append)
-    
-    # calculate additional stats
-    for(i in seq_along(p_value_cols)){
-      out[[paste0(p_value_cols[[i]],'_adjusted')]] = p.adjust(out[[p_value_cols[i]]],'BH')
-    }
-    return(out)
-  })
+      )
+      
+    })
+    names(all_differential_values)= differentials
+    saveRDS(all_differential_values, bc_path)
+  }
   
-
+  print('/nProcessing differential expression data')
+  if(load_from_backups && file.exists(bc_path2)){
+    all_differential_values <- readRDS(bc_path2)
+  } else{
+    bad_differentials = all_differential_values %>% sapply(nrow) %>% {.==0}
+    all_differential_values = all_differential_values[!bad_differentials]
+    
+    # remove duplicates, calculate additional statistics
+    # looking at nathaniel's old freeze, it appears that 
+    # probeset with the lowest p value was selected to
+    # to represent a gene. need a deeper look to make sure
+    # but assuming that is the case for now -Ogan
+    all_differential_values %<>% lapply(function(x){
+      cat('=')
+      x %<>% dplyr::filter(NCBIid!='' & !grepl('|',NCBIid,fixed = TRUE))
+      p_value_cols = names(x)[grepl('contrast.*?pvalue',names(x))]
+      logfc_cols = names(x)[grepl('contrast.*?log2fc',names(x))]
+      stat_cols =names(x)[grepl('contrast.*?tstat',names(x))]
+      dup_genes = x$NCBIid[duplicated(x$NCBIid)]
+      out = x %>% filter(!NCBIid %in% dup_genes) %>% select(-Probe,-pvalue,-corrected_pvalue,-rank)
+      # add dups with lowest p value
+      if (length(p_value_cols)==0){
+        return(data.frame())
+      }
+      
+      lapply(seq_along(p_value_cols),function(i){
+        x %>% filter(NCBIid %in% dup_genes) %>% arrange(!!sym(p_value_cols[i])) %>% 
+          filter(!duplicated(NCBIid)) %>%
+          select(NCBIid,GeneSymbol,GeneName,!!sym(logfc_cols[i]),!!sym(stat_cols[i]),!!sym(p_value_cols[i]))
+      }) %>% {
+        if(length(.)>1){
+          out = .[[1]]
+          for (j in seq_len(length(.)-1)){
+            out = merge(out,.[[j+1]])
+          }
+          out
+        } else if (length(.) == 0){
+          .[[1]]
+        }
+      } -> to_append
+      
+      out = rbind(out,to_append)
+      
+      # calculate additional stats
+      for(i in seq_along(p_value_cols)){
+        out[[paste0(p_value_cols[[i]],'_adjusted')]] = p.adjust(out[[p_value_cols[i]]],'BH')
+      }
+      return(out)
+    })
+    bad_differentials = all_differential_values %>% sapply(nrow) %>% {.==0}
+    all_differential_values = all_differential_values[!bad_differentials]
+    
+    saveRDS(all_differential_values, bc_path2)
+  }
+  
   # construct the dataHolder object-----------
   dh = list()
   
   ncbi_ids = all_differential_values %>% lapply(function(x){
     as.integer(x$NCBIid)
   }) %>% unlist %>% unique %>% sort
-  print('calculating adj.p values')
-  lapply(seq_len(nrow(contrast_metaData)),function(i){
-    result_id = contrast_metaData$result.id[i]
-    contrast_id = contrast_metaData$contrast.id[i]
-    differential = all_differential_values[[as.character(result_id)]]
-    differential[[
-      glue::glue('contrast_{contrast_id}_pvalue_adjusted')
-      ]][match(ncbi_ids,differential$NCBIid)]
-  }) %>% {names(.) = contrast_metaData$rsc.ID;.}%>% do.call(cbind,.) -> adj.pv
-  rownames(adj.pv) = ncbi_ids
-  full_na_genes =  adj.pv %>% apply(1,function(x){all(is.na(x))})
-  full_na_samples = adj.pv %>% apply(2,function(x){all(is.na(x))})
-  adj.pv = adj.pv[!full_na_genes,!full_na_samples]
   
-  saveRDS(adj.pv, file.path(RAWDIR,'midway_backups',taxon,'adj.pv.rds'))
+  print('calculating adj.p values')
+  bc_path = file.path(RAWDIR,'midway_backups',taxon,'adj.pv.rds')
+  if(load_from_backups && file.exists(bc_path)){
+    adj.pv = readRDS(bc_path)
+  } else{
+    lapply(seq_len(nrow(contrast_metaData)),function(i){
+      result_id = contrast_metaData$result.id[i]
+      contrast_id = contrast_metaData$contrast.id[i]
+      differential = all_differential_values[[as.character(result_id)]]
+      differential[[
+        glue::glue('contrast_{contrast_id}_pvalue_adjusted')
+      ]][match(ncbi_ids,differential$NCBIid)]
+    }) %>% {names(.) = contrast_metaData$rsc.ID;.}%>% do.call(cbind,.) -> adj.pv
+    rownames(adj.pv) = ncbi_ids
+    full_na_genes =  adj.pv %>% apply(1,function(x){all(is.na(x))})
+    full_na_samples = adj.pv %>% apply(2,function(x){all(is.na(x))})
+    adj.pv = adj.pv[!full_na_genes,!full_na_samples]
+    
+    saveRDS(adj.pv, file.path(RAWDIR,'midway_backups',taxon,'adj.pv.rds'))
+  }
+  
+  # remove any filtered gene from the ncbi_ids
+  ncbi_ids = rownames(adj.pv)
+
   dh$adj.pv = adj.pv
   
   
@@ -233,8 +308,9 @@ lapply(c('human', 'mouse', 'rat'), function(taxon){
   
   saveRDS(contrast_metaData, file.path(RAWDIR,'midway_backups',taxon,'metadata_final.rds'))
   
-  print('compiling gene metadata')
+  print('\ncompiling gene metadata')
   seq(1,length(ncbi_ids),50) %>% lapply(function(i){
+    cat('=')
     gemma.R::get_genes(ncbi_ids[seq(i,min(i+49,length(ncbi_ids)))],raw= TRUE)
   }) %>% do.call(c,.) -> all_genes
   
@@ -300,15 +376,139 @@ lapply(c('human', 'mouse', 'rat'), function(taxon){
   gene_metaData %<>% data.table()
   
   out <- new('EData', taxon = taxon, data = dh,
-      experiment.meta = contrast_metaData, gene.meta = gene_metaData, go = unique(go_terms))
+             experiment.meta = contrast_metaData, gene.meta = gene_metaData, go = unique(go_terms))
   dir.create(file.path(RAWDIR,taxon),showWarnings = FALSE)
   saveRDS(out, file.path(RAWDIR,taxon,'Edata.rds'))
   
 }) ->  data.holder
 
-data.holder %<>%  setNames(c('human', 'mouse', 'rat'))
 
 saveRDS(data.holder, file.path(RAWDIR, 'DATA.HOLDER.rds'))
-# needs calculation for metadata
-# n.DE number of differentially expressed genes per difExp
+
+data.holder$human@experiment.meta$
+
+
+
+# conversion to file based
+if('matrix' %in% class(data.holder[[1]]@data$adj.pv)) {
+  for(taxon in names(data.holder)[-1]) {
+    message(paste0('Converting in-memory matrices for ', taxon, ' to file-backed...'))
+    
+    file.remove(list.files(file.path(DATADIR, 'fbm', taxon), full.names = T))
+    
+    dir.create(file.path(DATADIR,'fbm',taxon),recursive = TRUE, showWarnings =FALSE)
+    
+    dimnames(data.holder[[taxon]]@data$zscore) %>% 
+      rev() %>%
+      saveRDS(file.path(DATADIR, 'fbm', taxon, 'z.dimnames.rds'))
+    
+    data.holder[[taxon]]@data$zscore <- bigstatsr::as_FBM(data.holder[[taxon]]@data$zscore %>% t,
+                                                      backingfile = file.path(DATADIR, 'fbm', taxon, 'zscores'),
+                                                      is_read_only = T)$save()
+    
+    dimnames(data.holder[[taxon]]@data$adj.pv) %>% 
+      rev() %>%
+      saveRDS(file.path(DATADIR, 'fbm', taxon, 'p.dimnames.rds'))
+    
+    data.holder[[taxon]]@data$adj.pv <- bigstatsr::as_FBM(data.holder[[taxon]]@data$adj.pv %>% t,
+                                                      backingfile = file.path(DATADIR, 'fbm', taxon, 'adjpvs'),
+                                                      is_read_only = T)$save()
+  }
+}
+
+dimnames.FBM <- function(object, ...) {
+  attr(object, '.dimnames')
+}
+
+for (taxon in names(data.holder)) {
+  data.holder[[taxon]]@data$zscore <- NULL
+  data.holder[[taxon]]@data$adj.pv <- NULL
+}
+saveRDS(data.holder, paste(DATADIR, 'DATA.HOLDER.light.rds', sep='/'))
+
+# light data holder used in the application and downstream results doesn't include p values
+# keeping them in the original data in case we need them later
+
+
+
+
+# some code for multifunctionality. better to get as a database dump when you can
+# 
+# httr::GET('https://gemma.msl.ubc.ca/gene/showGene.html?id=1')
+# session = chromote::ChromoteSession$new()
+# 
+# rvest::session()
+# 
+# # read from the individual files
+# # data.holder <- lapply(c('human', 'mouse', 'rat'), function(taxon){
+# #   readRDS(file.path(RAWDIR,taxon,'Edata.rds'))
+# # })
+# 
+# 
+# old_DATA.HOLDER = readRDS(file.path(DATADIR, 'DATA.HOLDER.rds'))
+# 
+# 
+# 
+# data.holder %<>%  setNames(c('human', 'mouse', 'rat'))
+# 
+# 
+# pjs <- webdriver::run_phantomjs()
+# ses <- webdriver::Session$new(port = pjs$port)
+# 
+# c('human','mouse','rat') %>% lapply(function(taxon){
+#   genes = data.holder[[taxon]]@gene.meta
+#   genes$gene.ID[1:20] %>% sapply(function(id){
+#     ses$go(glue::glue("https://gemma.msl.ubc.ca/gene/showGene.html?id={id}"))
+#     Sys.sleep(1)
+#     element = tryCatch(ses$findElement("#ext-gen162"),
+#                        error = function(e){
+#                          Sys.sleep(1)
+#                          ses$findElement("#ext-gen162")
+#                        })
+#     text = element$getText()
+#     stringr::str_extract(text, pattern = '(?<=multifunctionality ).*') %>% as.numeric()
+#   })-> out
+#   
+#   return(out)
+#   
+# })-> mfx_ranks
+# 
+# 
+# download.file(url = 'http://purl.obolibrary.org/obo/go.obo',destfile = 'data-raw/go.obo')
+# goRelations = ontologyIndex::get_relation_names('data-raw/go.obo')
+# gonto = ontologyIndex::get_ontology('data-raw/go.obo',propagate_relationships = c('is_a','part_of'))
+# 
+# c('human', 'mouse', 'rat') %>% lapply(function(taxon){
+#   go_terms = data.holder[[taxon]]@go
+#   all_terms = go_terms$id %>% unique
+#   
+#   all_genes = unique(go_terms$entrez.ID)
+#   
+#   all_terms %>% sapply(function(t){
+#     in_term = go_terms %>% filter(id == t) %$% entrez.ID %>% unique
+#     out_term = all_genes[!all_genes %in% in_term]
+#     c(in_term = length(in_term),
+#       out_term = length(out_term))
+#   }) -> term_inouts
+#   
+#   data.holder[[taxon]]@gene.meta$entrez.ID %>% sapply(function(gene){
+#     print(gene)
+#     gene_terms = go_terms %>% filter(entrez.ID == gene)
+#     if(nrow(gene_terms) == 0){
+#       return(0)
+#     }
+#     descendants = gene_terms$id %>% lapply(function(x){ontologyIndex::get_descendants(gonto,x,exclude_roots = TRUE)})
+#     parent_terms = descendants %>% sapply(function(x){
+#       any(x %in% gene_terms$id)
+#     })
+#     gene_terms = gene_terms[!parent_terms,]
+# 
+#     sum(1/(term_inouts[1,gene_terms$id]*term_inouts[2,gene_terms$id]))
+#   }) -> mfx_s
+#   
+# })
+# 
+# 
+# 
+# 
 

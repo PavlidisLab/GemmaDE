@@ -4,3 +4,4 @@
 .Ruserdata
 slurm*.out
 Generic_*
+*log
