@@ -11,6 +11,7 @@ source('main/dependencies.R')
 # ontology data ------
 # backed up nathaniels files at cosmos with the rest of the data. keeping these
 # to remember the original paths if needed
+# narrator: they were needed
 # ONTOLOGIES <- data.table::fread("/space/grp/nlim/CronGemmaDump/Ontology/Ontology_Dump_MERGED.TSV")
 # ONTOLOGIES.DEFS <- data.table::fread("/space/grp/nlim/CronGemmaDump/Ontology/Ontology_Dump_MERGED_DEF.TSV")
 
@@ -18,7 +19,7 @@ fixOntoGenes <- function() {
   lapply(getConfig(key = "taxa")$core, function(taxa) {
     matches <- do.call(
       rbind,
-      str_match_all(
+      stringr::str_match_all(
         DATA.HOLDER[[taxa]]@experiment.meta[, c(
           as.character(cf.BaseLongUri),
           as.character(cf.ValLongUri)
