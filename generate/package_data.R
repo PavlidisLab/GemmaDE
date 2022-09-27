@@ -55,8 +55,13 @@ fixOntoGenes <- function() {
 }
 
 
-ONTOLOGIES <- data.table::fread(file.path(FREEZEDIR,"CronGemmaDump/Ontology/Ontology_Dump_MERGED.TSV"))
-ONTOLOGIES.DEFS <- data.table::fread(file.path(FREEZEDIR,"CronGemmaDump/Ontology/Ontology_Dump_MERGED_DEF.TSV"))
+#ONTOLOGIES <- data.table::fread(file.path(FREEZEDIR,"CronGemmaDump/Ontology/Ontology_Dump_MERGED.TSV"))
+#ONTOLOGIES.DEFS <- data.table::fread(file.path(FREEZEDIR,"CronGemmaDump/Ontology/Ontology_Dump_MERGED_DEF.TSV"))
+
+# re-using nathaniel's files again as they are updated monthly
+ONTOLOGIES <- data.table::fread("/space/grp/nlim/CronGemmaDump/Ontology/Ontology_Dump_MERGED.TSV")
+ONTOLOGIES.DEFS <- data.table::fread("/space/grp/nlim/CronGemmaDump/Ontology/Ontology_Dump_MERGED_DEF.TSV")
+
 
 
 ONTOLOGIES[, c("ChildNode", "ParentNode")] <- NULL
