@@ -118,9 +118,5 @@ ui <- fluidPage(
         width = 12
       )
     )
-  ),
-  HTML('
-<footer>
-  <div class="text-center">© 2020-2021 <a href="mailto:jordan.sicherman@msl.ubc.ca">Jordan Sicherman</a></div>
-</footer>')
+  )
 )
