@@ -482,15 +482,15 @@ server <- function(input, output, session) {
     future(
       {
         # First run a search asynchronously
-        print(options$mfx$value)
+        # print(options$mfx$value)
         if (!is.null(genes) && length(options$taxa$value) > 1 && "data.table" %in% class(genes)) {
           lapply(options$taxa$value, function(t) {
             mOp <- options
             mOp$taxa$value <- t
-            vsmSearch(genes[taxon == t, entrez.ID], taxa = mOp$taxa$value, confounds = mOp$confounds$value, filter = mOp$filter$value, mfx = mOp$mfx$value, geeq = mOp$geeq$value, p_threshold = mOp$pv$value)
+            vsmSearch(genes[taxon == t, entrez.ID], taxa = mOp$taxa$value, confounds = mOp$confounds$value, filter = mOp$filter$value, mfx = FALSE, geeq = mOp$geeq$value, p_threshold = mOp$pv$value)
           })
         } else if (length(options$taxa$value) == 1) {
-          vsmSearch(genes$genes, taxa = options$taxa$value, confounds = options$confounds$value, filter = options$filter$value,  mfx = options$mfx$value, geeq = options$geeq$value, p_threshold = options$pv$value)
+          vsmSearch(genes$genes, taxa = options$taxa$value, confounds = options$confounds$value, filter = options$filter$value,  mfx = FALSE, geeq = options$geeq$value, p_threshold = options$pv$value)
         }
       },
       globals = "DATA.HOLDER",
