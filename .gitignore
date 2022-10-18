@@ -5,3 +5,5 @@
 slurm*.out
 Generic_*
 *log
+cache
+generate/auth
