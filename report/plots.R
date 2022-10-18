@@ -1,4 +1,9 @@
+devtools::load_all()
+source(here::here("main/requirements.R"))
+source(here::here("main/dependencies.R"))
 # GEO holdings ----
+
+experiments = readRDS('report/experiments.rds')
 
 GEO <- fread('generate//GEO_holdings_2021.csv')
 GEO %>% melt(measure.vars = 'Count') %>%
@@ -30,12 +35,12 @@ GEO %>% melt(measure.vars = 'Count') %>%
   #.[, ingemma := experiments[taxon.Name %in% c('human', 'mouse', 'rat'), length(unique(ee.ID))]] %>%
   .[, Type := factor(Type, levels = c('Microarray', 'Sequencing', 'Aggregate'), labels = c('Microarray', 'Sequencing', 'Total'), ordered = T)] %>%
   .[Organism %in% c('Homo sapiens', 'Mus musculus', 'Rattus norvegicus')] %>%
-  .[, ingemma := case_when(Organism == 'Homo sapiens' ~ experiments[ee.Database == 'GEO' & taxon.Name == 'human' &
-                                                                      (Type == 'Total' | (technology.Type %in% c('GENELIST', 'SEQUENCING')) == (Type == 'Sequencing')), length(unique(ee.ID))],
-                        Organism == 'Mus musculus' ~ experiments[ee.Database == 'GEO' & taxon.Name == 'mouse' &
-                                                                   (Type == 'Total' | (technology.Type %in% c('GENELIST', 'SEQUENCING')) == (Type == 'Sequencing')), length(unique(ee.ID))],
-                        Organism == 'Rattus norvegicus' ~ experiments[ee.Database == 'GEO' & taxon.Name == 'rat' &
-                                                                        (Type == 'Total' | (technology.Type %in% c('GENELIST', 'SEQUENCING')) == (Type == 'Sequencing')), length(unique(ee.ID))]), Type] %>%
+  .[, ingemma := case_when(Organism == 'Homo sapiens' ~ experiments[experiment.Database == 'GEO' & taxon.Name == 'human' &
+                                                                      (Type == 'Total' | (platform.Type %in% c('GENELIST', 'SEQUENCING')) == (Type == 'Sequencing')), length(unique(experiment.ID))],
+                        Organism == 'Mus musculus' ~ experiments[experiment.Database == 'GEO' & taxon.Name == 'mouse' &
+                                                                   (Type == 'Total' | (platform.Type %in% c('GENELIST', 'SEQUENCING')) == (Type == 'Sequencing')), length(unique(experiment.ID))],
+                        Organism == 'Rattus norvegicus' ~ experiments[experiment.Database == 'GEO' & taxon.Name == 'rat' &
+                                                                        (Type == 'Total' | (platform.Type %in% c('GENELIST', 'SEQUENCING')) == (Type == 'Sequencing')), length(unique(experiment.ID))]), Type] %>%
   ggplot(aes(Year, value, color = Type)) +
   geom_point() + geom_line(lwd = 1.1) +
   #geom_hline(aes(yintercept = ingemma), color = 'black', linetype = 'dashed', lwd = 1.5) +
