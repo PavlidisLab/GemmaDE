@@ -403,7 +403,7 @@ enrich <- function(rankings, # options = getConfig(),
         {
           list(pv = 1 - .[, "pvalue"], gene = rownames(.)) # Small p-value if real effect (= score closer to 1)
         }, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri),
-      .SDcols = !c("reverse", "distance", "ee.ID", "rn", "score", "f.IN", "f.OUT", "ee.q", "normalization")
+      .SDcols = !c("reverse", "distance", "ee.ID", "rn", "score", "f.IN", "f.OUT", "ee.q", "normalization","core_split")
     ] %>%
       data.table::dcast(... ~ gene, value.var = "pv", fill = 0)
   },mc.cores = cores) %>% do.call(rbind,.) -> wilcox_ps
