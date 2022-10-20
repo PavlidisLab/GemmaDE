@@ -17,7 +17,7 @@ crs = 16
 #* @post /de_search
 #* @get /de_search
 #* @serializer tsv
-de_search = function(req = NULL, # this is the request object
+de_search_plumb = function(req = NULL, # this is the request object
                      genes = NULL,
                      taxa =NULL,
                      max_dist = 1.5,
@@ -40,85 +40,18 @@ de_search = function(req = NULL, # this is the request object
       assign(x,req$body[[x]])
     }
   }
-  if(!is.logical(geeq)){
-    geeq = as.logical(toupper(geeq))
-  }
-  if(!is.logical(multifunctionality)){
-    multifunctionality = as.logical(toupper(multifunctionality))
-  }
-  if(!is.logical(confounds)){
-    confounds = as.logical(toupper(confounds))
-  }
-  tictoc::tic()
-  genes <- processGenes(genes,taxa)
-  print('vsmSearch')
-  tictoc::tic()
-  experiments <- taxa %>% 
-    parallel::mclapply(function(t){
-      vsmSearch(genes[taxon == t, entrez.ID],
-             taxa = t,
-             confounds = confounds,
-             filter = NULL,
-             mfx = multifunctionality,
-             geeq = geeq,
-             p_threshold = p_threshold)
-    },mc.cores = cores)
-  names(experiments) = taxa
-  tictoc::toc()
   
-  print('enrich')
-  tictoc::tic()
-  conditions <- taxa %>% lapply(function(t){
-    enrich(experiments[[t]], taxa = t, dist = max_dist,categories = categories,cores = cores) %>% 
-      data.table::setnames(genes[taxon == t, gene.realName],
-               genes[taxon == t, identifier],
-               skip_absent = T)
-  }) %>% data.table::rbindlist(fill = TRUE) %>% 
-    reorderTags3() %>%
-    .[, lapply(.SD, mean, na.rm = T), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
-  tictoc::toc()
+  de_search(genes,
+            taxa,
+            max_dist,
+            confounds,
+            multifunctionality,
+            geeq,
+            p_threshold,
+            categories,
+            cores)
   
-  print('ending')
-  tictoc::tic()
-  geneInfo <- genes %>%
-    data.table::copy() %>%
-    data.table::setnames("identifier", "gene.Name")
-  mGenes <- genes %>% data.table::copy()
-  
-  # components of the endSuccess function
-  exps <- lapply(experiments, "[[", "rn") %>% unlist()
-  
-  tmp <- data.table::rbindlist(lapply(taxa, function(i) {
-    DATA.HOLDER[[i]]@experiment.meta[rsc.ID %in% exps, .(rsc.ID, ee.ID, ee.Name, ee.NumSample, ef.IsBatchConfounded)]
-  }))
-  
-  
-  
-  conditions[, `Condition Comparison` := paste0( cf.BaseLongUri, " vs. ", cf.ValLongUri)]
-  
-  tmp <- tmp %>%
-    merge(getTags(taxa, exps), sort = F) %>%
-    .[, N := length(unique(ee.ID)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
-    .[N < 0.03 * nrow(tmp)] # Get rid of contrasts that overlap in more than 3% experiments
-  
-  
-  tmp[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, N)] %>%
-    unique() %>%
-    merge(conditions, by = c("cf.Cat", "cf.BaseLongUri", "cf.ValLongUri"), sort = F) %>%
-    data.table::setnames(c("stat", "score", "distance"), c("Effect Size", "Test Statistic", "Ontology Steps")) ->
-    conditions
-  
-  # out of endSuccess
 
-  getPercentageStat <- function(x, n = 1){
-    x / n
-  }
-  conditions[,'Test Statistic'] <- apply(conditions[,'Test Statistic'], 2, getPercentageStat, n = nrow(geneInfo))
-  tictoc::toc()
-  
-  tictoc::toc()
-  return(conditions %>% 
-           data.table::setnames(c("cf.Cat", "cf.BaseLongUri", "cf.ValLongUri"), c("Category", "Baseline", "Value")))
 }
 
 # de_search(genes=genes,taxa = taxa)
