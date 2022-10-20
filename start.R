@@ -1,5 +1,4 @@
 library(shiny)
-devtools::load_all()
 runApp('main', port = 18235, launch.browser = F)
 
 # Roadmap ----
