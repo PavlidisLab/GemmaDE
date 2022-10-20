@@ -390,7 +390,6 @@ enrich <- function(rankings, # options = getConfig(),
   grouping = grouping[grouping %in% valid_groups]
   # assign rows belonging to same groups to same cores
   core_split = grouping %>% factor %>% as.numeric() %>% {.%%cores}
-  
   gene_names = 
     colnames(terms)[!colnames(terms) %in% c("reverse", "distance", "ee.ID", "rn", "score", "f.IN", "f.OUT", "ee.q", "normalization",'cf.Cat','cf.BaseLongUri','cf.ValLongUri')]
   grouping_vars = c('cf.Cat','cf.BaseLongUri','cf.ValLongUri')
@@ -835,3 +834,4 @@ de_search = function(genes = NULL,
   tictoc::toc()
   return(conditions %>% 
            data.table::setnames(c("cf.Cat", "cf.BaseLongUri", "cf.ValLongUri"), c("Category", "Baseline", "Value")))
+}
