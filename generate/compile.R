@@ -25,7 +25,6 @@ dir.create(RAWDIR,showWarnings = FALSE,recursive = TRUE)
 # set up cache and memoise so repeated calls to platforms are faster
 # alternative is to process everything before that but lets stick to
 # the easy way for now
-options('gemma.cache' = file.path(DATADIR,'gemma_cache'))
 options('gemma.cache' = CACHEDIR)
 
 if(!trust_cache){
