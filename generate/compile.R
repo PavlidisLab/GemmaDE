@@ -1,6 +1,7 @@
 # Rscript generate/compile.R >gen.log 2>gen_err.log
 # cat gen.log;echo ""
 
+print('data compilation')
 devtools::load_all()
 library(gemma.R)
 library(magrittr)
@@ -402,7 +403,7 @@ lapply(c('human', 'mouse', 'rat'), function(taxon){
              experiment.meta = contrast_metaData, gene.meta = gene_metaData, go = unique(go_terms))
   dir.create(file.path(RAWDIR,taxon),showWarnings = FALSE)
   saveRDS(out, file.path(RAWDIR,taxon,'Edata.rds'))
-  
+  return(out)
 }) ->  data.holder
 
 
