@@ -278,3 +278,9 @@ footer {
 footer > a:focus, footer > a:hover {
   color: lightgrey;
 }
+
+
+#shiny-notification-panel {
+  bottom: 50%;
+  right: 50%;
+}
