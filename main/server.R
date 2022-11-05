@@ -459,8 +459,13 @@ server <- function(input, output, session) {
       ),
       .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)
     ]
+    
+    tmp[, EvidencePlain := {
+      dedup <- !duplicated(ee.ID)
+      stringi::stri_c(ee.Name[dedup], collapse = ",")
+      },.(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
 
-    tmp[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, N, Evidence)] %>%
+    tmp[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, N, Evidence, EvidencePlain)] %>%
       unique() %>%
       merge(conditions, by = c("cf.Cat", "cf.BaseLongUri", "cf.ValLongUri"), sort = F) %>%
       setnames(c("stat", "score", "distance"), c("Effect Size", "Test Statistic", "Ontology Steps"))
@@ -570,7 +575,6 @@ server <- function(input, output, session) {
             }
             conditions[,'Test Statistic'] <- apply(conditions[,'Test Statistic'], 2, getPercentageStat, n = nrow(geneInfo))
             output$results <- generateResults(conditions)
-            
             # Prepare some plotting information.
             session$userData$plotData <- list(
               options = options,
@@ -585,7 +589,7 @@ server <- function(input, output, session) {
               write.csv(session$userData$plotData$conditions %>%
                 .[, !c("Condition Comparison", "Evidence")] %>%
                 data.table::setorder(-`Test Statistic`, `Ontology Steps`) %>%
-                data.table::setnames(c("cf.Cat", "cf.BaseLongUri", "cf.ValLongUri"), c("Category", "Baseline", "Value")), file)
+                data.table::setnames(c("cf.Cat", "cf.BaseLongUri", "cf.ValLongUri","EvidencePlain"), c("Category", "Baseline", "Value","Evidence")), file)
             }, "text/csv")
           }
         })
