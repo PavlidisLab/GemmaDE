@@ -2,7 +2,7 @@
 # most of these objects used to be created on application runtime
 # they are moved here to prevent computation during application load time and
 # to simplify the loading process- ogan
-
+print('package data')
 devtools::load_all()
 source('main/dependencies.R')
 .DATA_PATH <- paste(DATADIR, 'DATA.HOLDER.light.rds', sep='/')
