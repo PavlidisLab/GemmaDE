@@ -215,16 +215,16 @@ lapply(c('human', 'mouse', 'rat'), function(taxon){
       logfc_cols = names(x)[grepl('contrast.*?log2fc',names(x))]
       stat_cols =names(x)[grepl('contrast.*?tstat',names(x))]
       dup_genes = x$NCBIid[duplicated(x$NCBIid)]
-      out = x %>% filter(!NCBIid %in% dup_genes) %>% select(-Probe,-pvalue,-corrected_pvalue,-rank)
+      out = x %>% dplyr::filter(!NCBIid %in% dup_genes) %>% dplyr::select(-Probe,-pvalue,-corrected_pvalue,-rank)
       # add dups with lowest p value
       if (length(p_value_cols)==0){
         return(data.frame())
       }
       
       lapply(seq_along(p_value_cols),function(i){
-        x %>% filter(NCBIid %in% dup_genes) %>% arrange(!!sym(p_value_cols[i])) %>% 
-          filter(!duplicated(NCBIid)) %>%
-          select(NCBIid,GeneSymbol,GeneName,!!sym(logfc_cols[i]),!!sym(stat_cols[i]),!!sym(p_value_cols[i]))
+        x %>% dplyr::filter(NCBIid %in% dup_genes) %>% dplyr::arrange(!!sym(p_value_cols[i])) %>% 
+          dplyr::filter(!duplicated(NCBIid)) %>%
+          dplyr::select(NCBIid,GeneSymbol,GeneName,!!sym(logfc_cols[i]),!!sym(stat_cols[i]),!!sym(p_value_cols[i]))
       }) %>% {
         if(length(.)>1){
           out = .[[1]]
@@ -232,7 +232,7 @@ lapply(c('human', 'mouse', 'rat'), function(taxon){
             out = merge(out,.[[j+1]])
           }
           out
-        } else if (length(.) == 0){
+        } else if (length(.) == 1){
           .[[1]]
         }
       } -> to_append
