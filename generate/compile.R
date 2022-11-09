@@ -311,7 +311,7 @@ lapply(c('human', 'mouse', 'rat'), function(taxon){
   # the output order isn't guaranteed to be identical to the input order for get_genes
   seq(1,length(ncbi_ids),50) %>% lapply(function(i){
     cat('=')
-    gemma.R::get_genes(ncbi_ids[seq(i,min(i+49,length(ncbi_ids)))],raw= TRUE)
+    gemma.R::get_genes(ncbi_ids[seq(i,min(i+49,length(ncbi_ids)))],raw= TRUE, memoised = FALSE)
   }) %>% do.call(c,.) -> all_genes
   
   # not used, can add later if needed
@@ -324,13 +324,13 @@ lapply(c('human', 'mouse', 'rat'), function(taxon){
     entrez.ID = all_genes %>% purrr::map_int('ncbiId'),
     gene.ID = all_genes %>% purrr::map_int('id'),
     ensembl.ID =  all_genes %>% purrr::map_chr(function(x){if(is.null(x$ensemblId)){NA_character_}else{x$ensemblId}}),
-    gene.Name = all_genes %>% purrr::map_chr('name'),
+    gene.Name = all_genes %>% purrr::map_chr('officialSymbol'),
     alias.Name = "", # not populated by gemma api
     gene.Desc = all_genes %>% purrr::map_chr('officialName'),
     gene.Type = NA, # not populated by gemma api
     gene.Chromosome = NA, # populated by gemmaAPI but takes quite long and we don't need it
-    mfx.Rank = NA,
-    species = all_genes %>% purrr::map_chr('taxonCommonName'))
+    mfx.Rank = all_genes %>% purrr::map_dbl('multifunctionalityRank'),
+    species = all_genes %>% purrr::map('taxon') %>% purrr::map_chr('commonName'))
   gene_metaData = gene_metaData[match(ncbi_ids,gene_metaData$entrez.ID),]
   gene_metaData$n.DE = matrixStats::rowSums2(dh$adj.pv <= 0.05, na.rm = T)
   gene_metaData$dist.Mean =  rowMeans(dh$fc[, contrast_metaData$ee.Reprocessed], na.rm = T)
@@ -416,12 +416,12 @@ names(data.holder) = c('human','mouse','rat')
 # arbitrary people
 # mysql -ugemmaadmin -p -habe -B -e ‘select g.OFFICIAL_SYMBOL, g.NCBI_GENE_ID, g.TAXON_FK, m.SCORE, m.RANK, m.NUM_GO_TERMS from CHROMOSOME_FEATURE g inner join MULTIFUNCTIONALITY m on m.ID=g.MULTIFUNCTIONALITY_FK where g.TAXON_FK in (1,2,3)’ gemd > multifunctionality.dump.txt
 # file.copy('/home/paul/gemma-work/multifunctionality.dump.txt',file.path(RAWDIR,'mfx.txt'))
-mfx_dump <- readr::read_tsv(file.path(RAWDIR,'mfx.txt'))
-
-for (taxon in c('human','mouse','rat')){
-  mfx <- mfx_dump$RANK[match(data.holder[[taxon]]@gene.meta$entrez.ID,mfx_dump$NCBI_GENE_ID)]
-  data.holder[[taxon]]@gene.meta$mfx.Rank <- mfx
-}
+# mfx_dump <- readr::read_tsv(file.path(RAWDIR,'mfx.txt'))
+# 
+# for (taxon in c('human','mouse','rat')){
+#   mfx <- mfx_dump$RANK[match(data.holder[[taxon]]@gene.meta$entrez.ID,mfx_dump$NCBI_GENE_ID)]
+#   data.holder[[taxon]]@gene.meta$mfx.Rank <- mfx
+# }
 
 saveRDS(data.holder, file.path(RAWDIR, 'DATA.HOLDER.rds'))
 
