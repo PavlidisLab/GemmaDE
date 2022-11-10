@@ -115,7 +115,7 @@ as.input <- function(entry) {
         ))
       }
     } else if (is.logical(entry$value)) {
-      materialSwitch(entry$name, entry$description, entry$value, right = T)
+      checkboxInput(entry$name, entry$description, entry$value)
     }
   }
 
