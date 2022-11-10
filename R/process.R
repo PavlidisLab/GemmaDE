@@ -746,7 +746,7 @@ de_search = function(genes = NULL,
                      taxa =NULL,
                      max_dist = 1.5,
                      confounds = FALSE,
-                     multifunctionality = TRUE,
+                     multifunctionality = FALSE,
                      geeq = FALSE,
                      p_threshold = 0.05,
                      categories = c("age", "behavior", "biological process", "biological sex", 
@@ -816,8 +816,13 @@ de_search = function(genes = NULL,
     .[, N := length(unique(ee.ID)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
     .[N < 0.03 * nrow(tmp)] # Get rid of contrasts that overlap in more than 3% experiments
   
+  tmp[, Evidence := {
+    dedup <- !duplicated(ee.ID)
+    stringi::stri_c(ee.Name[dedup], collapse = ",")
+  },.(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
   
-  tmp[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, N)] %>%
+  
+  tmp[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, N, Evidence)] %>%
     unique() %>%
     merge(conditions, by = c("cf.Cat", "cf.BaseLongUri", "cf.ValLongUri"), sort = F) %>%
     data.table::setnames(c("stat", "score", "distance"), c("Effect Size", "Test Statistic", "Ontology Steps")) ->
