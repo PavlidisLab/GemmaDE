@@ -105,17 +105,17 @@ rbindlist(list(DATA.HOLDER$human@experiment.meta[, .(N = length(unique(ee.ID)), 
 
 # chapter 3.2 demonstration of gene list results -----------
 sex_results <- de_search(genes = c('RPS4Y1', 'EIF1AY', 'DDX3Y', 'KDM5D', 'XIST'),
-                         taxa = 'human')
+                         taxa = c('human'),geeq = TRUE)
 
 cell_type_results <- de_search(genes = c("Cyp4f15", "Grin2c", "Col4a5", "Heph", "Celsr1", "Egfr", "Lgi4", 
                                          "Slc38a3", "Aass", "Fkbp10", "Slc7a10", "Cyp2d22", "Cd38", "Cyp4f14", 
                                          "Cbs", "Slc1a2", "Emp2", "Axl", "Slc14a1", "Btbd17"),
-                               taxa = 'mouse')
+                               taxa = 'mouse',geeq = TRUE)
 
 glucocorticoid_results <- de_search(genes = c("BCL6", "BIRC3", "CEBPD", "ERRFI1", "FBXL16", "FKBP5", "GADD45B", 
                                               "IRS2", "KLF9", "PDK4", "PER1", "RGCC", "RGS2", "SEC14L2", "SLC16A12", 
                                               "TFCP2L1", "TSC22D3"),
-                                    taxa = 'human')
+                                    taxa = 'human',geeq = TRUE)
 
 
 heart_results <- de_search(genes = c('MYL7', 'NPPA', 'NPPB'),taxa = 'human')
