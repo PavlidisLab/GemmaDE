@@ -1,7 +1,19 @@
 var fileValidated = false;
 
+function delete_text(){
+  document.querySelector("#genes-tomselected").value =""
+}
+
 $(function() {
-  new TomSelect('#genes', { plugins: ['remove_button', 'optgroup_columns'], persist: false, create: true, hidePlaceholder: true, selectOnTab: true, openOnFocus: false });
+  new TomSelect('#genes', { 
+    plugins: ['remove_button', 'optgroup_columns'], 
+    persist: false, 
+    create: true, 
+    hidePlaceholder: true, 
+    selectOnTab: true, 
+    openOnFocus: false,
+    onItemAdd: delete_text
+  });
   new TomSelect('#sig', { plugins: ['remove_button'], persist: false, create: function(input) {
     if(/^[+-]?\d+(\.\d+)?$/.test(input))
       return { value: input, text: input };
