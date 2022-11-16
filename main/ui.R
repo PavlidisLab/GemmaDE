@@ -1,15 +1,6 @@
-collapse_code <- "
-shinyjs.collapse = function(boxid) {
-$('#' + boxid).closest('.box').find('[data-widget=collapse]').click();
-console.log('dasdas')
-}
-"
-
-
 ui <- fluidPage(
   style = "height: 100%;",
   useShinyjs(),
-  extendShinyjs(text = collapse_code, functions = c('collapse')),
   disconnectMessage(
     text = "Your session has been disconnected.",
     refresh = "",
