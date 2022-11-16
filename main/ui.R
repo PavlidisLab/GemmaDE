@@ -1,6 +1,15 @@
+collapse_code <- "
+shinyjs.collapse = function(boxid) {
+$('#' + boxid).closest('.box').find('[data-widget=collapse]').click();
+console.log('dasdas')
+}
+"
+
+
 ui <- fluidPage(
   style = "height: 100%;",
   useShinyjs(),
+  extendShinyjs(text = collapse_code, functions = c('collapse')),
   disconnectMessage(
     text = "Your session has been disconnected.",
     refresh = "",
@@ -87,9 +96,18 @@ ui <- fluidPage(
 
       # Buttons
       fluidRow(
+        column(8,
+               shiny::tags$details(shiny::tags$summary(h5('About ▼')),
+                                   p('GemmaDE uses an algorithm which mines over 
+                                   10,000 transcriptomic datasets taken from', tags$a('Gemma',href = "https://gemma.msl.ubc.ca/"),
+                                   'to perform condition enrichment. The output of
+                                   the algorithm is a list of biologicalcondition
+                                   comparisons (drug treatments, diseases, etc.)
+                                     scored according to their relatedness to the query genes'))
+               ),
         # Core action buttons
         column(
-          12,
+          4,
           tags$form(
             style = "float: right;",
             actionButton("reset", "Reset", class = "btn-secondary"),
@@ -100,7 +118,7 @@ ui <- fluidPage(
     )),
 
     # Hidden, but hijacked for downloading table data
-    downloadButton("dataDownload", "", style = "visibility: hidden; height: 0"),
+    downloadButton("dataDownload", label = "", style = "visibility: hidden; height: 0"),
     fluidRow(
       column(12, htmlOutput("results_suggestions")),
       column(12, htmlOutput("results_header")),
