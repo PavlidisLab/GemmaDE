@@ -1,11 +1,44 @@
 var fileValidated = false;
 
+// this function is added to onItemAdd event of the gene selector to delete
+// the extra text once a gene is selected.
 function delete_text(){
   document.querySelector("#genes-tomselected").value =""
 }
 
+function intersection (a, b) {
+    const setA = new Set(a);
+    return b.filter(value => setA.has(value));
+}
+
+
+function check_add(entry){
+  if (Array.isArray(entry[1].optgroup)){
+    var common = intersection(entry[1].optgroup,this)
+    if (common.length > 0){
+      var tom = $('#genes')[0].tomselect;
+      tom.addOption({text:entry[1].text, value:entry[1].value})
+      tom.options[entry[1].text].optgroup = common
+    }
+  } else if(this.includes(entry[1].optgroup)){
+    var tom = $('#genes')[0].tomselect;
+    tom.addOption({text:entry[1].text, value:entry[1].value})
+    tom.options[entry[1].text].optgroup = entry[1].optgroup
+  }
+}
+
+// iterates over every gene and decides whether or not to add them
+// to the search box as options based on the selected taxa
+function update_options(options){
+  //window.options = options
+  //window.tom = $('#genes')[0].tomselect;
+  var tom = $('#genes')[0].tomselect;
+  tom.clearOptions()
+  Object.entries(all_genes).forEach(check_add,options)
+}
+
 $(function() {
-  new TomSelect('#genes', { 
+  tom = new TomSelect('#genes', { 
     plugins: ['remove_button', 'optgroup_columns'], 
     persist: false, 
     create: true, 
@@ -14,6 +47,9 @@ $(function() {
     openOnFocus: false,
     onItemAdd: delete_text
   });
+  
+  window.all_genes = tom.options
+  
   new TomSelect('#sig', { plugins: ['remove_button'], persist: false, create: function(input) {
     if(/^[+-]?\d+(\.\d+)?$/.test(input))
       return { value: input, text: input };

@@ -125,9 +125,10 @@ server <- function(input, output, session) {
   })
   
   # Update gene choices depending on taxon(s). Commented out because only works with selectize.js
-  # observeEvent(input$taxa, {
-  #   updateSelectizeInput(session, "genes", choices = ALL.GENES[input$taxa], server = TRUE)
-  # })
+  observeEvent(input$taxa, {
+    allowed_groups = which(getConfig('taxa')$choices %>% unlist %in% input$taxa)
+    shinyjs::runjs(glue::glue("update_options({jsonlite::toJSON(allowed_groups)})"))
+  })
   
   # Search
   observeEvent(input$search, {
