@@ -16,10 +16,10 @@ ui <- fluidPage(
 
   # Add to the HTML head
   withTags(head(
-    script(src = "js/initialize.js"),
+    script(src = "js/initialize.js?v=2"),
     script(src = "https://kit.fontawesome.com/33dcd9d8f9.js", crossorigin = "anonymous"),
     script(src = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"),
-    link(rel = "stylesheet", type = "text/css", href = "css/style.css"),
+    link(rel = "stylesheet", type = "text/css", href = "css/style.css?v=2"),
     style(sass(sass_file("www/css/dna_loader.scss"), options = sass_options(output_style = "compressed"))),
     title(getOption("app.name")),
     meta(name = "description", content = getOption("app.description")),
@@ -45,7 +45,7 @@ ui <- fluidPage(
         column(
           6,
           fluidRow(span(selectizeInput("genes", 
-                                       "Input gene(s) of interest", 
+                                       "Input gene(s) of interest",
                                        multiple = TRUE, 
                                        choices = ALL.GENES,
                                        options = list(
