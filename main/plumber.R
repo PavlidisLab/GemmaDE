@@ -22,7 +22,7 @@ de_search_plumb = function(req = NULL, # this is the request object
                      taxa =NULL,
                      max_dist = 1.5,
                      confounds = FALSE,
-                     multifunctionality = TRUE,
+                     multifunctionality = FALSE,
                      geeq = FALSE,
                      p_threshold = 0.05,
                      categories = c("age", "behavior", "biological process", "biological sex", 
