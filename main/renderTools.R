@@ -240,12 +240,13 @@ generateResults <- function(data) {
       "var a = document.createElement('a');",
       "$(a).addClass('dt-button');",
       "$(a).click(function() { window.open($('#dataDownload').attr('href')); });",
-      "$(a).text('Download');",
+      "$(a).text('Download CSV');",
       "$('div.dwnld').append(a);"
     ),
     escape = F,
     filter = "top",
     options = list(
+      bFilter = 0,
       pageLength = 10,
       order = list(
         list(which(outputColumns == "Test Statistic"), "desc"),
