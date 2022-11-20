@@ -29,7 +29,7 @@ generateGeneContribs <- function(data, options, plot_conditions = NULL) {
   mData <- data %>%
     setorder(-`Test Statistic`) %>%
     .[, !c(
-      "Test Statistic", "Effect Size", "Ontology Steps", "N", "Evidence",
+      "Test Statistic", "Effect Size", "Ontology Steps", "N", "Evidence","EvidencePlain",
       "cf.Cat", "cf.BaseLongUri", "cf.ValLongUri"
     )] %>%
     head(20) %>% # TODO This is a stopgap for picker
