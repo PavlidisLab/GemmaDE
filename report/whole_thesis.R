@@ -58,6 +58,41 @@ GEO %>% melt(measure.vars = 'Count') %>%
 
 
 # Chapter 2 Figure 2.2 --------
+rbindlist(lapply(names(CACHE.BACKGROUND), function(i) data.table(taxon = i, CACHE.BACKGROUND[[i]]))) %>%
+  .[, rsc.ID := as.integer(as.factor(rsc.ID))] -> mCache
+
+subjects = list(
+  System = c('nervous', 'reproductive', 'digestive', 'respiratory', 'hemolymphoid',
+             'endocrine', 'exocrine', 'cardiovascular', 'hepatobilliary'),
+  `Organ/Tissue` = c('spinal cord','kidney','spleen','heart','intestine','muscle',
+                     'lung','liver','blood','brain'),
+  `Cell Type` = c(
+    'microglial cell','embryonic stem cell','B cell','T cell','macrophage',
+    'fibroblast','glial cell','epithelial cell','leukocyte','hematopoietic cell'
+  )
+)
+
+
+lapply(subjects %>% unlist,
+       function(topic) {
+         data.table(Topic = topic, mCache[grepl(topic, cf.BaseLongUri, T) | grepl(topic, cf.ValLongUri, T), .(EE = length(unique(ee.ID)), RSC = length(unique(rsc.ID))), taxon])
+       }) %>% rbindlist -> tagSummary
+
+
+tagSummary %>%
+  .[, subject := tagSummary$Topic %>% sapply(function(x){subjects %>% sapply(function(y){x %in% y}) %>% which %>% names})
+  ] %>%
+  melt(measure.vars = c('EE', 'RSC')) %>%
+  .[!is.na(value) & variable == 'RSC'] %>%
+  .[, stat := sum(value), Topic] %>%
+  setorder(-stat) %>%
+  .[, Topic := factor(Topic, levels = unique(Topic), ordered = T)] %>%
+  ggplot(aes(Topic, value, fill = taxon)) +
+  geom_bar(stat = 'identity') + facet_wrap(~subject, scales = 'free') + coord_flip() +
+  theme_classic(20) + scale_y_continuous(expand = c(0, 0)) +
+  theme(strip.background = element_blank(), strip.text = element_text(hjust = 0, face = 'bold'), legend.text.align = 0, legend.justification = 'top') +
+  xlab(element_blank()) + ylab('Condition Comparisons') +
+  scale_fill_brewer(palette = 'Dark2', name = 'Taxon', labels = c(expression(italic('H. sapiens')), expression(italic('M. musculus')), expression(italic('R. norvegicus'))))
 
 
 # Chapter 3 Figure 3.1 Overlaps -----------
