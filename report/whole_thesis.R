@@ -140,7 +140,7 @@ rbindlist(list(DATA.HOLDER$human@experiment.meta[, .(N = length(unique(ee.ID)), 
 
 # chapter 3.2 demonstration of gene list results -----------
 sex_results <- de_search(genes = c('RPS4Y1', 'EIF1AY', 'DDX3Y', 'KDM5D', 'XIST'),
-                         taxa = c('human'),geeq = TRUE)
+                         taxa = c('human'),geeq = FALSE)
 
 cell_type_results <- de_search(genes = c("Cyp4f15", "Grin2c", "Col4a5", "Heph", "Celsr1", "Egfr", "Lgi4", 
                                          "Slc38a3", "Aass", "Fkbp10", "Slc7a10", "Cyp2d22", "Cd38", "Cyp4f14", 
@@ -155,52 +155,53 @@ glucocorticoid_results <- de_search(genes = c("BCL6", "BIRC3", "CEBPD", "ERRFI1"
 
 heart_results <- de_search(genes = c('MYL7', 'NPPA', 'NPPB'),taxa = 'human')
 
+scz_genes = c("HARS", "HARS2", "HCN1", "HIRIP3", "HSPA9", "HSPD1", "HSPE1", 
+              "IGSF9B", "IK", "IMMP2L", "INA", "INO80E", "IREB2", "ITIH1", 
+              "ITIH3", "ITIH4", "KCNB1", "KCNJ13", "KCNV1", "KCTD13", "KDM3B", 
+              "KDM4A", "KLC1", "L3MBTL2", "LCAT", "LRP1", "LRRIQ3", "LUZP2", 
+              "MAD1L1", "MAN2A1", "MAN2A2", "MAPK3", "MARS2", "MAU2", "MDK", 
+              "MED19", "MEF2C", "MIR137", "MIR548AJ2", "MMP16", "MPHOSPH9", 
+              "MPP6", "MSANTD2", "MSL2", "MUSTN1", "MYO15A", "MYO1A", "NAB2", 
+              "NAGA", "NCAN", "NCK1", "NDUFA13", "NDUFA2", "NDUFA4L2", "NDUFA6", 
+              "NEK1", "NEK4", "NFATC3", "NGEF", "NISCH", "NLGN4X", "NOSIP", 
+              "NRGN", "NRN1L", "NT5C2", "NT5DC2", "NUTF2", "NXPH4", "OGFOD2", 
+              "OSBPL3", "OTUD7B", "PAK6", "PARD6A", "PBRM1", "PBX4", "PCCB", 
+              "PCDHA1", "PCDHA10", "PCDHA2", "PCDHA3", "PCDHA4", "PCDHA5", 
+              "PCDHA6", "PCDHA7", "PCDHA8", "PCDHA9", "PCGEM1", "PCGF6", "PDCD11", 
+              "PITPNM2", "PJA1", "PLA2G15", "PLCB2", "PLCH2", "PLCL1", "PLEKHO1", 
+              "PODXL", "PPP1R13B", "PPP1R16B", "PPP2R3A", "PPP4C", "PRKD1", 
+              "PRR12", "PRRG2", "PSKH1", "PSMA4", "PSMB10", "PSMD6", "PTGIS", 
+              "PTN", "PTPRF", "PUS7", "R3HDM2", "RAI1", "RANBP10", "RANGAP1", 
+              "RCN3", "REEP2", "RERE", "RFTN2", "RGS6", "RILPL2", "RIMS1", 
+              "RRAS", "SATB2", "SBNO1", "SCAF1", "SDCCAG8", "SERPING1", "SEZ6L2", 
+              "SF3B1", "SFXN2", "SGSM2", "SHISA8", "SHMT2", "SLC12A4", "SLC32A1", 
+              "SLC35G2", "SLC38A7", "SLC39A8", "SLC45A1", "SLC4A10", "SLC7A6", 
+              "SLC7A6OS", "SMDT1", "SMG6", "SMIM4", "SNAP91", "SNX19", "SPCS1", 
+              "SREBF1", "SREBF2", "SRPK2", "SRR", "STAB1", "STAC3", "STAG1", 
+              "STAT6", "SUGP1", "TAC3", "TAF5", "TAOK2", "TBC1D5", "TBX6", 
+              "TCF20", "TCF4", "THAP11", "THOC7", "TLE1", "TLE3", "TM6SF2", 
+              "TMCO6", "TMEM110-MUSTN1", "TMEM219", "TMTC1", "TMX2", "TNFRSF13C", 
+              "TOM1L2", "TRANK1", "TRIM8", "TRMT61A,ABCB9", "ACD", "ACTR5", 
+              "ADAMTSL3", "AKT3", "ALDOA", "AMBRA1", "ANKRD44", "ANKRD63", 
+              "ANP32E", "APH1A", "APOPT1", "ARHGAP1", "ARL3", "ARL6IP4", "AS3MT", 
+              "ASPHD1", "ATG13", "ATP2A2", "ATPAF2", "ATXN7", "BAG5", "BCL11B", 
+              "BOLL", "BTBD18", "C11orf87", "C12orf42", "C12orf65", "C16orf86", 
+              "C16orf92", "C1orf54", "C2orf69", "C3orf49", "CA14", "CA8", "CACNA1C", 
+              "CACNA1I", "CACNB2", "CCDC39", "CD14", "CD46", "CDC25C", "CDK2AP1", 
+              "CENPM", "CENPT", "CHADL", "CHRM4", "CHRNA3", "CHRNA5", "CHRNB4", 
+              "CILP2", "CKAP5", "CKB", "CLCN3", "CLP1", "CLU", "CNKSR2", "CNNM2", 
+              "CNOT1", "CNTN4", "COQ10B", "CR1L", "CREB3L1", "CSMD1", "CTNNA1", 
+              "CTNND1", "CTRL", "CUL3", "CYP17A1", "CYP26B1", "CYP2D6", "DDX28", 
+              "DGKI", "DGKZ", "DNAJC19", "DND1", "DOC2A", "DPEP2", "DPEP3", 
+              "DPP4", "DPYD", "DRD2", "DRG2", "EDC4", "EFHD1", "EGR1", "ENKD1", 
+              "EP300", "EPC2", "EPHX2", "ERCC4", "ESAM", "ESRP2", "ETF1", "F2", 
+              "FAM53C", "FAM57B", "FANCL", "FES", "FURIN", "FUT9", "FXR1", 
+              "GALNT10", "GATAD2A", "GDPD3", "GFOD2", "GFRA3", "GID4", "GIGYF2", 
+              "GLT8D1", "GNL3", "GOLGA6L4", "GPM6A", "GRAMD1B", "GRIA1", "GRIN2A", 
+              "GRM3", "HAPLN4", "HARBI1")
 
-scz_results <- de_search(genes = c("HARS", "HARS2", "HCN1", "HIRIP3", "HSPA9", "HSPD1", "HSPE1", 
-                                   "IGSF9B", "IK", "IMMP2L", "INA", "INO80E", "IREB2", "ITIH1", 
-                                   "ITIH3", "ITIH4", "KCNB1", "KCNJ13", "KCNV1", "KCTD13", "KDM3B", 
-                                   "KDM4A", "KLC1", "L3MBTL2", "LCAT", "LRP1", "LRRIQ3", "LUZP2", 
-                                   "MAD1L1", "MAN2A1", "MAN2A2", "MAPK3", "MARS2", "MAU2", "MDK", 
-                                   "MED19", "MEF2C", "MIR137", "MIR548AJ2", "MMP16", "MPHOSPH9", 
-                                   "MPP6", "MSANTD2", "MSL2", "MUSTN1", "MYO15A", "MYO1A", "NAB2", 
-                                   "NAGA", "NCAN", "NCK1", "NDUFA13", "NDUFA2", "NDUFA4L2", "NDUFA6", 
-                                   "NEK1", "NEK4", "NFATC3", "NGEF", "NISCH", "NLGN4X", "NOSIP", 
-                                   "NRGN", "NRN1L", "NT5C2", "NT5DC2", "NUTF2", "NXPH4", "OGFOD2", 
-                                   "OSBPL3", "OTUD7B", "PAK6", "PARD6A", "PBRM1", "PBX4", "PCCB", 
-                                   "PCDHA1", "PCDHA10", "PCDHA2", "PCDHA3", "PCDHA4", "PCDHA5", 
-                                   "PCDHA6", "PCDHA7", "PCDHA8", "PCDHA9", "PCGEM1", "PCGF6", "PDCD11", 
-                                   "PITPNM2", "PJA1", "PLA2G15", "PLCB2", "PLCH2", "PLCL1", "PLEKHO1", 
-                                   "PODXL", "PPP1R13B", "PPP1R16B", "PPP2R3A", "PPP4C", "PRKD1", 
-                                   "PRR12", "PRRG2", "PSKH1", "PSMA4", "PSMB10", "PSMD6", "PTGIS", 
-                                   "PTN", "PTPRF", "PUS7", "R3HDM2", "RAI1", "RANBP10", "RANGAP1", 
-                                   "RCN3", "REEP2", "RERE", "RFTN2", "RGS6", "RILPL2", "RIMS1", 
-                                   "RRAS", "SATB2", "SBNO1", "SCAF1", "SDCCAG8", "SERPING1", "SEZ6L2", 
-                                   "SF3B1", "SFXN2", "SGSM2", "SHISA8", "SHMT2", "SLC12A4", "SLC32A1", 
-                                   "SLC35G2", "SLC38A7", "SLC39A8", "SLC45A1", "SLC4A10", "SLC7A6", 
-                                   "SLC7A6OS", "SMDT1", "SMG6", "SMIM4", "SNAP91", "SNX19", "SPCS1", 
-                                   "SREBF1", "SREBF2", "SRPK2", "SRR", "STAB1", "STAC3", "STAG1", 
-                                   "STAT6", "SUGP1", "TAC3", "TAF5", "TAOK2", "TBC1D5", "TBX6", 
-                                   "TCF20", "TCF4", "THAP11", "THOC7", "TLE1", "TLE3", "TM6SF2", 
-                                   "TMCO6", "TMEM110-MUSTN1", "TMEM219", "TMTC1", "TMX2", "TNFRSF13C", 
-                                   "TOM1L2", "TRANK1", "TRIM8", "TRMT61A,ABCB9", "ACD", "ACTR5", 
-                                   "ADAMTSL3", "AKT3", "ALDOA", "AMBRA1", "ANKRD44", "ANKRD63", 
-                                   "ANP32E", "APH1A", "APOPT1", "ARHGAP1", "ARL3", "ARL6IP4", "AS3MT", 
-                                   "ASPHD1", "ATG13", "ATP2A2", "ATPAF2", "ATXN7", "BAG5", "BCL11B", 
-                                   "BOLL", "BTBD18", "C11orf87", "C12orf42", "C12orf65", "C16orf86", 
-                                   "C16orf92", "C1orf54", "C2orf69", "C3orf49", "CA14", "CA8", "CACNA1C", 
-                                   "CACNA1I", "CACNB2", "CCDC39", "CD14", "CD46", "CDC25C", "CDK2AP1", 
-                                   "CENPM", "CENPT", "CHADL", "CHRM4", "CHRNA3", "CHRNA5", "CHRNB4", 
-                                   "CILP2", "CKAP5", "CKB", "CLCN3", "CLP1", "CLU", "CNKSR2", "CNNM2", 
-                                   "CNOT1", "CNTN4", "COQ10B", "CR1L", "CREB3L1", "CSMD1", "CTNNA1", 
-                                   "CTNND1", "CTRL", "CUL3", "CYP17A1", "CYP26B1", "CYP2D6", "DDX28", 
-                                   "DGKI", "DGKZ", "DNAJC19", "DND1", "DOC2A", "DPEP2", "DPEP3", 
-                                   "DPP4", "DPYD", "DRD2", "DRG2", "EDC4", "EFHD1", "EGR1", "ENKD1", 
-                                   "EP300", "EPC2", "EPHX2", "ERCC4", "ESAM", "ESRP2", "ETF1", "F2", 
-                                   "FAM53C", "FAM57B", "FANCL", "FES", "FURIN", "FUT9", "FXR1", 
-                                   "GALNT10", "GATAD2A", "GDPD3", "GFOD2", "GFRA3", "GID4", "GIGYF2", 
-                                   "GLT8D1", "GNL3", "GOLGA6L4", "GPM6A", "GRAMD1B", "GRIA1", "GRIN2A", 
-                                   "GRM3", "HAPLN4", "HARBI1"),
-                         taxa = 'human')
+scz_results <- de_search(genes = scz_genes,
+                         taxa = 'human', geeq = TRUE)
 
 
 depression_results <- de_search(genes = c("SORCS3", "RBFOX1", "GRM5", "HIST1H2BN", "SHISA9", "TCF4", 
@@ -244,4 +245,31 @@ depression_results <- de_search(genes = c("SORCS3", "RBFOX1", "GRM5", "HIST1H2BN
                                           "MIER1", "SLC4A9", "PSEN2"),
                                 taxa = 'human')
 
+# 3.2.1 Sex specific genes -----
+
+# first hit is male vs. female and least contribution is RPS4Y1
+sex_results %>% dplyr::arrange(desc(`Test Statistic`)) %>% {.[1,]}
+
+# RPS4Y1 alone has the strongest link on its own
+RPS4Y1 <- de_search(genes = c('RPS4Y1'),
+                         taxa = c('human'),geeq = TRUE)
+
+EIF1AY <- de_search(genes = c('EIF1AY'),
+                    taxa = c('human'),geeq = TRUE)
+
+# 3.2.2 Cell type specific genes ------
+
+
+
+
+# 3.2.5.1 Gemma DE can offer complementary insights to GO enrichment analysis -----
+
+# a small addition to see the effect of geeq on the results heree
+scz_results_no_geeq <- de_search(genes = scz_genes,
+                         taxa = 'human', geeq = FALSE)
+
+library(ermineR)
+
+go_enrichment = ermineR::ora(hitlist = scz_genes,annotation = 'Generic_human')
+View(go_enrichment$results)
 
