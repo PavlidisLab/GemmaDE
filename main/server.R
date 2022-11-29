@@ -496,7 +496,7 @@ server <- function(input, output, session) {
             vsmSearch(genes[taxon == t, entrez.ID], taxa = mOp$taxa$value, confounds = mOp$confounds$value, filter = mOp$filter$value, mfx = FALSE, geeq = mOp$geeq$value, p_threshold = mOp$pv$value)
           })
         } else if (length(options$taxa$value) == 1) {
-          vsmSearch(genes$genes, taxa = options$taxa$value, confounds = options$confounds$value, filter = options$filter$value,  mfx = FALSE, geeq = options$geeq$value, p_threshold = options$pv$value)
+          vsmSearch(genes$genes, taxa = options$taxa$value, confounds = FALSE, filter = options$filter$value,  mfx = FALSE, geeq = options$geeq$value, p_threshold = 0.05)
         }
       },
       globals = "DATA.HOLDER",
