@@ -773,7 +773,7 @@ de_search = function(genes = NULL,
   print('vsmSearch')
   tictoc::tic()
   experiments <- taxa %>% 
-    lapply(function(t){
+    parallel::mclapply(function(t){
       vsmSearch(genes[taxon == t, entrez.ID],
                 taxa = t,
                 confounds = confounds,
@@ -781,7 +781,7 @@ de_search = function(genes = NULL,
                 mfx = multifunctionality,
                 geeq = geeq,
                 p_threshold = p_threshold)
-    })
+    },mc.cores = cores)
   names(experiments) = taxa
   tictoc::toc()
   
