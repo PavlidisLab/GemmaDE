@@ -407,7 +407,6 @@ enrich <- function(rankings, # options = getConfig(),
       data.table::dcast(... ~ gene, value.var = "pv", fill = 0)
   },mc.cores = cores) %>% do.call(rbind,.) -> wilcox_ps
   
-  
   terms[, .(
     distance = round(mean(distance, na.rm = T), 2),
     stat = mean(score),
@@ -422,6 +421,7 @@ enrich <- function(rankings, # options = getConfig(),
     data.table::setorder(-stat, distance) %>%
     .[, .SD[1], stat] %>%
     data.table::setorder(-score) -> out
+  enrich_out <<- out
   return(out)
 }
 
@@ -496,16 +496,20 @@ vsmSearch <- function(genes,
     `dimnames<-`(list(mDimNames[[1]], mDimNames[[2]][geneMask])) %>%
     .[experimentMask, , drop = F] %>%
     t()
-  
+  # remove experiments where none of the query genes are represented
+  all_nas = apply(pv,2,function(x){all(is.na(x))})
+  pv = pv[,!all_nas,drop = FALSE]
+  zScore = zScore[,!all_nas, drop = FALSE]
   pv[is.na(pv)] <- 1
   zScore[is.na(zScore)] <- 0
   
   zScore <- data.table::as.data.table(zScore)
-  
   # Number of DEGs for experiments that pass thresholds
   experimentMeta <- mData@experiment.meta[experimentMask, .(rsc.ID, ee.qScore, n.DE, ad.NumGenes)] %>%
     as.data.frame() %>%
     `rownames<-`(.[, "rsc.ID"])
+  
+  experimentMeta  = experimentMeta[!all_nas,]
   
   experimentMeta$n.DE[is.na(experimentMeta$n.DE)] <- 0
   
@@ -527,7 +531,7 @@ vsmSearch <- function(genes,
   ret <- getOption("app.algorithm.gene.post") %>%
     eval() %>%
     .[, score := Rfast::rowsums(as.matrix(.))]
-  
+  ret<<- ret
   experimentN <- Rfast::colsums(pv <= p_threshold)
   ret %>%
     data.table::setnames(c(mData@gene.meta$gene.Name[geneMask], "score")) %>%
@@ -769,7 +773,7 @@ de_search = function(genes = NULL,
   print('vsmSearch')
   tictoc::tic()
   experiments <- taxa %>% 
-    parallel::mclapply(function(t){
+    lapply(function(t){
       vsmSearch(genes[taxon == t, entrez.ID],
                 taxa = t,
                 confounds = confounds,
@@ -777,7 +781,7 @@ de_search = function(genes = NULL,
                 mfx = multifunctionality,
                 geeq = geeq,
                 p_threshold = p_threshold)
-    },mc.cores = cores)
+    })
   names(experiments) = taxa
   tictoc::toc()
   
@@ -839,4 +843,13 @@ de_search = function(genes = NULL,
   tictoc::toc()
   return(conditions %>% 
            data.table::setnames(c("cf.Cat", "cf.BaseLongUri", "cf.ValLongUri"), c("Category", "Baseline", "Value")))
+}
+
+contribs = function(data){
+  mData <- data %>%
+    setorder(-`Test Statistic`) %>%
+    .[, !c(
+      "Test Statistic", "Effect Size", "Ontology Steps", "N", "Evidence","EvidencePlain",
+      "cf.Cat", "cf.BaseLongUri", "cf.ValLongUri"
+    )]
 }
