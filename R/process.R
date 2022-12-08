@@ -757,6 +757,8 @@ de_search = function(genes = NULL,
                                     "cell type", "clinical history", "diet", "disease", "environmental history", 
                                     "environmental stress", "genotype", "medical procedure", "molecular entity", 
                                     "organism part", "phenotype", "sex", "temperature", "treatment"),
+                     remove_experiments = NULL,
+                     remove_comparisons = NULL,
                      cores = 8){
 
   if(!is.logical(geeq)){
@@ -768,16 +770,23 @@ de_search = function(genes = NULL,
   if(!is.logical(confounds)){
     confounds = as.logical(toupper(confounds))
   }
+  
+  
   tictoc::tic()
   genes <- processGenes(genes,taxa)
   print('vsmSearch')
   tictoc::tic()
   experiments <- taxa %>% 
     parallel::mclapply(function(t){
+      
+      exp_filter = DATA.HOLDER[[t]]@experiment.meta$ee.Name %in% remove_experiments
+      comp_filter = DATA.HOLDER[[t]]@experiment.meta$rsc.ID %in% remove_comparisons
+      
+      
       vsmSearch(genes[taxon == t, entrez.ID],
                 taxa = t,
                 confounds = confounds,
-                filter = NULL,
+                filter = !(exp_filter | comp_filter),
                 mfx = multifunctionality,
                 geeq = geeq,
                 p_threshold = p_threshold)
