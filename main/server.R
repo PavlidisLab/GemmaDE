@@ -535,7 +535,7 @@ server <- function(input, output, session) {
                   ) # TODO ?
               }) %>%
                 rbindlist(fill = T) %>%
-                reorderTags3() %>%
+                # reorderTags3() %>% # appears to be redundant as cache is already re-ordered
                 .[, lapply(.SD, mean, na.rm = T), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
             }
           },

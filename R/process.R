@@ -802,7 +802,7 @@ de_search = function(genes = NULL,
                            genes[taxon == t, identifier],
                            skip_absent = T)
   }) %>% data.table::rbindlist(fill = TRUE) %>% 
-    reorderTags3() %>%
+    # reorderTags3() %>% # appears to be redundant. cache tags are already re-ordered
     .[, lapply(.SD, mean, na.rm = T), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
   tictoc::toc()
   
