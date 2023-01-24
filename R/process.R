@@ -772,10 +772,10 @@ de_search = function(genes = NULL,
   }
   
   
-  tictoc::tic()
+  # tictoc::tic()
   genes <- processGenes(genes,taxa)
   # print('vsmSearch')
-  tictoc::tic()
+  # tictoc::tic()
   experiments <- taxa %>% 
     parallel::mclapply(function(t){
       
@@ -792,7 +792,7 @@ de_search = function(genes = NULL,
                 p_threshold = p_threshold)
     },mc.cores = cores)
   names(experiments) = taxa
-  tictoc::toc()
+  # tictoc::toc()
   
   # print('enrich')
   # tictoc::tic()
@@ -804,7 +804,7 @@ de_search = function(genes = NULL,
   }) %>% data.table::rbindlist(fill = TRUE) %>% 
     # reorderTags3() %>% # appears to be redundant. cache tags are already re-ordered
     .[, lapply(.SD, mean, na.rm = T), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
-  tictoc::toc()
+  # tictoc::toc()
   
   # print('ending')
   # tictoc::tic()
@@ -847,9 +847,9 @@ de_search = function(genes = NULL,
     x / n
   }
   conditions[,'Test Statistic'] <- apply(conditions[,'Test Statistic'], 2, getPercentageStat, n = nrow(geneInfo))
-  tictoc::toc()
+  # tictoc::toc()
   
-  tictoc::toc()
+  # tictoc::toc()
   return(conditions %>% 
            data.table::setnames(c("cf.Cat", "cf.BaseLongUri", "cf.ValLongUri"), c("Category", "Baseline", "Value")))
 }
