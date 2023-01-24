@@ -774,7 +774,7 @@ de_search = function(genes = NULL,
   
   tictoc::tic()
   genes <- processGenes(genes,taxa)
-  print('vsmSearch')
+  # print('vsmSearch')
   tictoc::tic()
   experiments <- taxa %>% 
     parallel::mclapply(function(t){
@@ -794,8 +794,8 @@ de_search = function(genes = NULL,
   names(experiments) = taxa
   tictoc::toc()
   
-  print('enrich')
-  tictoc::tic()
+  # print('enrich')
+  # tictoc::tic()
   conditions <- taxa %>% lapply(function(t){
     enrich(experiments[[t]], taxa = t, dist = max_dist,categories = categories,cores = cores) %>% 
       data.table::setnames(genes[taxon == t, gene.realName],
@@ -806,8 +806,8 @@ de_search = function(genes = NULL,
     .[, lapply(.SD, mean, na.rm = T), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
   tictoc::toc()
   
-  print('ending')
-  tictoc::tic()
+  # print('ending')
+  # tictoc::tic()
   geneInfo <- genes %>%
     data.table::copy() %>%
     data.table::setnames("identifier", "gene.Name")
