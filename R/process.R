@@ -143,6 +143,7 @@ reorderTags3 <- function(data) {
 #' @param POST Whether to do "post-pre-processing" like reordering and trimming
 precomputeTags <- function(taxa, mGraph = NULL, graphTerms = NULL,
                            DATA = NULL, ONTOLOGIES = NULL, ONTOLOGIES.DEFS = NULL , POST = T) {
+
   if (is.null(DATA)) {
     DATA <- DATA.HOLDER
   }
@@ -211,11 +212,16 @@ precomputeTags <- function(taxa, mGraph = NULL, graphTerms = NULL,
   
   # Compute ontology expansions on ontology terms
   # Applies to both simple tags and bag of word tags that expanded into ontology terms
-  mComputedTags <- data.table::rbindlist(lapply(mComputable, function(uri) {
+  
+  # filter mComputable to remove specific terms from propagating
+  
+  
+  mComputedTags <- data.table::rbindlist(parallel::mclapply(mComputable, function(uri) {
     tag <- igraph::subcomponent(mGraph, uri, "out")
     distance <- igraph::distances(mGraph, uri, tag)
     data.table(startTag = uri, tag = names(tag), distance = c(distance))
-  }))
+  },mc.cores = 6))
+  # saveRDS(mComputedTags,paste0(taxa,"computedTags.rds"))
   
   if (nrow(mSimpleTags) > 0 && nrow(mComputedTags) > 0) {
     # Simple (ontology) tags get associated with their parents from mComputedTags
@@ -246,13 +252,16 @@ precomputeTags <- function(taxa, mGraph = NULL, graphTerms = NULL,
     )
   }
   
-  mTags <- mTags %>%
-    merge(unique(ONTOLOGIES.DEFS[, .(Node_Long = as.character(Node_Long), Definition = as.character(Definition))]),
-          by.x = "tag", by.y = "Node_Long", sort = F, allow.cartesian = T, all.x = T
-    ) %>%
-    .[is.na(Definition), Definition := tag] %>%
-    .[, .(rsc.ID, ee.ID, type, tag = Definition, distance, ID)] %>%
-    unique()
+  # this part used to replace URIs with plain text names. it is moved to the end
+  # to allow retaining both URIs and plain text names in the output
+  # mTags <- mTags %>%
+  #   merge(unique(ONTOLOGIES.DEFS[, .(Node_Long = as.character(Node_Long), Definition = as.character(Definition))]),
+  #         by.x = "tag", by.y = "Node_Long", sort = F, allow.cartesian = T, all.x = T
+  #   ) %>%
+  #   .[is.na(Definition), Definition := tag] %>%
+  #   .[, .(rsc.ID, ee.ID, type, tag = Definition, distance, ID, uri = tag)] %>%
+  #   unique()
+  
   
   # Do a grid expansion of bagged terms, maintaining indexed ordering
   # TODO This only works with 0 dist tags. Increasing the dist threshold is too memory hungry
@@ -286,10 +295,10 @@ precomputeTags <- function(taxa, mGraph = NULL, graphTerms = NULL,
     unique() %>%
     # Add back distances
     merge(mTags[type == "cf.BaseLongUri", .(rsc.ID, ee.ID, tag, distance)],
-          by.x = c("rsc.ID", "ee.ID", "cf.BaseLongUri"), by.y = c("rsc.ID", "ee.ID", "tag"), all.x = T, sort = F, allow.cartesian = T
+          by.x = c("rsc.ID", "ee.ID", "cf.BaseLongUri"), by.y = c("rsc.ID", "ee.ID","tag"), all.x = T, sort = F, allow.cartesian = T
     ) %>%
     merge(mTags[type == "cf.ValLongUri", .(rsc.ID, ee.ID, tag, distance)],
-          by.x = c("rsc.ID", "ee.ID", "cf.ValLongUri"), by.y = c("rsc.ID", "ee.ID", "tag"), all.x = T, sort = F, allow.cartesian = T
+          by.x = c("rsc.ID", "ee.ID", "cf.ValLongUri"), by.y = c("rsc.ID", "ee.ID","tag"), all.x = T, sort = F, allow.cartesian = T
     ) %>%
     # Recombinants have unknown distances. Let's just make them 0 since that's
     # the memory prohibitive limit
@@ -317,7 +326,21 @@ precomputeTags <- function(taxa, mGraph = NULL, graphTerms = NULL,
           
           .[, .(rsc.ID, ee.ID, cf.Cat, cf.BaseLongUri, cf.ValLongUri, reverse, distance)]
       }
-    }
+    } -> out
+  
+  
+  # this is a bit of wrangling to preserve the URIs. The terminology used in the column names
+  # is a bit misleading due to historical reasons. The cf.ValLongUri and cf.BaseLongUri always
+  # included the plain text definitions rather than the ontology uris. This piece
+  # adds the URIs to the output - Ogan
+  # out %>%  merge(unique(ONTOLOGIES.DEFS[, .(Node_Long = as.character(Node_Long), cf.BaseOriginal = as.character(Definition))]),
+  #                by.x = "cf.BaseLongUri", by.y = "Node_Long", sort = F, allow.cartesian = T, all.x = T
+  # ) %>% 
+  #   merge(unique(ONTOLOGIES.DEFS[, .(Node_Long = as.character(Node_Long), cf.ValOriginal = as.character(Definition))]),
+  #        by.x = "cf.ValLongUri", by.y = "Node_Long", sort = F, allow.cartesian = T, all.x = T
+  #   ) %>% 
+  #   .[,.(cf.ValLongUri = cf.ValOriginal, cf.BaseLongUri = cf.BaseOriginal, rsc.ID, ee.ID,cf.Cat, reverse, distance, cf.BaseOriginal = cf.BaseLongUri,cf.ValOriginal = cf.ValLongUri)]
+  return(out)
 }
 
 
@@ -759,6 +782,7 @@ de_search = function(genes = NULL,
                                     "organism part", "phenotype", "sex", "temperature", "treatment"),
                      remove_experiments = NULL,
                      remove_comparisons = NULL,
+                     get_descriptions = TRUE, # temporary argument to allow supporting old cache files
                      cores = 8){
 
   if(!is.logical(geeq)){
@@ -820,9 +844,31 @@ de_search = function(genes = NULL,
     DATA.HOLDER[[i]]@experiment.meta[rsc.ID %in% exps, .(rsc.ID, ee.ID, ee.Name, ee.NumSample, ef.IsBatchConfounded)]
   }))
   
+  if (get_descriptions){
+    
+    conditions %<>%  
+      merge(unique(ONTOLOGIES.DEFS[, .(Node_Long = as.character(Node_Long), cf.Base = as.character(Definition))]),
+            by.x = "cf.BaseLongUri",
+            by.y = "Node_Long", 
+            sort = F,
+            allow.cartesian = T, 
+            all.x = T) %>% 
+      merge(unique(ONTOLOGIES.DEFS[, .(Node_Long = as.character(Node_Long), cf.Val = as.character(Definition))]),
+            by.x = "cf.ValLongUri",
+            by.y = "Node_Long",
+            sort = F, 
+            allow.cartesian = T, 
+            all.x = T
+      )
+    
+    conditions[, `Condition Comparison` := paste0( cf.Base, " vs. ", cf.Val)]
+    
+    conditions %>% setcolorder(c('cf.Base','cf.Val'))
+    
+  } else{
+    conditions[, `Condition Comparison` := paste0( cf.BaseLongUri, " vs. ", cf.ValLongUri)]
+  }
   
-  
-  conditions[, `Condition Comparison` := paste0( cf.BaseLongUri, " vs. ", cf.ValLongUri)]
   
   tmp <- tmp %>%
     merge(getTags(taxa, exps), sort = F) %>%
@@ -851,6 +897,7 @@ de_search = function(genes = NULL,
   
   # tictoc::toc()
   return(conditions %>% 
+           setcolorder(c('Condition Comparison',"cf.Cat", 'Test Statistic')) %>% 
            data.table::setnames(c("cf.Cat", "cf.BaseLongUri", "cf.ValLongUri"), c("Category", "Baseline", "Value")))
 }
 

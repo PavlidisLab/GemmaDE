@@ -431,9 +431,24 @@ server <- function(input, output, session) {
         )))
       })
     }
-
+    
+    conditions %<>%  
+      merge(unique(ONTOLOGIES.DEFS[, .(Node_Long = as.character(Node_Long), cf.Base = as.character(Definition))]),
+            by.x = "cf.BaseLongUri",
+            by.y = "Node_Long", 
+            sort = F,
+            allow.cartesian = T, 
+            all.x = T) %>% 
+      merge(unique(ONTOLOGIES.DEFS[, .(Node_Long = as.character(Node_Long), cf.Val = as.character(Definition))]),
+            by.x = "cf.ValLongUri",
+            by.y = "Node_Long",
+            sort = F, 
+            allow.cartesian = T, 
+            all.x = T
+      )
+    
     # Some cleaning
-    conditions[, `Condition Comparison` := stringi::stri_c("<b>", cf.BaseLongUri, "</b> vs. <b>", cf.ValLongUri, "</b>")]
+    conditions[, `Condition Comparison` := stringi::stri_c("<b>", cf.Base, "</b> vs. <b>", cf.Val, "</b>")]
 
     advanceProgress("Cross-linking")
 
