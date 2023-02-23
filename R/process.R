@@ -768,6 +768,7 @@ tidyGenes <- function(genes, taxa) {
 }
 
 
+# filter the cache based on terms and their parents
 cache_filter = function(universal_filter,
                         val_filter,
                         base_filter){
@@ -792,6 +793,37 @@ cache_filter = function(universal_filter,
   
   return(out)
 }
+
+# given a cache, return the list of possible results
+get_possible_results = function(cache=NULL){
+  if(is.null(cache)){
+    cache = CACHE.BACKGROUND
+  }
+  
+  possible_results = cache %>% 
+    lapply(function(x){
+      x %>% 
+        dplyr::group_by(cf.Cat, cf.BaseLongUri, cf.ValLongUri) %>% 
+        summarise(n = n()) %>% 
+        merge(unique(SIMPLIFIED.ONTOLOGY.DEFS[, .(Node_Long = as.character(Node_Long), cf.Val = as.character(Definition))]),
+              by.x = "cf.ValLongUri",
+              by.y = "Node_Long",
+              sort = F, 
+              allow.cartesian = T, 
+              all.x = T
+        ) %>%
+        merge(unique(SIMPLIFIED.ONTOLOGY.DEFS[, .(Node_Long = as.character(Node_Long), cf.Base = as.character(Definition))]),
+              by.x = "cf.BaseLongUri",
+              by.y = "Node_Long", 
+              sort = F,
+              allow.cartesian = T, 
+              all.x = T) %>%  dplyr::arrange(desc(n)) %>%
+        dplyr::select(cf.Cat,n,cf.ValLongUri,cf.BaseLongUri,cf.Val,cf.Base)
+    })
+  
+  return(possible_results)
+}
+
 
 # unified function to run the whole test
 de_search = function(genes = NULL,
