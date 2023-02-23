@@ -152,9 +152,9 @@ precomputeTags <- function(taxa, mGraph = NULL, graphTerms = NULL,
     ONTOLOGIES = parent.frame()$ONTOLOGIES
   }
   
-  if(is.null(ONTOLOGIES.DEFS)){
-    ONTOLOGIES.DEFS = parent.frame()$ONTOLOGIES.DEFS
-  }
+  # if(is.null(ONTOLOGIES.DEFS)){
+  #   ONTOLOGIES.DEFS = parent.frame()$ONTOLOGIES.DEFS
+  # }
   
   if (is.null(mGraph)) {
     mGraph <- igraph::simplify(igraph::graph_from_data_frame(ONTOLOGIES[, .(as.character(ChildNode_Long), as.character(ParentNode_Long))]))
@@ -768,6 +768,31 @@ tidyGenes <- function(genes, taxa) {
 }
 
 
+cache_filter = function(universal_filter,
+                        val_filter,
+                        base_filter){
+  
+  mGraph <- igraph::simplify(igraph::graph_from_data_frame(ONTOLOGIES[, .(as.character(ChildNode_Long), as.character(ParentNode_Long))]))
+  
+  get_parents = function(terms){
+    terms %>% lapply(function(x){
+      igraph::subcomponent(mGraph, x, "out") %>% names
+    }) %>% unlist %>% unique
+  }
+  
+  universal_filter = get_parents(universal_filter)
+  val_filter = get_parents(val_filter)
+  base_filter = get_parents(base_filter)
+  
+  out = CACHE.BACKGROUND %>% lapply(function(x){
+    x %>% dplyr::filter(!(cf.ValLongUri %in% universal_filter | cf.BaseLongUri %in% universal_filter)) %>%
+      dplyr::filter(!cf.ValLongUri %in% val_filter) %>%
+      dplyr::filter(!cf.BaseLongUri %in% base_filter)
+  })
+  
+  return(out)
+}
+
 # unified function to run the whole test
 de_search = function(genes = NULL,
                      taxa =NULL,
@@ -782,6 +807,7 @@ de_search = function(genes = NULL,
                                     "organism part", "phenotype", "sex", "temperature", "treatment"),
                      remove_experiments = NULL,
                      remove_comparisons = NULL,
+                     cache = NULL,
                      get_descriptions = TRUE, # temporary argument to allow supporting old cache files
                      cores = 8){
 
@@ -821,7 +847,7 @@ de_search = function(genes = NULL,
   # print('enrich')
   # tictoc::tic()
   conditions <- taxa %>% lapply(function(t){
-    enrich(experiments[[t]], taxa = t, dist = max_dist,categories = categories,cores = cores) %>% 
+    enrich(experiments[[t]], taxa = t, dist = max_dist,categories = categories,cores = cores,CACHE = cache) %>% 
       data.table::setnames(genes[taxon == t, gene.realName],
                            genes[taxon == t, identifier],
                            skip_absent = T)
@@ -845,15 +871,14 @@ de_search = function(genes = NULL,
   }))
   
   if (get_descriptions){
-    
     conditions %<>%  
-      merge(unique(ONTOLOGIES.DEFS[, .(Node_Long = as.character(Node_Long), cf.Base = as.character(Definition))]),
+      merge(unique(SIMPLIFIED.ONTOLOGY.DEFS[, .(Node_Long = as.character(Node_Long), cf.Base = as.character(Definition))]),
             by.x = "cf.BaseLongUri",
             by.y = "Node_Long", 
             sort = F,
             allow.cartesian = T, 
             all.x = T) %>% 
-      merge(unique(ONTOLOGIES.DEFS[, .(Node_Long = as.character(Node_Long), cf.Val = as.character(Definition))]),
+      merge(unique(SIMPLIFIED.ONTOLOGY.DEFS[, .(Node_Long = as.character(Node_Long), cf.Val = as.character(Definition))]),
             by.x = "cf.ValLongUri",
             by.y = "Node_Long",
             sort = F, 
