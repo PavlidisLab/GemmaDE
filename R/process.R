@@ -969,6 +969,7 @@ contribs = function(data){
 
 
 get_parents = function(terms){
+  mGraph <- igraph::simplify(igraph::graph_from_data_frame(ONTOLOGIES[, .(as.character(ChildNode_Long), as.character(ParentNode_Long))]))
   terms %>% lapply(function(x){
     igraph::subcomponent(mGraph, x, "out") %>% names
   }) %>% unlist %>% unique
