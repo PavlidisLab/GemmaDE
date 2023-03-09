@@ -27,14 +27,23 @@ cor.wt <- function(x, y, w = rep(1, length(y))) {
 #' @param max.distance The maximum tree traversal distance to include
 #' @param inv Whether or not to inverse the selected rscs
 #' @param CACHE A cache to use. If null, uses the global CACHE.BACKGROUND
+#' @param filter Should the tags be filtered for recorded stop words
 getTags <- function(taxa,
-                    rsc.IDs = NULL, max.distance = Inf, inv = F, CACHE = NULL) {
+                    rsc.IDs = NULL, max.distance = Inf, inv = F, CACHE = NULL,filter = FALSE) {
   if (length(taxa) > 1) {
-    return(data.table::rbindlist(lapply(taxa, getTags, rsc.IDs, max.distance, inv, CACHE)))
+    return(data.table::rbindlist(lapply(taxa, getTags, rsc.IDs, max.distance, inv, CACHE,filter)))
   }
   
   if (is.null(CACHE)) {
     CACHE <- CACHE.BACKGROUND
+  }
+  
+  if(filter){
+    CACHE <- CACHE %>% lapply(function(x){
+      x %>% dplyr::filter(!(cf.ValLongUri %in% filters$universal_filter | cf.BaseLongUri %in% filters$universal_filter)) %>%
+        dplyr::filter(!cf.ValLongUri %in% filters$val_filter) %>%
+        dplyr::filter(!cf.BaseLongUri %in% filters$base_filter)
+    })
   }
   
   if (is.null(rsc.IDs)) {
@@ -382,9 +391,10 @@ enrich <- function(rankings, # options = getConfig(),
                    taxa,
                    dist,
                    categories,
+                   filter = TRUE,
                    doNorm = T, CACHE = NULL, cores = 8) {
   # terms <- getTags(options$taxa$value, rankings$rn, options$dist$value, CACHE = CACHE)
-  terms <- getTags(taxa, rankings$rn, dist, CACHE = CACHE)
+  terms <- getTags(taxa, rankings$rn, dist, CACHE = CACHE, filter = filter)
   terms <- rankings %>%
     {
       if (doNorm) {
@@ -837,6 +847,7 @@ de_search = function(genes = NULL,
                                     "cell type", "clinical history", "diet", "disease", "environmental history", 
                                     "environmental stress", "genotype", "medical procedure", "molecular entity", 
                                     "organism part", "phenotype", "sex", "temperature", "treatment"),
+                     filter_stopwords = TRUE,
                      remove_experiments = NULL,
                      remove_comparisons = NULL,
                      cache = NULL,
@@ -879,7 +890,7 @@ de_search = function(genes = NULL,
   # print('enrich')
   # tictoc::tic()
   conditions <- taxa %>% lapply(function(t){
-    enrich(experiments[[t]], taxa = t, dist = max_dist,categories = categories,cores = cores,CACHE = cache) %>% 
+    enrich(experiments[[t]], taxa = t, dist = max_dist,categories = categories,cores = cores,filter = filter_stopwords,CACHE = cache) %>% 
       data.table::setnames(genes[taxon == t, gene.realName],
                            genes[taxon == t, identifier],
                            skip_absent = T)
