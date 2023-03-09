@@ -966,3 +966,10 @@ contribs = function(data){
       "cf.Cat", "cf.BaseLongUri", "cf.ValLongUri"
     )]
 }
+
+
+get_parents = function(terms){
+  terms %>% lapply(function(x){
+    igraph::subcomponent(mGraph, x, "out") %>% names
+  }) %>% unlist %>% unique
+}
