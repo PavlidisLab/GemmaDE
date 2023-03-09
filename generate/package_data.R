@@ -240,3 +240,11 @@ val_filter =
   )
 
 base_filter = c("http://gemma.msl.ubc.ca/ont/TGEMO_00000")
+
+
+filters = list(base_filter = get_parents(base_filter),
+               val_filter = get_parents(val_filter),
+               universal_filter = get_parents(universal_filter))
+
+
+usethis::use_data(filters,overwrite = TRUE)
