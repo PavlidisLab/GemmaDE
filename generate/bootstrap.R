@@ -2,10 +2,13 @@
 print('bootstrap data')
 devtools::load_all()
 library(parallel)
+RNGkind("L'Ecuyer-CMRG")
+
 options(mc.cores = 14)
 
 ITERS <- 1000
 BLOCK <- 500
+
 
 # removed artificial from options. the current code never saves it to data 
 # holder light version and don't think it's used in downstream for the app -ogan
@@ -24,13 +27,19 @@ for(x in OPTIONS) {
     message(paste0('File for ', x, ' already exists... Skipping.'))
   } else {
     mclapply(1:ITERS, function(j) {
+      set.seed(j)
       if(j %% (ITERS / 20) == 0)
         message(paste0(Sys.time(), ' ... ', x, ' ... ', round(100 * j / ITERS, 2), '%'))
       
       opts = getConfig(taxa = x)
       
       DATA.HOLDER[[x]]@gene.meta[sample(1:nrow(DATA.HOLDER[[x]]@gene.meta), BLOCK), entrez.ID] %>%
-        vsmSearch(taxa = opts$taxa$value, confounds = opts$confounds$value, filter = opts$filter$value, mfx = FALSE, geeq = opts$geeq$value, p_threshold = opts$pv$value) %>%
+        vsmSearch(taxa = opts$taxa$value, 
+                  confounds = TRUE, 
+                  filter = opts$filter$value, 
+                  mfx = FALSE, 
+                  geeq = opts$geeq$value,
+                  p_threshold = 0.05) %>%
         .[, c(1:500, 505)] %>% # TODO BLOCK
         data.table::melt(id.vars = 'rn') %>%
         .[, !'variable'] %>%
