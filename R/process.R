@@ -942,7 +942,7 @@ de_search = function(genes = NULL,
     
     conditions[, `Condition Comparison` := paste0( cf.Base, " vs. ", cf.Val)]
     
-    conditions %>% setcolorder(c('cf.Base','cf.Val'))
+    conditions %>% data.table::setcolorder(c('cf.Base','cf.Val'))
     
   } else{
     conditions[, `Condition Comparison` := paste0( cf.BaseLongUri, " vs. ", cf.ValLongUri)]
@@ -976,7 +976,7 @@ de_search = function(genes = NULL,
   
   # tictoc::toc()
   return(conditions %>% 
-           setcolorder(c('Condition Comparison',"cf.Cat", 'Test Statistic')) %>% 
+           data.table::setcolorder(c('Condition Comparison',"cf.Cat", 'Test Statistic')) %>% 
            data.table::setnames(c("cf.Cat", "cf.BaseLongUri", "cf.ValLongUri"), c("Category", "Baseline", "Value")))
 }
 
