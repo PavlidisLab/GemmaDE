@@ -830,7 +830,8 @@ get_possible_results = function(cache=NULL){
               all.x = T) %>%  dplyr::arrange(desc(n)) %>%
         dplyr::select(cf.Cat,n,cf.ValLongUri,cf.BaseLongUri,cf.Val,cf.Base)
     })
-  
+  conditions$cfBase[is.na(conditions$cf.Base)] <- conditions$cf.BaseLongUri[is.na(conditions$cf.Base)]
+  conditions$cf.Val[is.na(conditions$cf.Val)] <- conditions$cf.ValLongUri[is.na(conditions$cf.Val)]
   return(possible_results)
 }
 
@@ -913,6 +914,7 @@ de_search = function(genes = NULL,
     DATA.HOLDER[[i]]@experiment.meta[rsc.ID %in% exps, .(rsc.ID, ee.ID, ee.Name, ee.NumSample, ef.IsBatchConfounded)]
   }))
   
+
   if (get_descriptions){
     conditions %<>%  
       merge(unique(SIMPLIFIED.ONTOLOGY.DEFS[, .(Node_Long = as.character(Node_Long), cf.Base = as.character(Definition))]),
@@ -928,6 +930,15 @@ de_search = function(genes = NULL,
             allow.cartesian = T, 
             all.x = T
       )
+    
+    # if a field is filled with free text, the processing code moves them to 
+    # URIs as is. here we fill those blank spaces with the free texts
+    # again so we don't have blank results
+    # pending a discussion with Paul, and Neera these might be removed entirely
+    # in the future
+    conditions$cfBase[is.na(conditions$cf.Base)] <- conditions$cf.BaseLongUri[is.na(conditions$cf.Base)]
+    conditions$cf.Val[is.na(conditions$cf.Val)] <- conditions$cf.ValLongUri[is.na(conditions$cf.Val)]
+    
     
     conditions[, `Condition Comparison` := paste0( cf.Base, " vs. ", cf.Val)]
     
