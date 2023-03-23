@@ -778,32 +778,6 @@ tidyGenes <- function(genes, taxa) {
 }
 
 
-# filter the cache based on terms and their parents
-cache_filter = function(universal_filter,
-                        val_filter,
-                        base_filter){
-  
-  mGraph <- igraph::simplify(igraph::graph_from_data_frame(ONTOLOGIES[, .(as.character(ChildNode_Long), as.character(ParentNode_Long))]))
-  
-  get_parents = function(terms){
-    terms %>% lapply(function(x){
-      igraph::subcomponent(mGraph, x, "out") %>% names
-    }) %>% unlist %>% unique
-  }
-  
-  universal_filter = get_parents(universal_filter)
-  val_filter = get_parents(val_filter)
-  base_filter = get_parents(base_filter)
-  
-  out = CACHE.BACKGROUND %>% lapply(function(x){
-    x %>% dplyr::filter(!(cf.ValLongUri %in% universal_filter | cf.BaseLongUri %in% universal_filter)) %>%
-      dplyr::filter(!cf.ValLongUri %in% val_filter) %>%
-      dplyr::filter(!cf.BaseLongUri %in% base_filter)
-  })
-  
-  return(out)
-}
-
 # given a cache, return the list of possible results
 get_possible_results = function(cache=NULL){
   if(is.null(cache)){
