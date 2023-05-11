@@ -145,24 +145,27 @@ sex_results <- de_search(genes = c('RPS4Y1', 'EIF1AY', 'DDX3Y', 'KDM5D', 'XIST')
 sex_results_nogeeq <- de_search(genes = c('RPS4Y1', 'EIF1AY', 'DDX3Y', 'KDM5D', 'XIST'),
                                 taxa = c('human'),geeq = FALSE)
 
-cell_type_results <- de_search(genes = c("Cyp4f15", "Grin2c", "Col4a5", "Heph", "Celsr1", "Egfr", "Lgi4", 
-                                         "Slc38a3", "Aass", "Fkbp10", "Slc7a10", "Cyp2d22", "Cd38", "Cyp4f14", 
-                                         "Cbs", "Slc1a2", "Emp2", "Axl", "Slc14a1", "Btbd17"),
+ct_markers <- c("Cyp4f15", "Grin2c", "Col4a5", "Heph", "Celsr1", "Egfr", "Lgi4", 
+                "Slc38a3", "Aass", "Fkbp10", "Slc7a10", "Cyp2d22", "Cd38", "Cyp4f14", 
+                "Cbs", "Slc1a2", "Emp2", "Axl", "Slc14a1", "Btbd17")
+
+cell_type_results <- de_search(genes = ct_markers,
                                taxa = 'mouse',geeq = TRUE)
 
-cell_type_results_nogeeq <- de_search(genes = c("Cyp4f15", "Grin2c", "Col4a5", "Heph", "Celsr1", "Egfr", "Lgi4", 
-                                                "Slc38a3", "Aass", "Fkbp10", "Slc7a10", "Cyp2d22", "Cd38", "Cyp4f14", 
-                                                "Cbs", "Slc1a2", "Emp2", "Axl", "Slc14a1", "Btbd17"),
+cell_type_results_nogeeq <- de_search(genes = ct_markers,
                                       taxa = 'mouse',geeq = FALSE)
 
-glucocorticoid_results <- de_search(genes = c("BCL6", "BIRC3", "CEBPD", "ERRFI1", "FBXL16", "FKBP5", "GADD45B", 
-                                              "IRS2", "KLF9", "PDK4", "PER1", "RGCC", "RGS2", "SEC14L2", "SLC16A12", 
-                                              "TFCP2L1", "TSC22D3"),
+glucocorticoid_genes <- c("BCL6", "BIRC3", "CEBPD", "ERRFI1", "FBXL16", "FKBP5", "GADD45B", 
+                          "IRS2", "KLF9", "PDK4", "PER1", "RGCC", "RGS2", "SEC14L2", "SLC16A12", 
+                          "TFCP2L1", "TSC22D3")
+
+# metadata seems to have changed a bit splitting left ventricular assist device from ventricular assist device in analysis. these are plain text annotations
+CACHE.BACKGROUND$human$cf.ValLongUri[grepl('assist device',CACHE.BACKGROUND$human$cf.ValLongUri)] = 'ventricular assist device'
+
+glucocorticoid_results <- de_search(genes = glucocorticoid_genes,
                                     taxa = 'human',geeq = TRUE)
 
-glucocorticoid_results_nogeeq <- de_search(genes = c("BCL6", "BIRC3", "CEBPD", "ERRFI1", "FBXL16", "FKBP5", "GADD45B", 
-                                                     "IRS2", "KLF9", "PDK4", "PER1", "RGCC", "RGS2", "SEC14L2", "SLC16A12", 
-                                                     "TFCP2L1", "TSC22D3"),
+glucocorticoid_results_nogeeq <- de_search(genes = glucocorticoid_genes,
                                            taxa = 'human',geeq = FALSE)
 
 
@@ -283,19 +286,29 @@ EIF1AY <- de_search(genes = c('EIF1AY'),
 
 # 3.2.2 Cell type specific genes ------
 # top 20 astrocyte markers ranked by their main silhouette coefficient
-# I restricted the search to mouse studies
+# not needed but returns different genes than jordan's. not sure what the discrepancy is
+# results are similar
+# astro_genes <- readr::read_delim(delim = ' ',
+#                                  col_names = c('Gene','fc','mainsil','minsil'),
+#                                  'https://raw.githubusercontent.com/PavlidisLab/neuroExpressoAnalysis/master/analysis/01.SelectGenes/Markers_1.2/Quick/All_CellTypes/Astrocyte')  %>%
+#   arrange(desc(mainsil)) %$% Gene %>% {.[1:20]}
+# 
+# astro_results <- de_search(ct_markers,taxa = 'mouse',geeq = TRUE)
+# astro_results_no_geeq <- de_search(ct_markers,taxa = 'mouse',geeq = FALSE)
 
-astro_genes <- readr::read_delim(delim = ' ',
-                                 col_names = c('Gene','fc','mainsil','minsil'),
-                                 'https://raw.githubusercontent.com/PavlidisLab/neuroExpressoAnalysis/master/analysis/01.SelectGenes/Markers_1.2/Quick/All_CellTypes/Astrocyte')  %>%
-  arrange(desc(mainsil)) %$% Gene %>% {.[1:20]}
 
-astro_results <- de_search(astro_genes,taxa = 'mouse',geeq = TRUE)
-astro_results_no_geeq <- de_search(astro_genes,taxa = 'mouse',geeq = FALSE)
+cell_type_results %>% dplyr::arrange(desc(`Test Statistic`)) %>% {.[1:50,]} %>% 
+  dplyr::mutate(`Condition Comparison` = factor(`Condition Comparison`,levels = `Condition Comparison`)) %>% 
+  ggplot(aes(y = `Condition Comparison`, x = `Test Statistic`,fill = `Ontology Steps`)) + geom_bar(stat = 'identity')
+
+# 3.2.3 drug modulated genes ----------
+# this result no longer appears to replicate
+glucocorticoid_results
+
 
 # 3.2.5.1 Gemma DE can offer complementary insights to GO enrichment analysis -----
 
-# a small addition to see the effect of geeq on the results heree
+# a small addition to see the effect of geeq on the results here
 scz_results_no_geeq <- de_search(genes = scz_genes,
                                  taxa = 'human', geeq = FALSE)
 
