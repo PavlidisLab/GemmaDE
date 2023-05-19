@@ -1,14 +1,14 @@
 devtools::load_all()
 PROJDIR <- here::here()
-DATADIR <- '/cosmos/data/project-data/GemmaDE'
+library(parallel)
 
 source(paste(PROJDIR, 'main/dependencies.R', sep='/'))
 
-options(mc.cores = 5)
+options(mc.cores = 16)
 USE <- 'simulated'
 
-rm(NULLS, CACHE.BACKGROUND, ONTOLOGIES, ONTOLOGIES.DEFS)
-DATA.HOLDER[c('artificial', 'mouse', 'rat')] <- NULL
+# rm(NULLS, CACHE.BACKGROUND, ONTOLOGIES, ONTOLOGIES.DEFS)
+# DATA.HOLDER[c('artificial', 'mouse', 'rat')] <- NULL
 
 mu.phi.estimates <- system.file("extdata", "Pickrell.Cheung.Mu.Phi.Estimates.rds",
                                 package = "compcodeR")
@@ -281,24 +281,25 @@ N_EXP <- nrow(eMeta)
 CONTRASTS <- eMeta[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>% unique
 EXP_CONTRASTS <- sample(1:nrow(CONTRASTS), N_EXP, T, sort(rexp(nrow(CONTRASTS)), T))
 
-rm(DATA.HOLDER)
+# rm(DATA.HOLDER)
 
 r1exp <- function(n, n.1, val.1 = 2, val.1.rate = 1, rate = 1) {
   sample(c(val.1 + rexp(n.1, val.1.rate), val.1 * rexp(n - n.1, rate) %>% `/`(max(.))))
 }
 
-CONTRAST_AFFINITY <- lapply(unique(EXP_CONTRASTS), function(contrast) {
+CONTRAST_AFFINITY <- mclapply(unique(EXP_CONTRASTS), function(contrast) {
   data.table::data.table(contrast = contrast,
              entrez.ID = 1:N_GENES,
              probability = r1exp(N_GENES, n.1 = 10)) %>%
     .[, effect := 1.5 + probability / 2] %>%
     .[sample(c(T, F), N_GENES, T, c(0.5012399, 0.4987578)), effect := 1 / effect]
-}) %>% data.table::rbindlist()
+},mc.cores = 16) %>% data.table::rbindlist()
 
 dir.create(file.path(DATADIR,'artificial'),showWarnings = FALSE)
 saveRDS(CONTRAST_AFFINITY, file.path(DATADIR, 'artificial/contrast_aff.rds'))
 
-mclapply(1:N_EXP, function(experiment) {
+lapply(1:N_EXP, function(experiment) {
+  print(experiment)
   message(paste0(Sys.time(), ' ... ', round(100 * experiment / N_EXP, 2), '%'))
   
   # Sample some genes to DE
@@ -308,9 +309,9 @@ mclapply(1:N_EXP, function(experiment) {
       head(floor(1.5 * eMeta$n.DE[experiment])) %>%
       .[sample(1:nrow(.), eMeta$n.DE[experiment], F, .$probability)] %>%
       .[, .(entrez.ID, effect)]
-  } else
+  } else {
     mDat <- data.table::data.table(entrez.ID = NA_character_, effect = NA_real_)
-  
+  }
   # Make the others have effect of 1
   mDat <- data.table::data.table(entrez.ID = 1:N_GENES,
                      effect = 1) %>% merge(mDat, by = 'entrez.ID', all.x = T) %>%
@@ -327,11 +328,11 @@ mclapply(1:N_EXP, function(experiment) {
                                single.outlier.low.prob = outliers/2)
   tmp@sample.annotations$condition <- factor(tmp@sample.annotations$condition, labels = LETTERS[1:2])
   
-  if(sum(mDat[, effect != 1]) > 0)
+  if(sum(mDat[, effect != 1]) > 0){
     MISSING <- (1:N_GENES)[-mDat[effect != 1, entrez.ID]]
-  else
+  } else {
     MISSING <- 1:N_GENES
-  
+  }
   tmp@variable.annotations$truelog2foldchanges[
     sample(MISSING, N_GENES - eMeta$ad.NumGenes[experiment])] <- NA_real_
   
