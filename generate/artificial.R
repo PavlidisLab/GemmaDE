@@ -336,8 +336,13 @@ lapply(1:N_EXP, function(experiment) {
   } else {
     MISSING <- 1:N_GENES
   }
+  num_genes = sum(is.na(DATA.HOLDER$human@data$fc[,experiment]))
+  # tmp@variable.annotations$truelog2foldchanges[
+  #   sample(MISSING, N_GENES - eMeta$ad.NumGenes[experiment])] <- NA_real_
+  
   tmp@variable.annotations$truelog2foldchanges[
-    sample(MISSING, N_GENES - eMeta$ad.NumGenes[experiment])] <- NA_real_
+       sample(MISSING, N_GENES - num_genes)] <- NA_real_
+  
   
   if(USE == 'DESeq2') {
     suppressMessages(DESeq2::DESeqDataSetFromMatrix(countData = tmp@count.matrix,
