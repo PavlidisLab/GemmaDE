@@ -1,6 +1,8 @@
 devtools::load_all()
 PROJDIR <- here::here()
 library(parallel)
+RNGkind("L'Ecuyer-CMRG")
+
 
 source(paste(PROJDIR, 'main/dependencies.R', sep='/'))
 
@@ -300,6 +302,7 @@ saveRDS(CONTRAST_AFFINITY, file.path(DATADIR, 'artificial/contrast_aff.rds'))
 
 lapply(1:N_EXP, function(experiment) {
   print(experiment)
+  set.seed(experiment)
   message(paste0(Sys.time(), ' ... ', round(100 * experiment / N_EXP, 2), '%'))
   
   # Sample some genes to DE
