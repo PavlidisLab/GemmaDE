@@ -7,7 +7,7 @@ RNGkind("L'Ecuyer-CMRG")
 options(mc.cores = 14)
 
 ITERS <- 1000
-BLOCK <- c(1,10,100,500)
+BLOCK <- c(1,5,10,100,250,500,100)
 
 
 OPTIONS <- c( 'human', 'mouse', 'rat')
@@ -34,7 +34,7 @@ for (b in BLOCK){
                   mfx = FALSE, 
                   geeq = opts$geeq$value,
                   p_threshold = 0.05) %>%
-        .[, c(1:500, 505)] %>% # TODO BLOCK
+        .[, c(seq_len(b), b+5),with = FALSE] %>% # TODO BLOCK
         data.table::melt(id.vars = 'rn') %>%
         .[, !'variable'] %>%
         .[, .(score.sum = sum(value, na.rm = T),
@@ -42,8 +42,8 @@ for (b in BLOCK){
     }) %>% data.table::rbindlist() %>% {
       message('Saving...')
       
-      .[, .(score.mean = sum(score.sum) / (BLOCK * ITERS),
-            score.sd = sqrt(sum(score.sqsum) / (BLOCK * ITERS) - (sum(score.sum) / (BLOCK * ITERS))^2)), rn] %>%
+      .[, .(score.mean = sum(score.sum) / (b * ITERS),
+            score.sd = sqrt(sum(score.sqsum) / (b * ITERS) - (sum(score.sum) / (b * ITERS))^2)), rn] %>%
         saveRDS(file.path(DATADIR,'blocksize_nulls',b,paste0(x, '.rds')))
       
       gc()
