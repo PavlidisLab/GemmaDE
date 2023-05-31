@@ -910,7 +910,7 @@ de_search = function(genes = NULL,
     # again so we don't have blank results
     # pending a discussion with Paul, and Neera these might be removed entirely
     # in the future
-    conditions$cfBase[is.na(conditions$cf.Base)] <- conditions$cf.BaseLongUri[is.na(conditions$cf.Base)]
+    conditions$cf.Base[is.na(conditions$cf.Base)] <- conditions$cf.BaseLongUri[is.na(conditions$cf.Base)]
     conditions$cf.Val[is.na(conditions$cf.Val)] <- conditions$cf.ValLongUri[is.na(conditions$cf.Val)]
     
     
