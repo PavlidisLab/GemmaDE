@@ -361,9 +361,12 @@ precomputeTags <- function(taxa, mGraph = NULL, graphTerms = NULL,
 #' @param scores The output of (@seealso search).
 #' @param taxa The taxon
 normalize <- function(scores, #taxa = getConfig(key = "taxa")$value
-                      taxa) {
+                      taxa,nullset) {
+  if(is.null(nullset)){
+    nullset = NULLS
+  }
   scores %>%
-    merge(NULLS[[taxa]], by = "rn", sort = F) %>%
+    merge(nullset[[taxa]], by = "rn", sort = F) %>%
     .[, lapply(.SD, function(x) (x - score.mean) / score.sd),
       .SDcols = !c("score.mean", "score.sd", "rn", "score", "f.IN", "f.OUT", "ee.q")
     ] %>%
@@ -392,14 +395,17 @@ enrich <- function(rankings, # options = getConfig(),
                    dist,
                    categories,
                    filter = TRUE,
-                   doNorm = T, CACHE = NULL, cores = 8) {
+                   doNorm = T, CACHE = NULL, cores = 8,nullset = NULL) {
+  if(is.null(nullset)){
+    nullset = NULLS
+  }
   # terms <- getTags(options$taxa$value, rankings$rn, options$dist$value, CACHE = CACHE)
   terms <- getTags(taxa, rankings$rn, dist, CACHE = CACHE, filter = filter)
   terms <- rankings %>%
     {
       if (doNorm) {
         # normalize(., options$taxa$value)
-        normalize(., taxa)
+        normalize(., taxa,nullset)
       } else {
         .
       }
@@ -418,9 +424,12 @@ enrich <- function(rankings, # options = getConfig(),
   
   # filtering singles
   grouping = paste(terms$cf.Cat,terms$cf.BaseLongUri,terms$cf.ValLongUri)
+  
   valid_groups = grouping %>% table %>% {names(.[.>1])}
   terms = terms[grouping %in% valid_groups,]
   grouping = grouping[grouping %in% valid_groups]
+  
+  
   # assign rows belonging to same groups to same cores
   core_split = grouping %>% factor %>% as.numeric() %>% {.%%cores}
   gene_names = 
@@ -538,10 +547,11 @@ vsmSearch <- function(genes,
   
   zScore <- data.table::as.data.table(zScore)
   # Number of DEGs for experiments that pass thresholds
-  experimentMeta <- mData@experiment.meta[experimentMask, .(rsc.ID, ee.qScore, n.DE, ad.NumGenes)] %>%
+  experimentMeta <- mData@experiment.meta[experimentMask, .(rsc.ID, ee.qScore, n.DE, ad.NumGenes,nonNa.numGenes)] %>%
     as.data.frame() %>%
     `rownames<-`(.[, "rsc.ID"])
   
+
   experimentMeta  = experimentMeta[!all_nas,]
   
   experimentMeta$n.DE[is.na(experimentMeta$n.DE)] <- 0
@@ -557,10 +567,8 @@ vsmSearch <- function(genes,
   } else {
     MFX_WEIGHT <- rep(1, n.genes)
   }
-  
   # Adding 1 to not exclude CCs where p.adj is 1
   zScore <- getOption("app.algorithm.gene.pre") %>% eval()
-  
   ret <- getOption("app.algorithm.gene.post") %>%
     eval() %>%
     .[, score := Rfast::rowsums(as.matrix(.))]
@@ -569,7 +577,7 @@ vsmSearch <- function(genes,
   ret %>%
     data.table::setnames(c(mData@gene.meta$gene.Name[geneMask], "score")) %>%
     .[, f.IN := experimentN / n.genes] %>%
-    .[, f.OUT := pmax(0, experimentMeta$n.DE - experimentN) / experimentMeta$ad.NumGenes] %>%
+    .[, f.OUT := pmax(0, experimentMeta$n.DE - experimentN) / experimentMeta$nonNa.numGenes] %>%
     .[, ee.q := experimentMeta$ee.qScore] %>%
     .[, rn := colnames(zScore)] %>%
     data.table::setorder(-score)
@@ -779,16 +787,16 @@ tidyGenes <- function(genes, taxa) {
 
 
 # given a cache, return the list of possible results
-get_possible_results = function(cache=NULL){
+get_possible_results = function(cache=NULL, filter = TRUE){
   if(is.null(cache)){
     cache = CACHE.BACKGROUND
   }
   
   possible_results = cache %>% 
     lapply(function(x){
-      x %>% 
+      x <- x %>% 
         dplyr::group_by(cf.Cat, cf.BaseLongUri, cf.ValLongUri) %>% 
-        summarise(n = n()) %>% 
+        dplyr::summarise(n = dplyr::n()) %>% 
         merge(unique(SIMPLIFIED.ONTOLOGY.DEFS[, .(Node_Long = as.character(Node_Long), cf.Val = as.character(Definition))]),
               by.x = "cf.ValLongUri",
               by.y = "Node_Long",
@@ -801,12 +809,25 @@ get_possible_results = function(cache=NULL){
               by.y = "Node_Long", 
               sort = F,
               allow.cartesian = T, 
-              all.x = T) %>%  dplyr::arrange(desc(n)) %>%
+              all.x = T) %>%  dplyr::arrange(dplyr::desc(n)) %>%
         dplyr::select(cf.Cat,n,cf.ValLongUri,cf.BaseLongUri,cf.Val,cf.Base)
+      
+      # x$cfBase[is.na(x$cf.Base)] <- x$cf.BaseLongUri[is.na(x$cf.Base)]
+      # x$cf.Val[is.na(x$cf.Val)] <- x$cf.ValLongUri[is.na(x$cf.Val)]
+      
+      return(x)
     })
-  conditions$cfBase[is.na(conditions$cf.Base)] <- conditions$cf.BaseLongUri[is.na(conditions$cf.Base)]
-  conditions$cf.Val[is.na(conditions$cf.Val)] <- conditions$cf.ValLongUri[is.na(conditions$cf.Val)]
-  return(possible_results)
+  
+  if(filter){
+    possible_results <- possible_results %>% lapply(function(x){
+      x %>% dplyr::filter(!(cf.ValLongUri %in% filters$universal_filter | cf.BaseLongUri %in% filters$universal_filter)) %>%
+        dplyr::filter(!cf.ValLongUri %in% filters$val_filter) %>%
+        dplyr::filter(!cf.BaseLongUri %in% filters$base_filter)
+    })
+  }
+  
+  
+   return(possible_results)
 }
 
 
@@ -827,7 +848,12 @@ de_search = function(genes = NULL,
                      remove_comparisons = NULL,
                      cache = NULL,
                      get_descriptions = TRUE, # temporary argument to allow supporting old cache files
-                     cores = 8){
+                     cores = 8,
+                     nullset = NULL){
+  
+  if(is.null(nullset)){
+    nullset = NULLS
+  }
 
   if(!is.logical(geeq)){
     geeq = as.logical(toupper(geeq))
@@ -865,7 +891,7 @@ de_search = function(genes = NULL,
   # print('enrich')
   # tictoc::tic()
   conditions <- taxa %>% lapply(function(t){
-    enrich(experiments[[t]], taxa = t, dist = max_dist,categories = categories,cores = cores,filter = filter_stopwords,CACHE = cache) %>% 
+    enrich(experiments[[t]], taxa = t, dist = max_dist,categories = categories,cores = cores,filter = filter_stopwords,CACHE = cache,nullset = nullset) %>% 
       data.table::setnames(genes[taxon == t, gene.realName],
                            genes[taxon == t, identifier],
                            skip_absent = T)
@@ -967,6 +993,8 @@ contribs = function(data){
 get_parents = function(terms){
   mGraph <- igraph::simplify(igraph::graph_from_data_frame(ONTOLOGIES[, .(as.character(ChildNode_Long), as.character(ParentNode_Long))]))
   terms %>% lapply(function(x){
-    igraph::subcomponent(mGraph, x, "out") %>% names
+    tryCatch( igraph::subcomponent(mGraph, x, "out") %>% names, error = function(e){
+      return(x)
+    })
   }) %>% unlist %>% unique
 }
