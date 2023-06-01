@@ -365,13 +365,15 @@ normalize <- function(scores, #taxa = getConfig(key = "taxa")$value
   if(is.null(nullset)){
     nullset = NULLS
   }
-  scores %>%
-    merge(nullset[[taxa]], by = "rn", sort = F) %>%
+  merged <- scores %>%
+    merge(nullset[[taxa]], by = "rn", sort = F)
+  
+  merged %>%
     .[, lapply(.SD, function(x) (x - score.mean) / score.sd),
       .SDcols = !c("score.mean", "score.sd", "rn", "score", "f.IN", "f.OUT", "ee.q")
     ] %>%
     {
-      data.table::data.table(rn = scores$rn, ., scores[, .(score, f.IN, f.OUT, ee.q)])
+      data.table::data.table(rn = merged$rn, ., merged[, .(score, f.IN, f.OUT, ee.q)])
     } %>%
     .[, score := matrixStats::rowSums2(as.matrix(.SD), na.rm = T), .SDcols = !c("rn", "score", "f.IN", "f.OUT", "ee.q")] %>%
     .[, normalization := eval(getOption("app.algorithm.experiment"))] %>%
