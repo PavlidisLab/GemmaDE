@@ -365,6 +365,9 @@ normalize <- function(scores, #taxa = getConfig(key = "taxa")$value
   if(is.null(nullset)){
     nullset = NULLS
   }
+  # using the merged object allows some experiments to be missing in the nullset
+  # this only happens if the nullset is created with a blocksize which causes
+  # null scores for some experiments (14 contrasts in total) with low gene coverage to fail
   merged <- scores %>%
     merge(nullset[[taxa]], by = "rn", sort = F)
   
