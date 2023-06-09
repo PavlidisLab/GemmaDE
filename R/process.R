@@ -370,7 +370,6 @@ normalize <- function(scores, #taxa = getConfig(key = "taxa")$value
   # null scores for some experiments (14 contrasts in total) with low gene coverage to fail
   merged <- scores %>%
     merge(nullset[[taxa]], by = "rn", sort = F)
-  
   merged %>%
     .[, lapply(.SD, function(x) (x - score.mean) / score.sd),
       .SDcols = !c("score.mean", "score.sd", "rn", "score", "f.IN", "f.OUT", "ee.q")
@@ -381,7 +380,7 @@ normalize <- function(scores, #taxa = getConfig(key = "taxa")$value
     .[, score := matrixStats::rowSums2(as.matrix(.SD), na.rm = T), .SDcols = !c("rn", "score", "f.IN", "f.OUT", "ee.q")] %>%
     .[, normalization := eval(getOption("app.algorithm.experiment"))] %>%
     .[, sn := score * normalization] %>%
-    data.table::setorder(-sn) %>%
+    data.table::setorder(-sn) %>% # order by normalized scores then remove them?
     .[, !"sn"]
 }
 
@@ -485,14 +484,15 @@ enrich <- function(rankings, # options = getConfig(),
 vsmSearch <- function(genes, 
                    taxa,
                    confounds,
+                   diff_exp_source = 'zscore',
                    filter = NULL,
                    mfx,
                    geeq,
                    p_threshold,
                    DATA = NULL) {
-  if (is.null(DATA)) {
+ if (is.null(DATA)) {
     DATA <- DATA.HOLDER
-  }
+ }
   # mData <- DATA[[options$taxa$value]]
   mData <- DATA[[taxa]]
   
@@ -539,10 +539,18 @@ vsmSearch <- function(genes,
     `dimnames<-`(list(mDimNames[[1]], mDimNames[[2]][geneMask])) %>%
     .[experimentMask, , drop = F] %>%
     t()
-  zScore <- mData@data$zscore[, geneMask, drop = F] %>%
-    `dimnames<-`(list(mDimNames[[1]], mDimNames[[2]][geneMask])) %>%
-    .[experimentMask, , drop = F] %>%
-    t()
+  if('FBM' %in% class(mData@data[[diff_exp_source]])){
+    zScore <- mData@data[[diff_exp_source]][, geneMask, drop = FALSE] %>%
+      `dimnames<-`(list(mDimNames[[1]], mDimNames[[2]][geneMask])) %>%
+      .[experimentMask, , drop = F] %>%
+      t()
+  } else if('matrix' %in% class(mData@data[[diff_exp_source]])){
+    zScore <- mData@data[[diff_exp_source]][geneMask,,drop = FALSE] %>%
+      `dimnames<-`(list(mDimNames[[2]][geneMask],mDimNames[[1]])) %>%
+      .[,experimentMask , drop = F]
+  }
+  
+  
   # remove experiments where none of the query genes are represented
   all_nas = apply(pv,2,function(x){all(is.na(x))})
   pv = pv[,!all_nas,drop = FALSE]
@@ -839,6 +847,7 @@ get_possible_results = function(cache=NULL, filter = TRUE){
 # unified function to run the whole test
 de_search = function(genes = NULL,
                      taxa =NULL,
+                     diff_exp_source  = 'zscore',
                      max_dist = 1.5,
                      confounds = FALSE,
                      multifunctionality = FALSE,
@@ -855,7 +864,6 @@ de_search = function(genes = NULL,
                      get_descriptions = TRUE, # temporary argument to allow supporting old cache files
                      cores = 8,
                      nullset = NULL){
-  
   if(is.null(nullset)){
     nullset = NULLS
   }
@@ -885,6 +893,7 @@ de_search = function(genes = NULL,
       vsmSearch(genes[taxon == t, entrez.ID],
                 taxa = t,
                 confounds = confounds,
+                diff_exp_source = diff_exp_source,
                 filter = !(exp_filter | comp_filter),
                 mfx = multifunctionality,
                 geeq = geeq,
