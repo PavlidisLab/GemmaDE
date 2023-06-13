@@ -426,6 +426,8 @@ names(data.holder) = c('human','mouse','rat')
 saveRDS(data.holder, file.path(RAWDIR, 'DATA.HOLDER.rds'))
 
 # conversion to file based
+# matrixes are transposed before file based storage since
+# data is stored column-wise and we access subsets of genes
 if('matrix' %in% class(data.holder[[1]]@data$adj.pv)) {
   for(taxon in names(data.holder)) {
     message(paste0('Converting in-memory matrices for ', taxon, ' to file-backed...'))
