@@ -451,16 +451,27 @@ if('matrix' %in% class(data.holder[[1]]@data$adj.pv)) {
     data.holder[[taxon]]@data$adj.pv <- bigstatsr::as_FBM(data.holder[[taxon]]@data$adj.pv %>% t,
                                                       backingfile = file.path(DATADIR, 'fbm', taxon, 'adjpvs'),
                                                       is_read_only = T)$save()
+    
+    
+    
+    dimnames(data.holder[[taxon]]@data$fc) %>% 
+      rev() %>%
+      saveRDS(file.path(DATADIR, 'fbm', taxon, 'fc.dimnames.rds'))
+    
+    data.holder[[taxon]]@data$fc <- bigstatsr::as_FBM(data.holder[[taxon]]@data$fc %>% t,
+                                                          backingfile = file.path(DATADIR, 'fbm', taxon, 'fc'),
+                                                          is_read_only = T)$save()
+    
+    
   }
 }
 
-dimnames.FBM <- function(object, ...) {
-  attr(object, '.dimnames')
-}
 
 for (taxon in names(data.holder)) {
   data.holder[[taxon]]@data$zscore <- NULL
   data.holder[[taxon]]@data$adj.pv <- NULL
+  data.holder[[taxon]]@data$fc <- NULL
+  
 }
 saveRDS(data.holder, paste(DATADIR, 'DATA.HOLDER.light.rds', sep='/'))
 
