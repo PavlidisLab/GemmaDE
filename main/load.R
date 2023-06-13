@@ -22,13 +22,15 @@ for (i in names(DATA.HOLDER)) {
   score_file = paste0(file.path(DATADIR, 'fbm/'), i, "/scores.rds")
   if(file.exists(score_file)){
     DATA.HOLDER[[i]]@data$scores <- bigstatsr::big_attach(score_file)
-    attr(DATA.HOLDER[[i]]@data$adj.pv, ".dimnames") <- readRDS(paste0(paste(DATADIR, 'fbm/', sep='/'), i, "/score.dimnames.rds"))
+    attr(DATA.HOLDER[[i]]@data$adj.pv, ".dimnames") <- readRDS(paste0(file.path(DATADIR, 'fbm/'), i, "/score.dimnames.rds"))
   }
   
-  # temporary, move to compile.R to replace gene counts
-  DATA.HOLDER[[i]]@experiment.meta$nonNa.numGenes = DATA.HOLDER[[i]]@data$fc %>% apply(2,\(x){
-    sum(!is.na(x))
-  })
+  fc_file = paste0(file.path(DATADIR, 'fbm/'), i, "/fc.rds")
+  if(file.exists(score_file)){
+    DATA.HOLDER[[i]]@data$fc <- bigstatsr::big_attach(fc_file)
+    attr(DATA.HOLDER[[i]]@data$fc, ".dimnames") <- readRDS(paste0(file.path(DATADIR, 'fbm/'), i, "/fc.dimnames.rds"))
+  }
+  
 }
 
 gc()
