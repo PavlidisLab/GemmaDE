@@ -415,29 +415,27 @@ enrich <- function(rankings, # options = getConfig(),
       }
     } %>%
     merge(terms, by.x = "rn", by.y = "rsc.ID", sort = F) %>%
-    .[score > 0] %>%
+    # .[score > 0] %>%
     # .[cf.Cat %in% options$categories$value]
     .[cf.Cat %in% categories]
   # .[, N := length(unique(ee.ID)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
   # .[N > 1, !'N']
   
-  # TODO Excluding singles because their p-value will always be 0.5
-  # and so score highly driven by fIN/fOUT... This is maybe okay
-  
   terms_bckp<<-terms
+  terms$grouping <-  paste(terms$cf.Cat,terms$cf.BaseLongUri,terms$cf.ValLongUri)
+  # collect supporting experiments and contrasts for each group
+  evidence <- data.frame(grouping = terms$grouping,id = terms$ee.ID) %>% group_by(grouping) %>% 
+    summarise(contrast_n = n(),experiment_n = length(unique(id)),evidence = list(unique(id)))
   
-  # filtering singles
-  grouping = paste(terms$cf.Cat,terms$cf.BaseLongUri,terms$cf.ValLongUri)
-  
-  valid_groups = grouping %>% table %>% {names(.[.>1])}
-  terms = terms[grouping %in% valid_groups,]
-  grouping = grouping[grouping %in% valid_groups]
-  
-  
+  # filtering singles, commented out for now at Paul's request.
+  # valid_groups = grouping %>% table %>% {names(.[.>1])}
+  # terms = terms[grouping %in% valid_groups,]
+  # grouping = grouping[grouping %in% valid_groups]
+
   # assign rows belonging to same groups to same cores
-  core_split = grouping %>% factor %>% as.numeric() %>% {.%%cores}
+  core_split = terms$grouping %>% factor %>% as.numeric() %>% {.%%cores}
   gene_names = 
-    colnames(terms)[!colnames(terms) %in% c("reverse", "distance", "ee.ID", "rn", "score", "f.IN", "f.OUT", "ee.q", "normalization",'cf.Cat','cf.BaseLongUri','cf.ValLongUri')]
+    colnames(terms)[!colnames(terms) %in% c("core_split","grouping", "reverse", "distance", "ee.ID", "rn", "score", "f.IN", "f.OUT", "ee.q", "normalization",'cf.Cat','cf.BaseLongUri','cf.ValLongUri')]
   grouping_vars = c('cf.Cat','cf.BaseLongUri','cf.ValLongUri')
   
   terms[,core_split := core_split]
@@ -448,7 +446,7 @@ enrich <- function(rankings, # options = getConfig(),
         {
           list(pv = 1 - .[, "pvalue"], gene = rownames(.)) # Small p-value if real effect (= score closer to 1)
         }, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri),
-      .SDcols = !c("reverse", "distance", "ee.ID", "rn", "score", "f.IN", "f.OUT", "ee.q", "normalization","core_split")
+      .SDcols = gene_names
     ] %>%
       data.table::dcast(... ~ gene, value.var = "pv", fill = 0)
   },mc.cores = cores) %>% do.call(rbind,.) -> wilcox_ps
@@ -456,16 +454,19 @@ enrich <- function(rankings, # options = getConfig(),
   terms[, .(
     distance = round(mean(distance, na.rm = T), 2),
     stat = mean(score),
-    normalization = median(normalization)
+    normalization = median(normalization),
+    grouping = unique(grouping)
   ), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
     merge(
       wilcox_ps,
       by = c("cf.Cat", "cf.BaseLongUri", "cf.ValLongUri"), sort = F
     ) %>%
-    .[, score := Rfast::rowsums(as.matrix(.SD) * normalization), .SDcols = !c("stat", "cf.Cat", "cf.BaseLongUri", "cf.ValLongUri", "distance", "normalization")] %>%
+    .[, score := Rfast::rowsums(as.matrix(.SD) * normalization), .SDcols = gene_names] %>%
     .[, !"normalization"] %>%
+    merge(evidence,by='grouping') %>% 
+    .[, !"grouping"] %>% 
     data.table::setorder(-stat, distance) %>%
-    .[, .SD[1], stat] %>%
+    # .[, .SD[1], stat] %>%
     data.table::setorder(-score) -> out
   enrich_out <<- out
   return(out)
@@ -909,11 +910,33 @@ de_search = function(genes = NULL,
       data.table::setnames(genes[taxon == t, gene.realName],
                            genes[taxon == t, identifier],
                            skip_absent = T)
-  }) %>% data.table::rbindlist(fill = TRUE) %>% 
+  }) %>% data.table::rbindlist(fill = TRUE)
+  # for queries with multiple taxa, scores are meaned. this is not particularly meaningful
+  # since the size of the query will likely differ between species due to
+  # homology matching. left it as is for now since we aren't looking into
+  # multiple taxa queries just yet.
+  # taking the mean of distance also doesn't quite make sense but
+  # preserved the original way of doing things for now. - ogan
+  conditions_scores = conditions[,c('cf.Cat','cf.BaseLongUri','cf.ValLongUri','distance','stat','score', unique(genes$identifier)),with = FALSE]
+  
+  condition_scores <- conditions_scores %>% 
     # reorderTags3() %>% # appears to be redundant. cache tags are already re-ordered
     .[, lapply(.SD, mean, na.rm = T), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
-  # tictoc::toc()
   
+  # sum the counts, append the evidence vector
+  condition_counts = conditions[,c('cf.Cat','cf.BaseLongUri','cf.ValLongUri','contrast_n','experiment_n'),with = FALSE]
+  condition_counts %<>% 
+    .[, lapply(.SD, sum, na.rm = T), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
+  
+  condition_evidence = conditions[,c('cf.Cat','cf.BaseLongUri','cf.ValLongUri','evidence'), with = FALSE]
+  condition_evidence %<>% data.frame() %>% group_by(cf.Cat, cf.BaseLongUri, cf.ValLongUri) %>%
+    summarize(evidence = list(do.call(c,evidence))) 
+  
+  
+  conditions = merge(condition_scores,condition_counts,by = c('cf.Cat','cf.BaseLongUri','cf.ValLongUri')) %>% 
+    merge(condition_evidence, by = c('cf.Cat','cf.BaseLongUri','cf.ValLongUri'))
+    
+  # tictoc::toc()
   # print('ending')
   # tictoc::tic()
   geneInfo <- genes %>%
@@ -925,8 +948,10 @@ de_search = function(genes = NULL,
   exps <- lapply(experiments, "[[", "rn") %>% unlist()
   
   tmp <- data.table::rbindlist(lapply(taxa, function(i) {
-    DATA.HOLDER[[i]]@experiment.meta[rsc.ID %in% exps, .(rsc.ID, ee.ID, ee.Name, ee.NumSample, ef.IsBatchConfounded)]
+    DATA.HOLDER[[i]]@experiment.meta[rsc.ID %in% exps, .(ee.ID, ee.Name)] %>% unique
   }))
+
+  conditions[,Evidence:= {evidence %>% unlist %>% {tmp$ee.Name[match(.,tmp$ee.ID)]} %>% relist(evidence) %>% sapply(stringi::stri_c, collapse = ',')}]
   
 
   if (get_descriptions){
@@ -962,24 +987,10 @@ de_search = function(genes = NULL,
     conditions[, `Condition Comparison` := paste0( cf.BaseLongUri, " vs. ", cf.ValLongUri)]
   }
   
+
+  conditions %<>% data.table::setnames(c("stat", "score", "distance"), c("Effect Size", "Test Statistic", "Ontology Steps"))
   
-  tmp <- tmp %>%
-    merge(getTags(taxa, exps), sort = F) %>%
-    .[, N := length(unique(ee.ID)), .(cf.Cat, cf.BaseLongUri, cf.ValLongUri)] %>%
-    .[N < 0.03 * nrow(tmp)] # Get rid of contrasts that overlap in more than 3% experiments
-  
-  tmp[, Evidence := {
-    dedup <- !duplicated(ee.ID)
-    stringi::stri_c(ee.Name[dedup], collapse = ",")
-  },.(cf.Cat, cf.BaseLongUri, cf.ValLongUri)]
-  
-  
-  tmp[, .(cf.Cat, cf.BaseLongUri, cf.ValLongUri, N, Evidence)] %>%
-    unique() %>%
-    merge(conditions, by = c("cf.Cat", "cf.BaseLongUri", "cf.ValLongUri"), sort = F) %>%
-    data.table::setnames(c("stat", "score", "distance"), c("Effect Size", "Test Statistic", "Ontology Steps")) ->
-    conditions
-  
+
   # out of endSuccess
   
   getPercentageStat <- function(x, n = 1){
