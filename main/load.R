@@ -22,8 +22,16 @@ for (i in names(DATA.HOLDER)) {
   score_file = paste0(file.path(DATADIR, 'fbm/'), i, "/scores.rds")
   if(file.exists(score_file)){
     DATA.HOLDER[[i]]@data$scores <- bigstatsr::big_attach(score_file)
-    attr(DATA.HOLDER[[i]]@data$adj.pv, ".dimnames") <- readRDS(paste0(file.path(DATADIR, 'fbm/'), i, "/score.dimnames.rds"))
+    attr(DATA.HOLDER[[i]]@data$scores, ".dimnames") <- readRDS(paste0(file.path(DATADIR, 'fbm/'), i, "/score.dimnames.rds"))
   }
+  
+  score_contrast_file = paste0(file.path(DATADIR, 'fbm/'), i, "/scores_contrast.rds")
+  if(file.exists(score_contrast_file)){
+    DATA.HOLDER[[i]]@data$scores_contrast <- bigstatsr::big_attach(score_contrast_file)
+    attr(DATA.HOLDER[[i]]@data$scores_contrast, ".dimnames") <- readRDS(paste0(file.path(DATADIR, 'fbm/'), i, "/score_contrast.dimnames.rds"))
+  }
+  
+  
   
   fc_file = paste0(file.path(DATADIR, 'fbm/'), i, "/fc.rds")
   if(file.exists(score_file)){
