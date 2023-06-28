@@ -34,6 +34,35 @@ for (tax in names(data.holder)){
   sc_fb = bigstatsr::as_FBM(sc %>% t,
                     backingfile = file.path(DATADIR, 'fbm', tax, 'scores'),
                     is_read_only = T)$save()
+  
+  
+  
+  # temporary until next generation, these also exist within compile.R
+  dimnames(data.holder[[taxon]]@data$fc) %>%
+    saveRDS(file.path(DATADIR, 'fbm', taxon, 'fc_contrast.dimnames.rds'))
+  
+  fc_contrast <- bigstatsr::as_FBM(data.holder[[taxon]]@data$fc,
+                                   backingfile = file.path(DATADIR, 'fbm', taxon, 'fc_contrast'),
+                                   is_read_only = T)$save()
+  
+  
+  
+  dimnames(data.holder[[taxon]]@data$zscore) %>% 
+    saveRDS(file.path(DATADIR, 'fbm', taxon, 'z_contrast.dimnames.rds'))
+  
+  zscore_contrast <- bigstatsr::as_FBM(data.holder[[taxon]]@data$zscore,
+                              backingfile = file.path(DATADIR, 'fbm', taxon, 'zscores_contrast'),
+                              is_read_only = T)$save()
+  
+  
+  dimnames(data.holder[[taxon]]@data$adj.pv) %>% 
+    saveRDS(file.path(DATADIR, 'fbm', taxon, 'p_contrast.dimnames.rds'))
+  
+  adj.pv <- bigstatsr::as_FBM(data.holder[[taxon]]@data$adj.pv,
+                              backingfile = file.path(DATADIR, 'fbm', taxon, 'adjpvs_contrast'),
+                              is_read_only = T)$save()
+  
+  
   gc()
 }
 

@@ -7,7 +7,7 @@ library(gemma.R)
 library(magrittr)
 library(dplyr)
 
-load_from_backups = TRUE
+load_from_backups = FALSE
 trust_cache = TRUE
 
 
@@ -399,9 +399,22 @@ lapply(c('human', 'mouse', 'rat'), function(taxon){
   contrast_metaData %<>% data.table()
   gene_metaData %<>% data.table()
   
+  
   out <- new('EData', taxon = taxon, data = dh,
              experiment.meta = contrast_metaData, gene.meta = gene_metaData, go = unique(go_terms))
+  
+  
+  out$experiment.meta$nonNa.numGenes = out@data$fc %>% apply(2,\(x){
+    sum(!is.na(x))
+  })
+  
+  
+  
   dir.create(file.path(RAWDIR,taxon),showWarnings = FALSE)
+  
+  
+  
+  
   saveRDS(out, file.path(RAWDIR,taxon,'Edata.rds'))
   return(out)
 }) ->  data.holder
@@ -425,9 +438,14 @@ names(data.holder) = c('human','mouse','rat')
 
 saveRDS(data.holder, file.path(RAWDIR, 'DATA.HOLDER.rds'))
 
+
 # conversion to file based
 # matrixes are transposed before file based storage since
 # data is stored column-wise and we access subsets of genes
+# we also save the data in non transposed form as _contrast
+# and load it to DATA.HOLDER to allow for accessing contrast
+# level data easier if needed. One use case is calculation of
+# null sets
 if('matrix' %in% class(data.holder[[1]]@data$adj.pv)) {
   for(taxon in names(data.holder)) {
     message(paste0('Converting in-memory matrices for ', taxon, ' to file-backed...'))
@@ -440,7 +458,7 @@ if('matrix' %in% class(data.holder[[1]]@data$adj.pv)) {
       rev() %>%
       saveRDS(file.path(DATADIR, 'fbm', taxon, 'z.dimnames.rds'))
     
-    data.holder[[taxon]]@data$zscore <- bigstatsr::as_FBM(data.holder[[taxon]]@data$zscore %>% t,
+    zscore <- bigstatsr::as_FBM(data.holder[[taxon]]@data$zscore %>% t,
                                                       backingfile = file.path(DATADIR, 'fbm', taxon, 'zscores'),
                                                       is_read_only = T)$save()
     
@@ -448,7 +466,7 @@ if('matrix' %in% class(data.holder[[1]]@data$adj.pv)) {
       rev() %>%
       saveRDS(file.path(DATADIR, 'fbm', taxon, 'p.dimnames.rds'))
     
-    data.holder[[taxon]]@data$adj.pv <- bigstatsr::as_FBM(data.holder[[taxon]]@data$adj.pv %>% t,
+    adj.pv <- bigstatsr::as_FBM(data.holder[[taxon]]@data$adj.pv %>% t,
                                                       backingfile = file.path(DATADIR, 'fbm', taxon, 'adjpvs'),
                                                       is_read_only = T)$save()
     
@@ -458,10 +476,35 @@ if('matrix' %in% class(data.holder[[1]]@data$adj.pv)) {
       rev() %>%
       saveRDS(file.path(DATADIR, 'fbm', taxon, 'fc.dimnames.rds'))
     
-    data.holder[[taxon]]@data$fc <- bigstatsr::as_FBM(data.holder[[taxon]]@data$fc %>% t,
+    fc <- bigstatsr::as_FBM(data.holder[[taxon]]@data$fc %>% t,
                                                           backingfile = file.path(DATADIR, 'fbm', taxon, 'fc'),
                                                           is_read_only = T)$save()
     
+    
+    # temporary until next generation, these also exist within compile.R
+    dimnames(data.holder[[taxon]]@data$fc) %>%
+      saveRDS(file.path(DATADIR, 'fbm', taxon, 'fc_contrast.dimnames.rds'))
+    
+    fc_contrast <- bigstatsr::as_FBM(data.holder[[taxon]]@data$fc,
+                                     backingfile = file.path(DATADIR, 'fbm', taxon, 'fc_contrast'),
+                                     is_read_only = T)$save()
+    
+    
+    
+    dimnames(data.holder[[taxon]]@data$zscore) %>% 
+      saveRDS(file.path(DATADIR, 'fbm', taxon, 'z_contrast.dimnames.rds'))
+    
+    zscore_contrast <- bigstatsr::as_FBM(data.holder[[taxon]]@data$zscore,
+                                         backingfile = file.path(DATADIR, 'fbm', taxon, 'zscores_contrast'),
+                                         is_read_only = T)$save()
+    
+    
+    dimnames(data.holder[[taxon]]@data$adj.pv) %>% 
+      saveRDS(file.path(DATADIR, 'fbm', taxon, 'p_contrast.dimnames.rds'))
+    
+    adj.pv <- bigstatsr::as_FBM(data.holder[[taxon]]@data$adj.pv,
+                                backingfile = file.path(DATADIR, 'fbm', taxon, 'adjpvs_contrast'),
+                                is_read_only = T)$save()
     
   }
 }
