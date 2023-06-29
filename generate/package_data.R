@@ -156,14 +156,7 @@ usethis::use_data(CACHE.BACKGROUND,overwrite = TRUE)
 
 # NULLS --------------
 
-NULLS <- lapply(names(DATA.HOLDER), function(taxa) {
-  tryCatch(readRDS(paste0(paste(DATADIR, 'updated_nulls/', sep='/'), taxa, ".rds")) %>%
-             .[, .(rn, score.mean, score.sd)], error = function(e) NULL)
-}) %>%
-  `names<-`(names(DATA.HOLDER)) %>%
-  {
-    Filter(Negate(is.null), .)
-  }
+NULLS <- generate_nulls('score_contrast')
 
 usethis::use_data(NULLS,overwrite = TRUE)
 
