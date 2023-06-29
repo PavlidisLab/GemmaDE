@@ -446,67 +446,18 @@ saveRDS(data.holder, file.path(RAWDIR, 'DATA.HOLDER.rds'))
 # and load it to DATA.HOLDER to allow for accessing contrast
 # level data easier if needed. One use case is calculation of
 # null sets
-if('matrix' %in% class(data.holder[[1]]@data$adj.pv)) {
-  for(taxon in names(data.holder)) {
-    message(paste0('Converting in-memory matrices for ', taxon, ' to file-backed...'))
-    
-    file.remove(list.files(file.path(DATADIR, 'fbm', taxon), full.names = T))
-    
-    dir.create(file.path(DATADIR,'fbm',taxon),recursive = TRUE, showWarnings =FALSE)
-    
-    dimnames(data.holder[[taxon]]@data$zscore) %>% 
-      rev() %>%
-      saveRDS(file.path(DATADIR, 'fbm', taxon, 'z.dimnames.rds'))
-    
-    zscore <- bigstatsr::as_FBM(data.holder[[taxon]]@data$zscore %>% t,
-                                                      backingfile = file.path(DATADIR, 'fbm', taxon, 'zscores'),
-                                                      is_read_only = T)$save()
-    
-    dimnames(data.holder[[taxon]]@data$adj.pv) %>% 
-      rev() %>%
-      saveRDS(file.path(DATADIR, 'fbm', taxon, 'p.dimnames.rds'))
-    
-    adj.pv <- bigstatsr::as_FBM(data.holder[[taxon]]@data$adj.pv %>% t,
-                                                      backingfile = file.path(DATADIR, 'fbm', taxon, 'adjpvs'),
-                                                      is_read_only = T)$save()
-    
-    
-    
-    dimnames(data.holder[[taxon]]@data$fc) %>% 
-      rev() %>%
-      saveRDS(file.path(DATADIR, 'fbm', taxon, 'fc.dimnames.rds'))
-    
-    fc <- bigstatsr::as_FBM(data.holder[[taxon]]@data$fc %>% t,
-                                                          backingfile = file.path(DATADIR, 'fbm', taxon, 'fc'),
-                                                          is_read_only = T)$save()
-    
-    
-    # temporary until next generation, these also exist within compile.R
-    dimnames(data.holder[[taxon]]@data$fc) %>%
-      saveRDS(file.path(DATADIR, 'fbm', taxon, 'fc_contrast.dimnames.rds'))
-    
-    fc_contrast <- bigstatsr::as_FBM(data.holder[[taxon]]@data$fc,
-                                     backingfile = file.path(DATADIR, 'fbm', taxon, 'fc_contrast'),
-                                     is_read_only = T)$save()
-    
-    
-    
-    dimnames(data.holder[[taxon]]@data$zscore) %>% 
-      saveRDS(file.path(DATADIR, 'fbm', taxon, 'z_contrast.dimnames.rds'))
-    
-    zscore_contrast <- bigstatsr::as_FBM(data.holder[[taxon]]@data$zscore,
-                                         backingfile = file.path(DATADIR, 'fbm', taxon, 'zscores_contrast'),
-                                         is_read_only = T)$save()
-    
-    
-    dimnames(data.holder[[taxon]]@data$adj.pv) %>% 
-      saveRDS(file.path(DATADIR, 'fbm', taxon, 'p_contrast.dimnames.rds'))
-    
-    adj.pv <- bigstatsr::as_FBM(data.holder[[taxon]]@data$adj.pv,
-                                backingfile = file.path(DATADIR, 'fbm', taxon, 'adjpvs_contrast'),
-                                is_read_only = T)$save()
-    
-  }
+fbm_path = file.path(DATADIR,'data_fbm')
+
+for(taxon in names(data.holder)) {
+  create_fbm(data.holder$human@data$fc,
+             file.path(fbm_path,taxon,'fc'))
+  
+  create_fbm(data.holder$human@data$zscore,
+             file.path(fbm_path,taxon,'zscore'))
+  
+  
+  create_fbm(data.holder$human@data$adj.pv,
+             file.path(fbm_path,taxon,'adj.pv'))
 }
 
 
@@ -514,9 +465,7 @@ for (taxon in names(data.holder)) {
   data.holder[[taxon]]@data$zscore <- NULL
   data.holder[[taxon]]@data$adj.pv <- NULL
   data.holder[[taxon]]@data$fc <- NULL
-  
 }
 saveRDS(data.holder, paste(DATADIR, 'DATA.HOLDER.light.rds', sep='/'))
-
 
 
