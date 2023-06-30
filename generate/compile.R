@@ -449,14 +449,14 @@ saveRDS(data.holder, file.path(RAWDIR, 'DATA.HOLDER.rds'))
 fbm_path = file.path(DATADIR,'data_fbm')
 
 for(taxon in names(data.holder)) {
-  create_fbm(data.holder$human@data$fc,
+  create_fbm(data.holder[[taxon]]@data$fc,
              file.path(fbm_path,taxon,'fc'))
   
-  create_fbm(data.holder$human@data$zscore,
+  create_fbm(data.holder[[taxon]]@data$zscore,
              file.path(fbm_path,taxon,'zscore'))
   
   
-  create_fbm(data.holder$human@data$adj.pv,
+  create_fbm(data.holder[[taxon]]@data$adj.pv,
              file.path(fbm_path,taxon,'adj.pv'))
 }
 
