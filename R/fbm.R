@@ -43,7 +43,7 @@ load_fbms <-  function(path,suffix = '_contrast',t_suffix = ''){
 }
 
 
-
+# dimnames method to be able to read col/rownames from the loaded fbms
 dimnames.FBM <- function(object, ...) {
   attr(object, ".dimnames")
 }
