@@ -9,7 +9,7 @@
 
 gemma_de = function(genes = NULL,
                     taxon = NULL,
-                    score_source = 'scores',
+                    score_source = 'score',
                     max_dist = 1.5,
                     confounds = FALSE,
                     p_threshold = 0.05,
@@ -32,32 +32,35 @@ gemma_de = function(genes = NULL,
   confound_filter = !(DATA.HOLDER[[taxon]]@experiment.meta$ef.IsBatchConfounded | is.na(DATA.HOLDER[[taxon]]@experiment.meta$ef.IsBatchConfounded))
   
   filter = (!(exp_filter | comp_filter)) & confound_filter
-  vsm_search(genes = p_genes$entrez.ID,
-             taxon = taxon,
-             score_source = score_source,
-             filter = filter)
+  get_contrast_scores(genes = p_genes$entrez.ID,
+                      taxon = taxon,
+                      score_source = score_source,
+                      filter = filter)
   
 }
   
 
+# mostly equivalent to old vsmSearch
 # with the calculation pre-calculated, primary function of this is to simply
 # subset the data. it might be prudent to add some option to weight the scores
 # but if added before normalization, it'll add a substantial overhead
-vsm_search = function(genes,
-                      taxon,
-                      score_source,
-                      filter){
+get_contrast_scores = function(genes,
+                               taxon,
+                               score_source,
+                               filter){
   
   mData = DATA.HOLDER[[taxon]]
+  scores = mData@data[[score_source]]
+  geneMask =  which(mData@gene.meta$entrez.ID %in% genes)
+  subset = scores[filter,geneMask,drop = FALSE] %>% data.table
   
-  geneMask <- which(mData@gene.meta$entrez.ID %in% genes)
-  
-  n.genes <- length(geneMask)
-  if (n.genes == 0) {
-    return(NULL)
-  }
-  
+  colnames(subset) = mData@gene.meta$gene.Name[geneMask]
+  subset[, score := Rfast::rowsums(as.matrix(subset))]
+  subset[, rn := mData@experiment.meta$rsc.ID[filter]]
+  return(subset)
 }
+
+
 
 norm = function(){
   
