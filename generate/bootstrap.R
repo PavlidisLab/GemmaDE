@@ -40,7 +40,7 @@ for(x in OPTIONS) {
                   mfx = FALSE, 
                   geeq = opts$geeq$value,
                   p_threshold = 0.05) %>%
-        .[, c(1:BLOCK, BLOCK+5),with = FALSE] %>% # TODO BLOCK
+        .[, c(1:BLOCK, BLOCK+5),with = FALSE] %>%
         data.table::melt(id.vars = 'rn') %>%
         .[, !'variable'] %>%
         .[, .(score.sum = sum(value, na.rm = T),
