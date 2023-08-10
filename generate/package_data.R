@@ -155,7 +155,17 @@ CACHE.BACKGROUND <- lapply(names(DATA.HOLDER), function(x){
 usethis::use_data(CACHE.BACKGROUND,overwrite = TRUE)
 
 # NULLS --------------
+# create a null for each available matrix in DATA.HOLDER
 
+datas <- DATA.HOLDER[[1]]@data %>%names %>% {.[grepl('contrast',.)]}
+
+data_nulls <- datas %>% lapply(generate_nulls)
+names(data_nulls) <- datas %>% gsub('_contrast','',.)
+
+
+usethis::use_data(data_nulls,overwrite = TRUE)
+
+# old NULLS remove in the next version
 NULLS <- generate_nulls('score_contrast')
 
 usethis::use_data(NULLS,overwrite = TRUE)
