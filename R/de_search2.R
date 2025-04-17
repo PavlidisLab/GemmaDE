@@ -94,8 +94,7 @@ gemma_de = function(genes = NULL,
   
   
   # compiling the final output
-  browser()
-  
+
   out = data.table(
     `Condition Comparison` =  paste0( info$cf.Base, " vs. ", info$cf.Val),
     Category = info$cf.Cat,
@@ -150,7 +149,7 @@ gather_details = function(experiment_tags,taxon){
   
   info[,Evidence:= {evidence %>% unlist %>% {mData@experiment.meta$ee.Name[match(.,mData@experiment.meta$ee.ID)]} %>% relist(evidence) %>% sapply(stringi::stri_c, collapse = ',')}]
   
-  info %>% setorder(grouping)
+  info %>% data.table::setorder(grouping)
   
   
 }
@@ -203,7 +202,7 @@ wilcox_enrich = function(cz_scores,
       .SDcols = gene_names
     ] %>%
       data.table::dcast(... ~ gene, value.var = "pv", fill = 0)
-  },mc.cores = cores) %>% do.call(rbind,.) %>%setorder(grouping)  -> wilcox_ps
+  },mc.cores = cores) %>% do.call(rbind,.) %>% data.table::setorder(grouping)  -> wilcox_ps
   
   return(wilcox_ps)
    
